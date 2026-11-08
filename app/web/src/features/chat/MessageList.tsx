@@ -37,11 +37,12 @@ export function MessageList({ items }: { items: readonly ChatItem[] }) {
   return (
     <div
       ref={ref}
+      data-testid="transcript"
       onScroll={e => {
         const el = e.currentTarget
         stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_PX
       }}
-      className="flex-1 overflow-y-auto py-6"
+      className="min-h-0 flex-1 overflow-y-auto py-6"
     >
       <div className="mx-auto flex max-w-[720px] flex-col gap-4 px-6">
         {items.map(item => <Item key={item.id} item={item} />)}

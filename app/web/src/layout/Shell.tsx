@@ -14,16 +14,16 @@ export function Shell({ sidebar, main, panel, panelOpen }: ShellProps) {
   return (
     <div
       className={cn(
-        'grid h-screen bg-background text-foreground',
+        'grid h-dvh grid-rows-[minmax(0,1fr)] overflow-hidden bg-background text-foreground',
         panelOpen ? 'grid-cols-[272px_minmax(0,1fr)_400px]' : 'grid-cols-[272px_minmax(0,1fr)]'
       )}
     >
-      <aside aria-label="Sidebar" className="flex min-w-0 flex-col border-r border-border px-2.5 py-3.5">
+      <aside aria-label="Sidebar" className="flex min-h-0 min-w-0 flex-col overflow-y-auto border-r border-border px-2.5 py-3.5">
         {sidebar}
       </aside>
-      <main className="flex min-w-0 flex-col">{main}</main>
+      <main className="flex min-h-0 min-w-0 flex-col overflow-hidden">{main}</main>
       {panelOpen && (
-        <section aria-label="Panel" className="flex min-w-0 flex-col border-l border-border">
+        <section aria-label="Panel" className="flex min-h-0 min-w-0 flex-col overflow-y-auto border-l border-border">
           {panel}
         </section>
       )}
