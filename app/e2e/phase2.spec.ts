@@ -18,6 +18,11 @@ const cronJobs = async (bot: string) => {
   const res = await hermesRest('GET', `/api/cron/jobs?profile=${encodeURIComponent(bot)}`)
   return res.status === 200 && Array.isArray(res.body) ? (res.body as { name?: string; deliver?: string }[]) : []
 }
+const cronAll = async () => {
+  const res = await hermesRest('GET', '/api/cron/jobs?profile=all')
+  expect(res.status, 'cron list across all profiles').toBe(200)
+  return (res.body as { name?: string }[]).map(j => j.name ?? '')
+}
 const soulOf = async (bot: string) => ((await hermesRest('GET', `/api/profiles/${bot}/soul`)).body as { content: string }).content
 
 /** A real 8x8 PNG (valid for the browser's image decoder). */
@@ -166,6 +171,8 @@ test('a routine runs on schedule and via Run now, shows in history and in Hermes
 })
 
 test('deleting the bot removes it everywhere', async ({ page }) => {
+  // Sanity first: the all-profiles list does show this bot's routines, so the check after delete can fail.
+  expect((await cronAll()).some(n => n.startsWith(`[bot:${handle}]`))).toBe(true)
   await page.goto(`${CREW}/bots/${handle}?panel=profile`)
   await page.getByRole('button', { name: 'Delete bot' }).click()
   await page.getByLabel(`Type ${handle} to confirm`).fill(handle)
@@ -173,29 +180,56 @@ test('deleting the bot removes it everywhere', async ({ page }) => {
   await expect(page).toHaveURL(/\/bots\/default$/, { timeout: 60_000 })
   await expect.poll(async () => (await crewState(page)).bots.some(b => b.name === handle), { timeout: 30_000 }).toBe(false)
   expect((await profileRows()).some(p => p.name === handle)).toBe(false)
-  expect(await cronJobs(handle)).toEqual([])
+  expect((await cronAll()).filter(n => n.startsWith(`[bot:${handle}]`))).toEqual([])
+  // The bot's own store is gone too: Hermes answers 404 for the profile (or, at most, an empty list).
+  const own = await hermesRest('GET', `/api/cron/jobs?profile=${handle}`)
+  expect(own.status === 404 || (own.status === 200 && Array.isArray(own.body) && own.body.length === 0)).toBe(true)
 })
+
+async function liveLimit(page: Page): Promise<number | null> {
+  const res = await page.request.get(`${CREW}/crew/settings`)
+  expect(res.status()).toBe(200)
+  return ((await res.json()) as { maxWorkingBots: number | null }).maxWorkingBots
+}
+
+/** Last resort: put the live limit back through the API, with the CSRF header the browser would send. */
+async function forceLimit(page: Page, value: number | null): Promise<void> {
+  const csrf = (await page.context().cookies(CREW)).find(c => c.name === 'crew_csrf')?.value ?? ''
+  await page.request.put(`${CREW}/crew/settings`, { data: { maxWorkingBots: value }, headers: { 'X-Crew-CSRF': csrf } })
+}
 
 test('the working-bot limit setting persists', async ({ page }) => {
   await page.goto(CREW)
+  const dialog = page.getByRole('dialog')
   const openSettings = async () => {
     await page.getByRole('button', { name: 'Settings' }).click()
     return page.getByLabel('Bots working at the same time')
   }
-  let select = await openSettings()
-  const original = await select.inputValue()
-  try {
-    await select.selectOption('none')
+  // Save and wait for the dialog to close (it closes only after the PUT succeeded) before anything reloads the page.
+  const saveLimit = async (value: string) => {
+    const select = await openSettings()
+    await select.selectOption(value)
     await page.getByRole('button', { name: 'Save' }).click()
-    await page.reload()
-    select = await openSettings()
-    await expect(select).toHaveValue('none')
-  } finally {
-    await page.reload()
-    select = await openSettings()
-    await select.selectOption(original)
-    await page.getByRole('button', { name: 'Save' }).click()
+    await expect(dialog).toBeHidden({ timeout: 30_000 })
   }
+  // Whatever the live limit is now (2 by default) is put back at the end.
+  const original = await liveLimit(page)
+  try {
+    await saveLimit('none')
+    await page.reload()
+    await expect(await openSettings()).toHaveValue('none')
+    expect(await liveLimit(page)).toBeNull()
+  } finally {
+    try {
+      await page.reload()
+      if (await dialog.isVisible()) await page.keyboard.press('Escape')
+      await saveLimit(original === null ? 'none' : String(original))
+    } catch {
+      // The UI restore failed; the API restore below makes sure the live value is put back.
+    }
+    if ((await liveLimit(page)) !== original) await forceLimit(page, original)
+  }
+  expect(await liveLimit(page)).toBe(original)
   await page.reload()
-  await expect(await openSettings()).toHaveValue(original)
+  await expect(await openSettings()).toHaveValue(original === null ? 'none' : String(original))
 })
