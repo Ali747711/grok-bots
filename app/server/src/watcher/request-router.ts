@@ -46,7 +46,8 @@ export function routeServerRequest(
   source: PendingSource = 'server_request'
 ): true {
   if (!HELD.has(req.method)) {
-    req.decline('not shown in Crew')
+    // Optional in the vendored type; without it we stay silent rather than send an error reply.
+    req.decline?.('not shown in Crew')
     return true
   }
   const kind = req.method as PendingKind
