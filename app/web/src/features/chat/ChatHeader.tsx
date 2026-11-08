@@ -22,7 +22,7 @@ export function ChatHeader({ bot, stale, panel = null, onPanel }: ChatHeaderProp
   return (
     <header className="flex items-center gap-3 border-b border-border px-5 py-3">
       <CrewAvatar bot={stale ? { ...bot, status: 'idle' } : bot} size={40} decorative />
-      <div className="min-w-0 flex-1">
+      <div className="min-w-24 flex-1">
         <h2 className="truncate text-sm font-semibold">{bot.title}</h2>
         {!stale && (
           <p className={cn('label-mono mt-0.5', bot.status === 'working' && 'text-sky-ink')}>
@@ -31,7 +31,7 @@ export function ChatHeader({ bot, stale, panel = null, onPanel }: ChatHeaderProp
           </p>
         )}
       </div>
-      {cost !== null && <span className="text-xs text-muted-foreground">≈ ${cost.toFixed(2)} (estimate)</span>}
+      {cost !== null && <span className="min-w-0 truncate text-xs text-muted-foreground">≈ ${cost.toFixed(2)} (estimate)</span>}
       {onPanel && (['routines', 'profile'] as const).map(tab => (
         <Button
           key={tab}

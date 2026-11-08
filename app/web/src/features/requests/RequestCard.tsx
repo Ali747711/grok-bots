@@ -169,7 +169,7 @@ export function RequestCard({ entry, onAnswer, botTitle }: RequestCardProps) {
         <span aria-hidden="true">● </span>
         Needs you
       </p>
-      {entry.kind === 'approval' && <h3 className="mb-1.5 text-base font-semibold">{botTitle ?? entry.profile} needs your approval</h3>}
+      {entry.kind === 'approval' && <h3 className="mb-1.5 text-base font-semibold break-words">{botTitle ?? entry.profile} needs your approval</h3>}
       {entry.kind === 'approval' && <ApprovalDetail entry={entry} />}
       {(entry.kind === 'clarify' || (secret && !entry.answerable)) && <p className="mb-2 font-medium break-words">{entry.summary}</p>}
       {!entry.answerable ? (

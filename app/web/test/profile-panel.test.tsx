@@ -396,6 +396,57 @@ describe('ProfilePanel', () => {
     expect(screen.getByRole('button', { name: 'ghost' })).toBeDisabled()
   })
 
+  it('keeps a held pick and sends it with Finish setup after a failed photo upload', async () => {
+    vi.stubGlobal('createImageBitmap', vi.fn(() => Promise.resolve({ width: 10, height: 10, close: vi.fn() })))
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn() } as unknown as CanvasRenderingContext2D)
+    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/png;base64,AAAA')
+    const fn = stub({ other: {
+      'PUT /crew/bots/dev/avatar': () => json({ error: 'hermes_error' }, 502),
+      'POST /crew/bots/dev/finish': () => json({ name: 'dev', complete: true, steps: {}, needsModel: false })
+    } })
+    open(bot({ name: 'dev', title: 'Dev', setupIncomplete: true }))
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: 'ghost' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Teal' }))
+    fireEvent.change(screen.getByLabelText('Upload photo'), { target: { files: [new File([new Uint8Array(5)], 'a.png', { type: 'image/png' })] } })
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not change the photo. Try again.')
+    expect(screen.getByRole('button', { name: 'ghost' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Teal' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'Finish setup' }))
+    await waitFor(() => expect(fn.mock.calls.some(([u]) => u === '/crew/bots/dev/finish')).toBe(true))
+    const call = fn.mock.calls.find(([u]) => u === '/crew/bots/dev/finish')
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ title: 'Dev', avatar: { type: 'ghost', color: '#2ec4c4' } })
+    vi.restoreAllMocks()
+  })
+
+  it('waits for an in-flight save before sending a held pick when setup ends', async () => {
+    vi.stubGlobal('createImageBitmap', vi.fn(() => Promise.resolve({ width: 10, height: 10, close: vi.fn() })))
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn() } as unknown as CanvasRenderingContext2D)
+    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/png;base64,AAAA')
+    let release: (v: Response) => void = () => undefined
+    const fn = stub({
+      patch: () => json({ status: 'saved', detail: detail({ avatar: { type: 'ghost' } }) }),
+      other: { 'PUT /crew/bots/dev/avatar': () => new Promise<Response>(resolve => { release = resolve }) }
+    })
+    const tree = (b: ReturnType<typeof bot>) => (
+      <MemoryRouter initialEntries={['/bots/dev']}><Routes><Route path="*" element={<ProfilePanel bot={b} />} /></Routes></MemoryRouter>
+    )
+    const { rerender } = render(tree(bot({ name: 'dev', title: 'Dev', setupIncomplete: true })))
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: 'ghost' }))
+    fireEvent.change(screen.getByLabelText('Upload photo'), { target: { files: [new File([new Uint8Array(5)], 'a.png', { type: 'image/png' })] } })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'ghost' })).toBeDisabled())
+    await waitFor(() => expect(fn.mock.calls.some(([u, i]) => u === '/crew/bots/dev/avatar' && i?.method === 'PUT')).toBe(true))
+    rerender(tree(bot({ name: 'dev', title: 'Dev', setupIncomplete: false })))
+    await new Promise(resolve => setTimeout(resolve, 30))
+    expect(patches(fn)).toHaveLength(0)
+    expect(screen.getByRole('button', { name: 'ghost' })).toBeDisabled()
+    release(new Response(JSON.stringify(detail({ look: { shape: 'squircle', color: '#6366f1', imageKind: 'photo' } }))))
+    await waitFor(() => expect(patches(fn)).toEqual([{ avatar: { type: 'ghost' } }]))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'ghost' })).toBeEnabled())
+    vi.restoreAllMocks()
+  })
+
   it('shows a pinned model that is not in the list, never the default sentinel', async () => {
     const pinned = { provider: 'openrouter', model: 'z/pinned' }
     stub({ get: () => json(detail({ model: pinned })) })

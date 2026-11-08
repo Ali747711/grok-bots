@@ -146,6 +146,11 @@ describe('RequestCard: hidden characters in the approval text', () => {
 })
 
 describe('RequestCard: black card', () => {
+  it('breaks a long unbroken bot name in the approval title', () => {
+    render(<RequestCard entry={entry({ command: 'ls' })} botTitle={'y'.repeat(80)} onAnswer={noop} />)
+    expect(screen.getByRole('heading', { level: 3 })).toHaveClass('break-words')
+  })
+
   it('keeps a long command scrollable and hidden characters visible on the black card', () => {
     const command = `echo \u202E${'x'.repeat(5000)}`
     render(<RequestCard entry={entry({ command })} botTitle="Dev" onAnswer={noop} />)

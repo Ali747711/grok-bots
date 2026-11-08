@@ -33,7 +33,8 @@ export function CrewAvatar({ bot, size, interactive = true, decorative = false }
           <img src={`/crew/avatars/${encodeURIComponent(bot.name)}`} alt={decorative ? '' : bot.title} onError={() => setBrokenKey(photoKey)} className="size-full object-cover" />
         </div>
       ) : (
-        <div className={cn('size-full', dim)}>
+        // Reduced motion freezes the working animation, so a ring (as on photos) keeps the state visible.
+        <div className={cn('size-full', state === 'working' && 'rounded-[30%] motion-reduce:ring-2 motion-reduce:ring-sky', dim)}>
           <BotAvatar
             shading="fabric"
             aria-label={decorative ? undefined : bot.title}

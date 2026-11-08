@@ -123,6 +123,14 @@ describe('ChatView', () => {
     expect(screen.getByTestId('stub').closest('[aria-hidden="true"]')).not.toBeNull()
   })
 
+  it('lets the cost estimate give way before the bot name', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({ messages: [], estimated_cost_usd: 1.25 })))))
+    render(<ChatView bot={{ ...dev, status: 'working' }} state={crewState()} crewConnected />)
+    await flush()
+    expect(screen.getByRole('heading', { name: 'Dev' }).parentElement).toHaveClass('min-w-24', 'flex-1')
+    expect(await screen.findByText(/estimate/)).toHaveClass('min-w-0', 'truncate')
+  })
+
   it('keeps header and composer outside the scrolling transcript', async () => {
     render(<ChatView bot={dev} state={crewState()} crewConnected />)
     await flush()

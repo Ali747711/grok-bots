@@ -63,6 +63,13 @@ describe('CrewAvatar', () => {
     expect(document.querySelector('img')!.parentElement).toHaveClass('opacity-60')
   })
 
+  it('gives a working fur avatar a reduced-motion ring, and no other state', () => {
+    const { rerender } = render(<CrewAvatar bot={bot({ name: 'x', status: 'working' })} size={34} />)
+    expect(screen.getByTestId('stub').parentElement).toHaveClass('motion-reduce:ring-2', 'motion-reduce:ring-sky', 'rounded-[30%]')
+    rerender(<CrewAvatar bot={bot({ name: 'x', status: 'idle' })} size={34} />)
+    expect(screen.getByTestId('stub').parentElement).not.toHaveClass('motion-reduce:ring-2')
+  })
+
   it('shows the lime dot only when the bot needs you', () => {
     const { rerender } = render(<CrewAvatar bot={bot({ name: 'x', status: 'needs_you' })} size={34} />)
     expect(screen.getByLabelText('Needs you')).toHaveClass('bg-needs')

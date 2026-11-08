@@ -35,9 +35,9 @@ export function NeedsYouPage({ state, crewConnected = true, now = Date.now }: { 
                     {bot && <CrewAvatar bot={stale ? { ...bot, status: 'idle' } : bot} size={32} decorative />}
                     <span className="min-w-0 flex-1">
                       <span className="flex items-baseline gap-2 text-xs text-muted-foreground">
-                        <span className="text-sm font-semibold text-foreground">{bot?.title ?? entry.profile}</span>
-                        <span>{KIND_LABEL[entry.kind]}</span>
-                        <span className="ml-auto">{formatAge(entry.receivedAt, now())}</span>
+                        <span className="min-w-0 truncate text-sm font-semibold text-foreground">{bot?.title ?? entry.profile}</span>
+                        <span className="shrink-0">{KIND_LABEL[entry.kind]}</span>
+                        <span className="ml-auto shrink-0">{formatAge(entry.receivedAt, now())}</span>
                       </span>
                       <span className="mt-0.5 block text-sm break-words">{entry.summary}</span>
                       <span className="mt-1 block text-xs font-medium text-sky-ink">Open chat</span>

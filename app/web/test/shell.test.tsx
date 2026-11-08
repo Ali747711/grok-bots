@@ -20,9 +20,10 @@ describe('Shell', () => {
   })
 })
 
-const mockMedia = (narrow: boolean) => {
+/** A window `width` px wide: only the max-width queries that include it match. */
+const mockMedia = (width: number) => {
   window.matchMedia = ((query: string) => ({
-    matches: narrow && query === '(max-width: 1099px)', media: query, onchange: null,
+    matches: Number(/max-width:\s*(\d+)px/.exec(query)?.[1] ?? -1) >= width, media: query, onchange: null,
     addEventListener: () => undefined, removeEventListener: () => undefined,
     addListener: () => undefined, removeListener: () => undefined, dispatchEvent: () => false
   })) as typeof window.matchMedia
@@ -32,7 +33,7 @@ describe('Shell blocks and canvas', () => {
   afterEach(() => { delete document.documentElement.dataset.theme })
 
   it('renders three rounded blocks on the sky canvas', () => {
-    mockMedia(false)
+    mockMedia(1440)
     const { container } = render(<Shell {...parts} panelOpen />)
     for (const el of [screen.getByRole('complementary', { name: 'Sidebar' }), screen.getByRole('main'), screen.getByRole('region', { name: 'Panel' })]) {
       expect(el).toHaveClass('rounded-block')
@@ -43,22 +44,29 @@ describe('Shell blocks and canvas', () => {
     expect(container.firstElementChild!.className).toContain('grid-cols-[272px_minmax(0,1fr)_400px]')
   })
 
-  it('opens the panel as an overlay below 1100 px', () => {
-    mockMedia(true)
+  it.each([1000, 1100, 1200, 1279])('opens the panel as an overlay below 1280 px (%i px)', width => {
+    mockMedia(width)
     const { container } = render(<Shell {...parts} panelOpen />)
     expect(screen.getByRole('region', { name: 'Panel' })).toHaveAttribute('data-overlay', 'true')
     expect(container.firstElementChild!.className).toContain('grid-cols-[272px_minmax(0,1fr)]')
     expect(container.firstElementChild!.className).not.toContain('400px')
   })
 
+  it('keeps three columns from 1280 px', () => {
+    mockMedia(1280)
+    const { container } = render(<Shell {...parts} panelOpen />)
+    expect(screen.getByRole('region', { name: 'Panel' })).not.toHaveAttribute('data-overlay')
+    expect(container.firstElementChild!.className).toContain('grid-cols-[272px_minmax(0,1fr)_400px]')
+  })
+
   it('does not overlay on a wide window', () => {
-    mockMedia(false)
+    mockMedia(1440)
     render(<Shell {...parts} panelOpen />)
     expect(screen.getByRole('region', { name: 'Panel' })).not.toHaveAttribute('data-overlay')
   })
 
   it('switches the canvas when the theme changes', async () => {
-    mockMedia(false)
+    mockMedia(1440)
     document.documentElement.dataset.theme = 'light'
     const { container } = render(<Shell {...parts} panelOpen={false} />)
     expect(container.querySelector('[data-canvas]')).toHaveAttribute('data-variant', 'sky')

@@ -68,6 +68,14 @@ describe('NeedsYouPage', () => {
     expect(screen.getByText('API key for X').closest('a')).toHaveAttribute('href', '/bots/dev')
   })
 
+  it('truncates a long unbroken title and keeps the kind and age whole', () => {
+    const long = 'x'.repeat(80)
+    renderPage(crewState({ bots: [bot({ name: 'dev', title: long })], pending: [pending('a', 'dev', 'approval', 's', 125)] }))
+    expect(screen.getByText(long)).toHaveClass('min-w-0', 'truncate')
+    expect(screen.getByText('Approval')).toHaveClass('shrink-0')
+    expect(screen.getByText('2m ago')).toHaveClass('shrink-0')
+  })
+
   it('shows an empty state', () => {
     renderPage(crewState({ pending: [] }))
     expect(screen.getByText('Nothing needs you right now.')).toBeInTheDocument()

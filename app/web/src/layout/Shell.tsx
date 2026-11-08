@@ -11,9 +11,10 @@ interface ShellProps {
   panelOpen: boolean
 }
 
-const NARROW = '(max-width: 1099px)'
+// Below 1280 px the chat would drop under ~560 px with the panel open, squeezing the header, so the panel overlays.
+const NARROW = '(max-width: 1279px)'
 
-/** True while the window is narrower than 1100 px (false where matchMedia is missing). */
+/** True while the window is narrower than 1280 px (false where matchMedia is missing). */
 function useNarrow(): boolean {
   const [narrow, setNarrow] = useState(() => window.matchMedia?.(NARROW).matches ?? false)
   useEffect(() => {
