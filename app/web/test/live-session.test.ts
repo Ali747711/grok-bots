@@ -16,6 +16,7 @@ vi.mock('@novnc/novnc', () => {
     emit(type: string) { for (const fn of this.listeners.get(type) ?? []) fn() }
     disconnect() { this.disconnects += 1 }
     focus() {}
+    blur() {}
     clipboardPasteFrom() {}
     sendKey() {}
   }

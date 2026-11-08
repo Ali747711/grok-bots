@@ -24,6 +24,7 @@ vi.mock('@novnc/novnc', () => {
     addEventListener(type: string, fn: () => void) { this.listeners.set(type, [...(this.listeners.get(type) ?? []), fn]) }
     disconnect() { this.disconnects += 1 }
     focus() {}
+    blur() {}
     clipboardPasteFrom() {}
     sendKey() {}
   }

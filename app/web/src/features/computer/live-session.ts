@@ -138,7 +138,10 @@ export class LiveSession {
   setHolding(holding: boolean): void {
     if (!this.rfb) return
     this.rfb.viewOnly = !holding
+    // While watching, the canvas must not take focus (a keyboard trap for Tab and Escape).
+    this.rfb.focusOnClick = holding
     if (holding) this.rfb.focus()
+    else this.rfb.blur()
   }
 
   async takeControl(): Promise<void> {
@@ -304,7 +307,7 @@ export class LiveSession {
       this.onClosed(generation, closeCode)
     })
     const rfb = new Rfb(this.host!, ws, { shared: true })
-    Object.assign(rfb, { scaleViewport: true, resizeSession: false, focusOnClick: true, background: 'transparent', qualityLevel: 7, viewOnly: !controlling })
+    Object.assign(rfb, { scaleViewport: true, resizeSession: false, focusOnClick: controlling, background: 'transparent', qualityLevel: 7, viewOnly: !controlling })
     rfb.addEventListener('connect', () => {
       if (generation !== this.generation) return
       this.everLive = true

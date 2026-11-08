@@ -21,7 +21,10 @@ vi.mock('@novnc/novnc', () => {
     addEventListener(type: string, fn: (e: unknown) => void) { this.listeners.set(type, [...(this.listeners.get(type) ?? []), fn]) }
     emit(type: string, detail: unknown = {}) { for (const fn of this.listeners.get(type) ?? []) fn({ detail }) }
     disconnect() { this.disconnects += 1 }
+    focusOnClick = true
+    blurs = 0
     focus() {}
+    blur() { this.blurs += 1 }
     clipboardPasteFrom(text: string) { this.pastes.push(text); this.log.push(`paste:${text.length}`) }
     sendKey(keysym: number, code: string, down?: boolean) { this.log.push(`key:${keysym}:${code}${down === undefined ? '' : down ? ':down' : ':up'}`) }
   }
@@ -45,7 +48,7 @@ import { ControlBar } from '@/features/computer/ControlBar'
 import { LiveView } from '@/features/computer/LiveView'
 import { useComputer } from '@/features/computer/use-live-view'
 
-interface FakeRfbShape { log: string[]; options: unknown; viewOnly: boolean; disconnects: number; pastes: string[]; target: HTMLElement; socket: FakeSocket; emit(type: string, detail?: unknown): void }
+interface FakeRfbShape { focusOnClick: boolean; blurs: number; log: string[]; options: unknown; viewOnly: boolean; disconnects: number; pastes: string[]; target: HTMLElement; socket: FakeSocket; emit(type: string, detail?: unknown): void }
 const lastRfb = () => rfbs.list.at(-1) as FakeRfbShape
 const hashOf = (id: string) => createHash('sha256').update(id).digest('hex').slice(0, 12)
 
@@ -128,6 +131,25 @@ describe('live view', () => {
     expect(lastRfb().viewOnly).toBe(true)
     expect(lastRfb().target).toBe(within(screen.getByTestId('panel')).getByTestId('live-view').firstElementChild)
     expect(screen.getByText('Bot is in control')).toBeInTheDocument()
+  })
+
+  it('keeps focus away from the canvas while watching so Tab and Escape reach the page', async () => {
+    render(<Owner />)
+    await connect()
+    expect(lastRfb().focusOnClick).toBe(false)
+    await take()
+    expect(lastRfb().focusOnClick).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Hand back' }))
+    await waitFor(() => expect(screen.getByText('Bot is in control')).toBeInTheDocument())
+    expect(lastRfb().focusOnClick).toBe(false)
+    expect(lastRfb().blurs).toBeGreaterThan(0)
+  })
+
+  it('draws the you-are-in-control chip text in the readable destructive colour', async () => {
+    render(<Owner />)
+    await connect()
+    await take()
+    expect(screen.getByText("You're in control")).toHaveClass('text-destructive')
   })
 
   it('takes control and hands back on the same gateway socket', async () => {
@@ -435,7 +457,7 @@ describe('live view paste keys', () => {
     await connect()
     await take()
     lastRfb().target.dispatchEvent(new KeyboardEvent('keydown', { key: 'V', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }))
-    await waitFor(() => expect(lastRfb().log).toEqual(['paste:3', 'key:65507:ControlLeft:down', 'key:65505:ShiftLeft:down', 'key:118:KeyV', 'key:65505:ShiftLeft:up', 'key:65507:ControlLeft:up']))
+    await waitFor(() => expect(lastRfb().log).toEqual(['paste:3', 'key:65507:ControlLeft:down', 'key:65505:ShiftLeft:down', 'key:86:KeyV', 'key:65505:ShiftLeft:up', 'key:65507:ControlLeft:up']))
   })
 
   it('still pastes on a non-Latin layout (key is not "v" but the code is KeyV)', async () => {
@@ -445,6 +467,18 @@ describe('live view paste keys', () => {
     await take()
     lastRfb().target.dispatchEvent(new KeyboardEvent('keydown', { key: 'м', code: 'KeyV', ctrlKey: true, bubbles: true, cancelable: true }))
     await waitFor(() => expect(lastRfb().log).toContain('key:118:KeyV'))
+  })
+
+  it('swallows a held-down Ctrl+V without pasting again', async () => {
+    const readText = vi.fn().mockResolvedValue('abc')
+    clipboard(readText)
+    render(<Owner />)
+    await connect()
+    await take()
+    const event = new KeyboardEvent('keydown', { key: 'v', ctrlKey: true, repeat: true, bubbles: true, cancelable: true })
+    lastRfb().target.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(readText).not.toHaveBeenCalled()
   })
 
   it('ignores Ctrl+V when not in control', async () => {

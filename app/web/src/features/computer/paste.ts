@@ -1,6 +1,8 @@
 /** Hermes closes the pixel socket with 1003 above this many bytes of cut text (facts 2.4). */
 export const MAX_PASTE_BYTES = 256 * 1024
 const XK_V = 0x0076
+/** Xvnc fakes Shift itself to produce the keysym it is sent, so a Shift chord needs the uppercase keysym. */
+const XK_V_UPPER = 0x0056
 const XK_CONTROL_L = 0xffe3
 const XK_SHIFT_L = 0xffe1
 /** noVNC maps Cmd (Meta) to Alt_L on the remote, so a Cmd+V would arrive as Alt+v. */
@@ -47,7 +49,7 @@ export function attachPaste(host: HTMLElement, client: PasteTarget, notify: (mes
     if (viaMeta) client.sendKey(XK_ALT_L, 'MetaLeft', false)
     client.sendKey(XK_CONTROL_L, 'ControlLeft', true)
     if (viaShift) client.sendKey(XK_SHIFT_L, 'ShiftLeft', true)
-    client.sendKey(XK_V, 'KeyV')
+    client.sendKey(viaShift ? XK_V_UPPER : XK_V, 'KeyV')
     if (viaShift) client.sendKey(XK_SHIFT_L, 'ShiftLeft', false)
     client.sendKey(XK_CONTROL_L, 'ControlLeft', false)
   }
@@ -57,6 +59,7 @@ export function attachPaste(host: HTMLElement, client: PasteTarget, notify: (mes
     if (client.viewOnly || !(event.ctrlKey || event.metaKey) || !isV) return
     event.preventDefault()
     event.stopPropagation()
+    if (event.repeat) return // a held key must not paste again
     if (!navigator.clipboard) return notify(CLIPBOARD_DENIED)
     const { metaKey, shiftKey } = event
     navigator.clipboard.readText().then(text => pasteFromClipboard(text, metaKey, shiftKey), () => notify(CLIPBOARD_DENIED))
