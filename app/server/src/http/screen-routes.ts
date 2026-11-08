@@ -6,7 +6,7 @@ import type { BotDeps } from '../bots/create.js'
 import { PROFILE_NAME_RE } from '../bots/names.js'
 import { ensureIdleStop, readScreenConfig, setUseScreen } from '../bots/screen-config.js'
 import { BotNotFoundError } from '../bots/ui-meta.js'
-import { HermesUnavailableError } from '../hermes/errors.js'
+import { HermesRestError, HermesUnavailableError } from '../hermes/errors.js'
 import { log } from '../log.js'
 import { failure } from './bot-errors.js'
 import type { CrewEnv } from './session-guard.js'
@@ -48,9 +48,11 @@ export function screenRoutes(bots: BotDeps | undefined): Hono<CrewEnv> {
     try {
       await withBotLock(name, () => ensureIdleStop(deps, name))
     } catch (error) {
-      if (error instanceof HermesUnavailableError) throw error
-      log.warn('screen idle stop write failed', { name, error: (error instanceof Error ? error.message : String(error)).slice(0, 200) })
-      return c.json({ error: 'screen_config_failed', message: error instanceof Error ? error.message : String(error) }, 502)
+      if (error instanceof HermesUnavailableError || (error instanceof HermesRestError && error.status === 404)) throw error
+      // Only Hermes's own detail is safe to show; any other error text could carry config text.
+      const message = error instanceof HermesRestError ? error.detail : 'screen config could not be saved'
+      log.warn('screen idle stop write failed', { name, error: message.slice(0, 200) })
+      return c.json({ error: 'screen_config_failed', message }, 502)
     }
     // Outside the lock: display.start blocks for seconds and must not hold up other edits.
     return c.json(await deps.rpc('display.start', { profile: name }, START_TIMEOUT_MS))

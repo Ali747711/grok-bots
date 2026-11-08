@@ -13,11 +13,12 @@ type Section = Record<string, unknown>
 const section = (value: unknown): Section => (value && typeof value === 'object' && !Array.isArray(value) ? (value as Section) : {})
 
 /**
- * The three screen keys of one bot. The GET body carries defaults, a flattened model and expanded
- * secrets (facts 5), so nothing but these keys leaves this function and the body is never logged.
+ * The three screen keys of one bot, from the RAW config (`include_defaults=false`: Hermes's
+ * `read_raw_config`, no defaults and no expanded secrets, config_env.py get_config). An absent key
+ * is Hermes's default: idle stop not set, headed and auto_start false. The body is never logged.
  */
 export async function readScreenConfig(deps: BotDeps, name: string): Promise<ScreenConfig> {
-  const body = await deps.rest.request<unknown>('GET', CONFIG_PATH, { query: { profile: name } })
+  const body = await deps.rest.request<unknown>('GET', CONFIG_PATH, { query: { profile: name, include_defaults: 'false' } })
   const root = section(body)
   const desktop = section(root.bot_desktop)
   const idle = desktop.idle_stop_minutes
@@ -41,6 +42,7 @@ export async function ensureIdleStop(deps: BotDeps, name: string, minutes = IDLE
 
 /** Turn the bot's own browsing on the screen on or off: `headed` and `auto_start` always move together. */
 export async function setUseScreen(deps: BotDeps, name: string, on: boolean): Promise<void> {
-  await writeSparse(deps, name, { browser: { headed: on }, bot_desktop: { auto_start: on } })
+  // Idle stop first: if it fails, auto_start must not be left on with Hermes's 30-minute default.
   await ensureIdleStop(deps, name)
+  await writeSparse(deps, name, { browser: { headed: on }, bot_desktop: { auto_start: on } })
 }
