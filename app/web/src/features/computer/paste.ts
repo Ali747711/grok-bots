@@ -2,6 +2,7 @@
 export const MAX_PASTE_BYTES = 256 * 1024
 const XK_V = 0x0076
 const XK_CONTROL_L = 0xffe3
+const XK_SHIFT_L = 0xffe1
 /** noVNC maps Cmd (Meta) to Alt_L on the remote, so a Cmd+V would arrive as Alt+v. */
 const XK_ALT_L = 0xffe9
 export const CLIPBOARD_DENIED = 'Allow clipboard access to paste into the screen'
@@ -40,11 +41,14 @@ export function attachPaste(host: HTMLElement, client: PasteTarget, notify: (mes
   }
   // The user may have released Ctrl while the clipboard read (or its permission prompt) was pending, so
   // the chord is sent explicitly instead of relying on the physical key still being down.
-  const pasteFromClipboard = (text: string, viaMeta: boolean): void => {
+  // Shift is kept: Ctrl+Shift+V is the paste shortcut of terminals, where plain Ctrl+V means "quote next key".
+  const pasteFromClipboard = (text: string, viaMeta: boolean, viaShift: boolean): void => {
     if (client.viewOnly || !text || !forward(text)) return
     if (viaMeta) client.sendKey(XK_ALT_L, 'MetaLeft', false)
     client.sendKey(XK_CONTROL_L, 'ControlLeft', true)
+    if (viaShift) client.sendKey(XK_SHIFT_L, 'ShiftLeft', true)
     client.sendKey(XK_V, 'KeyV')
+    if (viaShift) client.sendKey(XK_SHIFT_L, 'ShiftLeft', false)
     client.sendKey(XK_CONTROL_L, 'ControlLeft', false)
   }
   const onKeyDown = (event: KeyboardEvent): void => {
@@ -54,8 +58,8 @@ export function attachPaste(host: HTMLElement, client: PasteTarget, notify: (mes
     event.preventDefault()
     event.stopPropagation()
     if (!navigator.clipboard) return notify(CLIPBOARD_DENIED)
-    const viaMeta = event.metaKey
-    navigator.clipboard.readText().then(text => pasteFromClipboard(text, viaMeta), () => notify(CLIPBOARD_DENIED))
+    const { metaKey, shiftKey } = event
+    navigator.clipboard.readText().then(text => pasteFromClipboard(text, metaKey, shiftKey), () => notify(CLIPBOARD_DENIED))
   }
   host.addEventListener('paste', onPaste)
   host.addEventListener('keydown', onKeyDown, true)

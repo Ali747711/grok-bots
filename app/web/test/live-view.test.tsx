@@ -429,6 +429,15 @@ describe('live view paste keys', () => {
     await waitFor(() => expect(lastRfb().log).toEqual(['paste:3', 'key:65513:MetaLeft:up', 'key:65507:ControlLeft:down', 'key:118:KeyV', 'key:65507:ControlLeft:up']))
   })
 
+  it('keeps Shift in the chord for Ctrl+Shift+V (the terminal paste shortcut)', async () => {
+    clipboard(() => Promise.resolve('abc'))
+    render(<Owner />)
+    await connect()
+    await take()
+    lastRfb().target.dispatchEvent(new KeyboardEvent('keydown', { key: 'V', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }))
+    await waitFor(() => expect(lastRfb().log).toEqual(['paste:3', 'key:65507:ControlLeft:down', 'key:65505:ShiftLeft:down', 'key:118:KeyV', 'key:65505:ShiftLeft:up', 'key:65507:ControlLeft:up']))
+  })
+
   it('still pastes on a non-Latin layout (key is not "v" but the code is KeyV)', async () => {
     clipboard(() => Promise.resolve('abc'))
     render(<Owner />)
