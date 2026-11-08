@@ -173,4 +173,22 @@ describe('NewBotDialog', () => {
     setup()
     expect(await screen.findByText("Couldn't load models")).toBeInTheDocument()
   })
+
+  it('W6: Finish setup waits for a photo that is still being prepared', async () => {
+    stub(() => json(incomplete, 201))
+    setup()
+    type('Name', 'Research Bot')
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+    await screen.findByRole('button', { name: 'Finish setup' })
+    let release: (v: { width: number; height: number; close: () => void }) => void = () => undefined
+    vi.stubGlobal('createImageBitmap', vi.fn(() => new Promise(resolve => { release = resolve })))
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn() } as unknown as CanvasRenderingContext2D)
+    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/png;base64,AAAA')
+    fireEvent.change(screen.getByLabelText('Upload photo'), { target: { files: [new File([new Uint8Array(5)], 'a.png', { type: 'image/png' })] } })
+    await screen.findByText('Preparing photo…')
+    expect(screen.getByRole('button', { name: 'Finish setup' })).toBeDisabled()
+    release({ width: 10, height: 10, close: vi.fn() })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Finish setup' })).toBeEnabled())
+    vi.restoreAllMocks()
+  })
 })

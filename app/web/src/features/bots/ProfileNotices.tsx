@@ -10,10 +10,12 @@ interface ConflictBannerProps {
   onSaveAnyway: () => void
 }
 
+const FIELD_LABEL: Record<string, string> = { description: 'Job', soul: 'Persona', model: 'Model' }
+
 export function ConflictBanner({ conflict, busy, onReload, onSaveAnyway }: ConflictBannerProps) {
   return (
     <div role="status" className="flex flex-col gap-2 rounded-lg border border-border bg-secondary p-3 text-sm">
-      <p>{`Changed in another app: ${conflict.fields.join(', ')}. Reload to see their version, or Save anyway.`}</p>
+      <p>{`Changed in another app: ${conflict.fields.map(f => FIELD_LABEL[f] ?? f).join(', ')}. Reload to see their version, or Save anyway.`}</p>
       <div className="flex gap-2">
         <Button type="button" size="sm" variant="outline" onClick={onReload}>Reload</Button>
         <Button type="button" size="sm" disabled={busy} onClick={onSaveAnyway}>Save anyway</Button>

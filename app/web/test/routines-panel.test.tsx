@@ -10,7 +10,7 @@ const json = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.
 const routine = (over: Partial<RoutineView> = {}): RoutineView => ({
   id: 'r1', bot: 'dev', title: 'Daily digest', instruction: 'Summarise the news', schedule: { kind: 'daily', time: '09:00' },
   scheduleText: '0 9 * * *', timezone: 'Europe/London', deliverToChat: false, enabled: true, nextRunAt: Date.UTC(2026, 10, 9, 9, 0),
-  lastRunAt: null, lastStatus: null, lastError: null, running: false, ...over
+  lastRunAt: null, lastStatus: null, lastError: null, running: false, state: 'scheduled', finished: false, ...over
 })
 
 type Handler = (init: RequestInit) => Promise<Response>
@@ -205,5 +205,69 @@ describe('RoutinesPanel form', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     expect(await screen.findByText("Some fields aren't filled in correctly.")).toBeInTheDocument()
     expect(screen.queryByText(/Invalid string/)).toBeNull()
+  })
+
+  it('W9: edit sends timezoneChanged only when the zone or schedule changed', async () => {
+    const fn = stub({ [LIST]: () => json([routine()]), 'PUT /crew/routines/r1?bot=dev': () => json(routine()) })
+    open()
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Digest' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(callsTo(fn, 'PUT /crew/routines/r1?bot=dev')).toHaveLength(1))
+    expect(body(callsTo(fn, 'PUT /crew/routines/r1?bot=dev')[0]).timezoneChanged).toBe(false)
+  })
+
+  it('W9: a changed zone sends timezoneChanged true', async () => {
+    const fn = stub({ [LIST]: () => json([routine()]), 'PUT /crew/routines/r1?bot=dev': () => json(routine()) })
+    open()
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    fireEvent.change(screen.getByLabelText('Timezone'), { target: { value: 'Asia/Tokyo' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(callsTo(fn, 'PUT /crew/routines/r1?bot=dev')).toHaveLength(1))
+    expect(body(callsTo(fn, 'PUT /crew/routines/r1?bot=dev')[0]).timezoneChanged).toBe(true)
+  })
+
+  it('W9: a changed schedule sends timezoneChanged true, and create sends none', async () => {
+    const fn = stub({ [LIST]: () => json([routine()]), 'PUT /crew/routines/r1?bot=dev': () => json(routine()), 'POST /crew/routines?bot=dev': () => json(routine(), 201) })
+    open()
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    fireEvent.change(screen.getByLabelText('Time'), { target: { value: '10:15' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(callsTo(fn, 'PUT /crew/routines/r1?bot=dev')).toHaveLength(1))
+    expect(body(callsTo(fn, 'PUT /crew/routines/r1?bot=dev')[0]).timezoneChanged).toBe(true)
+  })
+})
+
+describe('RoutinesPanel finished routines and row errors', () => {
+  it('W2: a finished routine shows Done with no switch and no Run now', async () => {
+    stub({ [LIST]: () => json([routine({ enabled: false, finished: true, state: 'completed', nextRunAt: null })]) })
+    open()
+    expect(await screen.findByText('Done')).toBeInTheDocument()
+    expect(screen.queryByRole('switch')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Run now' })).toBeNull()
+    expect(screen.queryByText('Paused')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument()
+  })
+
+  it("W2: a failed row action shows the server's message", async () => {
+    stub({ [LIST]: () => json([routine()]), 'POST /crew/routines/r1/pause?bot=dev': () => json({ error: 'rejected', message: 'Cannot pause: boom' }, 400) })
+    open()
+    fireEvent.click(await screen.findByRole('switch', { name: 'Daily digest enabled' }))
+    expect(await screen.findByText('Cannot pause: boom')).toBeInTheDocument()
+  })
+
+  it('W2: a failed row action without a message uses the generic text', async () => {
+    stub({ [LIST]: () => json([routine()]), 'POST /crew/routines/r1/pause?bot=dev': () => json({}, 502) })
+    open()
+    fireEvent.click(await screen.findByRole('switch', { name: 'Daily digest enabled' }))
+    expect(await screen.findByText('Could not change the routine')).toBeInTheDocument()
+  })
+
+  it('W2: Run now on a finished routine shows the 409 message', async () => {
+    stub({ [LIST]: () => json([routine()]), 'POST /crew/routines/r1/run?bot=dev': () => json({ status: 'finished', message: 'This one-time routine already ran.' }, 409) })
+    open()
+    fireEvent.click(await screen.findByRole('button', { name: 'Run now' }))
+    expect(await screen.findByText('This one-time routine already ran.')).toBeInTheDocument()
   })
 })

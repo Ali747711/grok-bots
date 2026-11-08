@@ -94,7 +94,7 @@ test('concurrent edits keep both changes', async ({ page }) => {
   const ours = `Our persona ${run}`
   await page.getByLabel('Persona (SOUL.md)').fill(ours)
   await page.getByRole('button', { name: 'Save' }).click()
-  await expect(page.getByText(/Changed in another app: soul/)).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText(/Changed in another app: Persona/)).toBeVisible({ timeout: 30_000 })
   expect(await soulOf(handle)).toBe(theirs)
   await page.getByRole('button', { name: 'Save anyway' }).click()
   await expect.poll(() => soulOf(handle), { timeout: 30_000 }).toBe(ours)
@@ -152,7 +152,8 @@ test('a routine runs on schedule and via Run now, shows in history and in Hermes
   // A completed run appears within 180 s, and the bot's reply (not just the instruction) holds the marker.
   const ping = routineRow(page, pingTitle)
   await ping.getByRole('button', { name: 'History' }).click()
-  await expect(ping.getByText('Done')).toBeVisible({ timeout: 180_000 })
+  // A finished one-time routine also reads "Done" in its row, so look inside the run history list.
+  await expect(ping.locator('ul').getByText('Done')).toBeVisible({ timeout: 180_000 })
   await ping.getByRole('button', { name: /Ping/ }).first().click()
   const transcript = ping.getByTestId('transcript')
   await expect(transcript).toContainText(`Instruction: Reply with exactly: ${ROUTINE_MARK}`)
@@ -166,7 +167,7 @@ test('a routine runs on schedule and via Run now, shows in history and in Hermes
   await expect(daily).toBeVisible({ timeout: 60_000 })
   await daily.getByRole('button', { name: 'History' }).click()
   await daily.getByRole('button', { name: 'Run now' }).click()
-  await expect(daily.getByText('Done')).toBeVisible({ timeout: 120_000 })
+  await expect(daily.locator('ul').getByText('Done')).toBeVisible({ timeout: 120_000 })
   expect((await cronJobs(handle)).some(j => j.name === `[bot:${handle}] ${dailyTitle}`)).toBe(true)
 })
 

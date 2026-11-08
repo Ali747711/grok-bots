@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { matchPath, Navigate, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { NewBotDialog } from '@/features/bots/NewBotDialog'
 import { ChatView } from '@/features/chat/ChatView'
 import { NeedsYouPage } from '@/features/needs-you/NeedsYouPage'
 import { BotPanel, isPanelTab, type PanelTab } from '@/features/panel/BotPanel'
+import { PanelBoundary } from '@/features/panel/PanelBoundary'
 import { Sidebar } from '@/features/roster/Sidebar'
 import { Shell } from '@/layout/Shell'
 import type { CrewState } from '@/state/types'
@@ -33,14 +34,30 @@ function BotRoute({ state, crewConnected, name, panel, onPanel }: BotRouteProps)
   return <ChatView key={bot.name} bot={bot} state={state} crewConnected={crewConnected} panel={panel} onPanel={onPanel} />
 }
 
+/** Go home when the open bot was in the roster and is gone (deleted in another app); never for one that has not appeared yet. */
+function useLeaveDeletedBot(state: CrewState | null, selected: string | null, goHome: () => void): void {
+  const seen = useRef(new Set<string>())
+  useEffect(() => {
+    if (!state) return
+    const present = new Set(state.bots.map(b => b.name))
+    for (const name of present) seen.current.add(name)
+    if (selected && seen.current.has(selected) && !present.has(selected)) {
+      seen.current.delete(selected)
+      goHome()
+    }
+  }, [state, selected, goHome])
+}
+
 export default function App() {
   const { state, connected } = useCrewState()
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const [params, setParams] = useSearchParams()
   const [newBotOpen, setNewBotOpen] = useState(false)
+  const goHome = useCallback(() => navigate('/', { replace: true }), [navigate])
   const selected = matchPath('/bots/:name', pathname)?.params.name ?? null
 
+  useLeaveDeletedBot(state, selected, goHome)
   const requested = params.get('panel')
   const panel = selected && isPanelTab(requested) ? requested : null
   const panelBot = panel ? state?.bots.find(b => b.name === selected) : undefined
@@ -73,7 +90,7 @@ export default function App() {
             <Route path="*" element={<Navigate replace to="/" />} />
           </Routes>
         }
-        panel={panelBot && panel ? <BotPanel bot={panelBot} tab={panel} /> : null}
+        panel={panelBot && panel ? <PanelBoundary key={`${panelBot.name}-${panel}`}><BotPanel bot={panelBot} tab={panel} /></PanelBoundary> : null}
         panelOpen={panelBot !== undefined}
       />
       <NewBotDialog open={newBotOpen} onOpenChange={setNewBotOpen} onCreated={name => navigate(`/bots/${encodeURIComponent(name)}`)} />

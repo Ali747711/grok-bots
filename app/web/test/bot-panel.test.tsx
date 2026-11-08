@@ -67,3 +67,23 @@ describe('panel in the app', () => {
     expect(screen.queryByRole('region', { name: 'Panel' })).toBeNull()
   })
 })
+
+describe('W7: a bot deleted elsewhere', () => {
+  const rerenderAt = (path: string) => {
+    const view = render(<MemoryRouter initialEntries={[path]}><App /></MemoryRouter>)
+    return { ...view, again: () => view.rerender(<MemoryRouter initialEntries={[path]}><App /></MemoryRouter>) }
+  }
+
+  it('goes home when the open bot disappears from the roster', async () => {
+    const view = rerenderAt('/bots/dev')
+    await screen.findByRole('heading', { name: 'Dev' })
+    hook.value = { state: crewState({ bots: crewState().bots.filter(b => b.name !== 'dev') }), connected: true }
+    view.again()
+    expect(await screen.findByRole('heading', { name: 'Hermes' })).toBeInTheDocument()
+  })
+
+  it('does not redirect for a bot that has not appeared yet', async () => {
+    rerenderAt('/bots/new-one')
+    expect(await screen.findByText('Bot not found')).toBeInTheDocument()
+  })
+})

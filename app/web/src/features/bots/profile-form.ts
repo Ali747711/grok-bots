@@ -1,4 +1,10 @@
-import type { BotDetail, BotLook, BotPatch, ModelChoice } from './types'
+import type { BotDetail, BotPatch, ModelChoice } from './types'
+
+/** The form's look: the shape may be one Crew does not offer (kept as Hermes has it until the user picks another). */
+export interface FormLook {
+  readonly shape: string
+  readonly color: string
+}
 
 export interface ProfileForm {
   readonly name: string
@@ -6,7 +12,7 @@ export interface ProfileForm {
   readonly soul: string
   /** null = the default model (nothing pinned). */
   readonly model: ModelChoice | null
-  readonly look: BotLook
+  readonly look: FormLook
 }
 
 /** What the user edits (`form`) next to the values it started from (`loaded`); a field is dirty when they differ. */
@@ -15,11 +21,11 @@ export interface FormSync {
   readonly loaded: ProfileForm
 }
 
-const DEFAULT_LOOK: BotLook = { shape: 'squircle', color: '#6366f1' }
+const DEFAULT_LOOK: FormLook = { shape: 'squircle', color: '#6366f1' }
 
-export function lookOf(detail: BotDetail): BotLook {
+export function lookOf(detail: BotDetail): FormLook {
   return {
-    shape: detail.look.shape === 'circle' ? 'circle' : DEFAULT_LOOK.shape,
+    shape: detail.look.shape || DEFAULT_LOOK.shape,
     color: detail.look.color ?? DEFAULT_LOOK.color
   }
 }
@@ -31,7 +37,7 @@ export const fromDetail = (d: BotDetail): ProfileForm => ({
 export const freshSync = (d: BotDetail): FormSync => ({ form: fromDetail(d), loaded: fromDetail(d) })
 
 const sameModel = (a: ModelChoice | null, b: ModelChoice | null) => a?.provider === b?.provider && a?.model === b?.model
-const sameLook = (a: BotLook, b: BotLook) => a.shape === b.shape && a.color === b.color
+const sameLook = (a: FormLook, b: FormLook) => a.shape === b.shape && a.color === b.color
 
 type Field = keyof ProfileForm
 const same: { [K in Field]: (a: ProfileForm[K], b: ProfileForm[K]) => boolean } = {
@@ -64,6 +70,13 @@ export function mergeFresh(sync: FormSync, detail: BotDetail): FormSync {
   return { form, loaded }
 }
 
+/** Only the look keys that changed: an untouched shape or colour is never sent (it may not be Crew's to overwrite). */
+function lookPatch(look: FormLook, loaded: FormLook): Pick<BotPatch, 'look'> {
+  const shape = look.shape !== loaded.shape ? { shape: look.shape } : {}
+  const color = look.color !== loaded.color ? { color: look.color } : {}
+  return Object.keys({ ...shape, ...color }).length > 0 ? { look: { ...shape, ...color } } : {}
+}
+
 /** Only what differs from `loaded`, plus `baseline` (from `loaded`) for each guarded field it contains. */
 export function buildPatch(form: ProfileForm, loaded: ProfileForm): BotPatch {
   const title = form.name.trim()
@@ -75,7 +88,7 @@ export function buildPatch(form: ProfileForm, loaded: ProfileForm): BotPatch {
   }
   return {
     ...(title !== '' && title !== loaded.name ? { title } : {}),
-    ...(sameLook(form.look, loaded.look) ? {} : { look: form.look }),
+    ...lookPatch(form.look, loaded.look),
     ...(form.description !== loaded.description ? { description: form.description } : {}),
     ...(form.soul !== loaded.soul ? { soul: form.soul } : {}),
     ...(modelChanged && form.model ? { model: form.model } : {}),

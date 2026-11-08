@@ -26,7 +26,7 @@ export function ProfileFields({ form, handle, allowDefault, onChange }: ProfileF
       </div>
       <div className={FIELD}>
         <label htmlFor="profile-job" className={LABEL}>Job</label>
-        <Textarea id="profile-job" value={form.description} onChange={e => onChange({ description: e.target.value })} />
+        <Textarea id="profile-job" maxLength={2000} value={form.description} onChange={e => onChange({ description: e.target.value })} />
       </div>
       <div className={FIELD}>
         <label htmlFor="profile-model" className={LABEL}>Model</label>
@@ -36,7 +36,7 @@ export function ProfileFields({ form, handle, allowDefault, onChange }: ProfileF
         <summary className="cursor-pointer text-sm font-medium">Advanced</summary>
         <div className={`${FIELD} pt-2`}>
           <label htmlFor="profile-soul" className={LABEL}>Persona (SOUL.md)</label>
-          <Textarea id="profile-soul" className="min-h-40 font-mono text-xs" value={form.soul} onChange={e => onChange({ soul: e.target.value })} />
+          <Textarea id="profile-soul" maxLength={100000} className="min-h-40 font-mono text-xs" value={form.soul} onChange={e => onChange({ soul: e.target.value })} />
         </div>
       </details>
     </>

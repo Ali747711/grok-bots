@@ -171,7 +171,7 @@ describe('run titles', () => {
 describe('History in the routines panel', () => {
   const routine: RoutineView = {
     id: 'r1', bot: 'scout', title: 'Daily digest', instruction: 'x', schedule: { kind: 'daily', time: '09:00' }, scheduleText: '0 9 * * *',
-    timezone: 'Europe/London', deliverToChat: false, enabled: true, nextRunAt: null, lastRunAt: null, lastStatus: null, lastError: null, running: false
+    timezone: 'Europe/London', deliverToChat: false, enabled: true, nextRunAt: null, lastRunAt: null, lastStatus: null, lastError: null, running: false, state: 'scheduled', finished: false
   }
   const panel = () => render(<RoutinesPanel bot={bot({ name: 'scout', title: 'Scout' })} />)
 

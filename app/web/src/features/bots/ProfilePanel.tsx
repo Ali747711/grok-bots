@@ -8,6 +8,7 @@ import { finishBot, updateBot } from './bots-api'
 import { DeleteBotDialog } from './DeleteBotDialog'
 import { ProfileFields } from './ProfileFields'
 import { buildPatch, freshSync, hasChanges, mergeFresh, type FormSync, type ProfileForm } from './profile-form'
+import { toBotLook } from './LookPicker'
 import { ProfileLook } from './ProfileLook'
 import { ConfirmModelDialog, ConflictBanner } from './ProfileNotices'
 import { useBotDetail } from './use-bot-detail'
@@ -46,12 +47,13 @@ interface LoadedProps {
   reload: () => Promise<BotDetail | null>
 }
 
-function FinishSetup({ onFinish }: { onFinish: () => Promise<void> }) {
+function FinishSetup({ onFinish }: { onFinish: () => Promise<string | null> }) {
   const [error, setError] = useState<string | null>(null)
   const run = async () => {
     setError(null)
     try {
-      await onFinish()
+      const problem = await onFinish()
+      if (problem) setError(`Finish setup didn't complete: ${problem}`)
     } catch (e) {
       setError(failureText(e))
     }
@@ -97,8 +99,9 @@ function Loaded({ bot, detail, setDetail, reload }: LoadedProps) {
   const patch = buildPatch(form, sync.loaded)
 
   const finish = async () => {
-    await finishBot(bot.name, { title: form.name.trim(), look: form.look })
+    const result = await finishBot(bot.name, { title: form.name.trim(), look: toBotLook(form.look) })
     await reloadMerged()
+    return result.complete ? null : (result.error?.message ?? 'a step failed')
   }
 
   return (

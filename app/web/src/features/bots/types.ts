@@ -50,7 +50,8 @@ export interface BotDetail {
 
 export interface BotPatch {
   readonly title?: string
-  readonly look?: BotLook
+  /** Only the keys that changed; any non-empty shape Hermes uses is accepted. */
+  readonly look?: { readonly shape?: string; readonly color?: string }
   readonly hidden?: boolean
   readonly description?: string
   readonly soul?: string

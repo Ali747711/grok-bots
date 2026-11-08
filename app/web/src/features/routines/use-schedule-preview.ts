@@ -40,5 +40,14 @@ export function useSchedulePreview(schedule: ScheduleSpec, timezone: string, ena
   return preview
 }
 
-export const formatInZone = (ms: number, timezone: string | null | undefined): string =>
-  new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short', ...(timezone ? { timeZone: timezone } : {}) }).format(ms)
+const format = (ms: number, timeZone?: string) => new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short', ...(timeZone ? { timeZone } : {}) }).format(ms)
+
+/** A time in the routine's zone. A zone this browser does not know falls back to UTC, and says so. */
+export function formatInZone(ms: number, timezone: string | null | undefined): string {
+  try {
+    return format(ms, timezone ?? undefined)
+  } catch (e) {
+    if (!(e instanceof RangeError)) throw e
+    return `${format(ms, 'UTC')} UTC`
+  }
+}

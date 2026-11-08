@@ -40,6 +40,10 @@ function NextRuns({ schedule, timezone }: { schedule: ScheduleSpec; timezone: st
   )
 }
 
+/** True only when the user changed the zone select or the schedule; otherwise the server keeps the stored zone (even none). */
+const zoneOrScheduleChanged = (initial: RoutineView, schedule: ScheduleSpec, timezone: string): boolean =>
+  timezone !== (initial.timezone ?? browserZone()) || JSON.stringify(schedule) !== JSON.stringify(initial.schedule)
+
 function useRoutineDraft({ bot, initial, onSaved }: Omit<RoutineFormProps, 'onCancel'>) {
   const [title, setTitle] = useState(initial?.title ?? '')
   const [instruction, setInstruction] = useState(initial?.instruction ?? '')
@@ -50,7 +54,7 @@ function useRoutineDraft({ bot, initial, onSaved }: Omit<RoutineFormProps, 'onCa
   const [error, setError] = useState<string | null>(null)
 
   const save = async () => {
-    const input: RoutineInput = { title: title.trim(), instruction: instruction.trim(), schedule, timezone, deliverToChat }
+    const input: RoutineInput = { title: title.trim(), instruction: instruction.trim(), schedule, timezone, deliverToChat, ...(initial ? { timezoneChanged: zoneOrScheduleChanged(initial, schedule, timezone) } : {}) }
     setBusy(true)
     setError(null)
     try {

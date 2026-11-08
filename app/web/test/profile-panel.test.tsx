@@ -95,7 +95,7 @@ describe('ProfilePanel', () => {
     await loaded()
     change('Persona (SOUL.md)', 'Mine')
     save()
-    expect(await screen.findByText(/Changed in another app: soul/)).toBeInTheDocument()
+    expect(await screen.findByText(/Changed in another app: Persona/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Save anyway' }))
     await waitFor(() => expect(patches(fn)).toHaveLength(2))
     expect(patches(fn)[1]).toEqual({ soul: 'Mine', baseline: { soul: 'Their soul' } })
@@ -255,5 +255,72 @@ describe('ProfilePanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Finish setup' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/Could not/)
     expect(screen.getByRole('button', { name: 'Finish setup' })).toBeEnabled()
+  })
+
+  it('W1: sends only the colour when only the colour changed, and keeps an unknown shape', async () => {
+    const blob = detail({ look: { shape: 'blobatar', color: '#6366f1', imageKind: 'shape' } })
+    const fn = stub({ get: () => json(blob), patch: () => json({ status: 'saved', detail: blob }) })
+    open()
+    await loaded()
+    expect(screen.getByRole('button', { name: 'Current shape' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'Violet' }))
+    save()
+    await waitFor(() => expect(patches(fn)).toHaveLength(1))
+    expect(patches(fn)[0]).toEqual({ look: { color: '#7c3aed' } })
+  })
+
+  it('W1: sends only the shape when only the shape changed', async () => {
+    const fn = stub()
+    open()
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: 'Circle' }))
+    save()
+    await waitFor(() => expect(patches(fn)).toHaveLength(1))
+    expect(patches(fn)[0]).toEqual({ look: { shape: 'circle' } })
+  })
+
+  it('W3: says so when Finish setup does not complete', async () => {
+    stub({ other: { 'POST /crew/bots/dev/finish': () => json({ name: 'dev', complete: false, steps: {}, needsModel: false, error: { step: 'look', message: 'ui_meta refused' } }) } })
+    open(bot({ name: 'dev', title: 'Dev', setupIncomplete: true }))
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: 'Finish setup' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent("Finish setup didn't complete: ui_meta refused")
+    expect(screen.getByRole('button', { name: 'Finish setup' })).toBeInTheDocument()
+  })
+
+  it('W4: the conflict banner uses the field labels', async () => {
+    stub({ patch: () => json({ status: 'conflict', fields: ['description', 'soul', 'model'], current: detail() }, 409) })
+    open()
+    await loaded()
+    change('Job', 'Mine')
+    save()
+    expect(await screen.findByText(/Changed in another app: Job, Persona, Model\./)).toBeInTheDocument()
+  })
+
+  it('W5: Job and Persona have length limits', async () => {
+    stub()
+    open()
+    await loaded()
+    expect(screen.getByLabelText('Job')).toHaveAttribute('maxlength', '2000')
+    expect(screen.getByLabelText('Persona (SOUL.md)')).toHaveAttribute('maxlength', '100000')
+  })
+
+  it('W5: a Crew validation error is never labelled as Hermes refusing', async () => {
+    stub({ patch: () => json({ error: 'bad_body', message: 'Too big: expected string <=2000' }, 400) })
+    open()
+    await loaded()
+    change('Job', 'x')
+    save()
+    expect(await screen.findByRole('alert')).toHaveTextContent("Some fields aren't filled in correctly.")
+    expect(screen.queryByText(/Hermes refused/)).toBeNull()
+  })
+
+  it("W5: Hermes's own refusal keeps its words", async () => {
+    stub({ patch: () => json({ error: 'rejected', message: 'No such model' }, 400) })
+    open()
+    await loaded()
+    change('Job', 'x')
+    save()
+    expect(await screen.findByRole('alert')).toHaveTextContent('Hermes refused it: No such model')
   })
 })

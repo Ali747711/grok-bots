@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea'
 
 import { createBot, finishBot } from './bots-api'
 import { describeCreateFailure } from './create-errors'
-import { LookPicker, type LookValue } from './LookPicker'
+import { LookPicker, toBotLook, type LookValue } from './LookPicker'
 import { ModelSelect } from './ModelSelect'
 import { NAME_MESSAGES, slugifyProfileName, validateBotName } from './slug'
 import type { CreateResult, ModelChoice } from './types'
@@ -113,8 +113,8 @@ function NewBotForm(props: Omit<NewBotDialogProps, 'open'>) {
   const image = look.image ? { image: look.image } : {}
   const forget = <T,>(set: (v: T) => void) => (v: T) => { set(v); flow.setFailure({}) }
 
-  const create = () => flow.run(() => createBot({ name: handle, title: finalTitle, mission, look: look.look, ...image, ...(model ? { model } : {}) }))
-  const finish = (botName: string) => flow.run(() => finishBot(botName, { look: look.look, title: finalTitle, ...image }))
+  const create = () => flow.run(() => createBot({ name: handle, title: finalTitle, mission, look: toBotLook(look.look), ...image, ...(model ? { model } : {}) }))
+  const finish = (botName: string) => flow.run(() => finishBot(botName, { look: toBotLook(look.look), title: finalTitle, ...image }))
 
   return (
     <>
@@ -126,7 +126,7 @@ function NewBotForm(props: Omit<NewBotDialogProps, 'open'>) {
       />
       {flow.failure.general && <p role="alert" className="text-sm text-destructive">{flow.failure.general}</p>}
       {flow.partial ? (
-        <PartialNotice result={flow.partial} busy={flow.busy} onFinish={() => void finish(flow.partial!.name)} onOpen={() => { onOpenChange(false); onCreated(flow.partial!.name) }} />
+        <PartialNotice result={flow.partial} busy={flow.busy || photoBusy} onFinish={() => void finish(flow.partial!.name)} onOpen={() => { onOpenChange(false); onCreated(flow.partial!.name) }} />
       ) : (
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>

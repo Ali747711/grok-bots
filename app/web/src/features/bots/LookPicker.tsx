@@ -17,8 +17,17 @@ export const COLORS = [
   { hex: '#475569', name: 'Slate' }
 ] as const
 
+/** The shape can be one Crew does not offer (a bot made elsewhere); it shows as "Current shape". */
+export interface PickerLook {
+  readonly shape: string
+  readonly color: string
+}
+
+/** The look as the create and finish routes take it (only the shapes Crew offers). */
+export const toBotLook = (look: PickerLook): BotLook => ({ shape: look.shape === 'circle' ? 'circle' : 'squircle', color: look.color })
+
 export interface LookValue {
-  readonly look: BotLook
+  readonly look: PickerLook
   /** 256 px PNG data url, or undefined for a plain shape. */
   readonly image?: string
 }
@@ -32,15 +41,16 @@ interface LookPickerProps {
   onBusyChange?: (busy: boolean) => void
 }
 
-const shapeClass = (shape: BotLook['shape']) => (shape === 'circle' ? 'rounded-full' : 'rounded-[10px]')
+const OFFERED = ['squircle', 'circle']
+const shapeClass = (shape: string) => (shape === 'circle' ? 'rounded-full' : 'rounded-[10px]')
 
 function ShapeButtons({ value, onChange }: { value: LookValue; onChange: (next: LookValue) => void }) {
   const { look } = value
   return (
     <div className="flex gap-1.5" role="group" aria-label="Shape">
-      {(['squircle', 'circle'] as const).map(shape => (
+      {(OFFERED.includes(look.shape) ? OFFERED : [...OFFERED, look.shape]).map(shape => (
         <Button key={shape} type="button" size="sm" variant={look.shape === shape ? 'secondary' : 'outline'} aria-pressed={look.shape === shape} onClick={() => onChange({ ...value, look: { ...look, shape } })}>
-          {shape === 'circle' ? 'Circle' : 'Squircle'}
+          {shape === 'circle' ? 'Circle' : shape === 'squircle' ? 'Squircle' : 'Current shape'}
         </Button>
       ))}
     </div>

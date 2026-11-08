@@ -20,6 +20,8 @@ export interface RoutineInput {
   readonly schedule: ScheduleSpec
   readonly timezone: string
   readonly deliverToChat: boolean
+  /** Edit only: true when the user changed the zone or the schedule (the server keeps a stored zone otherwise). */
+  readonly timezoneChanged?: boolean
 }
 
 export type LastStatus = 'ok' | 'error' | 'delivery_failed' | 'blocked_config'
@@ -39,6 +41,10 @@ export interface RoutineView {
   readonly lastStatus: LastStatus | null
   readonly lastError: string | null
   readonly running: boolean
+  /** Hermes job state: scheduled, paused, completed, error ... */
+  readonly state: string | null
+  /** A one-time routine that ran (or a job Hermes retired): it can no longer be paused, resumed or run. */
+  readonly finished: boolean
 }
 
 export interface RunView {

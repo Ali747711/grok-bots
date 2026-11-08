@@ -1,13 +1,13 @@
 import { useState } from 'react'
 
 import { clearAvatar, setAvatar } from './bots-api'
-import { LookPicker, type LookValue } from './LookPicker'
-import type { BotDetail, BotLook } from './types'
+import { LookPicker, type LookValue, type PickerLook } from './LookPicker'
+import type { BotDetail } from './types'
 
 interface ProfileLookProps {
   detail: BotDetail
-  look: BotLook
-  onLook: (look: BotLook) => void
+  look: PickerLook
+  onLook: (look: PickerLook) => void
   /** A photo upload or removal finished; the detail is fresh. */
   onDetail: (detail: BotDetail) => void
   onBusyChange: (busy: boolean) => void

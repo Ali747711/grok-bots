@@ -24,7 +24,9 @@ interface Deps {
 }
 
 export const failureText = (e: unknown): string =>
-  e instanceof CrewApiError && e.status === 400 && typeof e.body?.message === 'string'
+  e instanceof CrewApiError && e.status === 400 && e.body?.error === 'bad_body'
+    ? "Some fields aren't filled in correctly."
+    : e instanceof CrewApiError && e.status === 400 && e.body?.error === 'rejected' && typeof e.body.message === 'string'
     ? `Hermes refused it: ${e.body.message}`
     : e instanceof CrewApiError && e.status === 503
       ? 'Hermes is offline'
