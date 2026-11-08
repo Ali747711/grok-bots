@@ -2,11 +2,9 @@ import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { z } from 'zod'
 
-import { type BotDeps, createBot, CreateBotError, finishBot } from '../bots/create.js'
+import { type BotDeps, createBot, finishBot } from '../bots/create.js'
 import { PROFILE_NAME_RE, validateBotName } from '../bots/names.js'
-import { BotNotFoundError } from '../bots/ui-meta.js'
-import { HermesRpcError, HermesUnavailableError } from '../hermes/errors.js'
-import { log } from '../log.js'
+import { failure } from './bot-errors.js'
 import type { CrewEnv } from './session-guard.js'
 
 const BODY_MAX_BYTES = 3 * 1024 * 1024
@@ -23,20 +21,6 @@ const createBody = z.object({
   model: z.object({ provider: z.string().min(1), model: z.string().min(1) }).optional()
 })
 const finishBody = z.object({ look: look.optional(), title: z.string().max(80).optional(), image: image.optional() })
-
-type Failure = { status: 400 | 404 | 409 | 502 | 503; body: Record<string, unknown> }
-
-/** Map anything a create/finish can throw to an HTTP answer; never rethrows. */
-function failure(error: unknown, name: string): Failure {
-  if (error instanceof HermesUnavailableError) return { status: 503, body: { error: 'hermes_offline' } }
-  if (error instanceof BotNotFoundError) return { status: 404, body: { error: 'not_found' } }
-  if (error instanceof CreateBotError) {
-    return error.kind === 'name_taken' ? { status: 409, body: { error: 'name_taken' } } : { status: 400, body: { error: 'bad_name', message: error.message } }
-  }
-  const message = error instanceof Error ? error.message : String(error)
-  log.warn('bot request failed', { name, rpcCode: error instanceof HermesRpcError ? error.code : null, error: message.slice(0, 200) })
-  return { status: 502, body: { error: 'hermes_error', message } }
-}
 
 /** `POST /crew/bots` (create) and `POST /crew/bots/:name/finish` (complete a half-made bot). */
 export function botRoutes(bots: BotDeps | undefined): Hono<CrewEnv> {

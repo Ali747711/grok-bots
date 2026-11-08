@@ -6,6 +6,7 @@ import type { BotDeps } from './bots/create.js'
 import type { CrewConfig } from './config.js'
 import { restProxy } from './hermes/rest-proxy.js'
 import type { HermesToken } from './hermes/token.js'
+import { botEditRoutes } from './http/bot-edit-routes.js'
 import { botRoutes } from './http/bot-routes.js'
 import { hostGuard } from './http/host-guard.js'
 import { originGuard } from './http/origin-guard.js'
@@ -57,6 +58,7 @@ export function createApp(deps: AppDeps): Hono<CrewEnv> {
   app.route('/', stateRoutes(deps.watcher))
   app.route('/', settingsRoutes(deps.settings))
   app.route('/', botRoutes(deps.bots))
+  app.route('/', botEditRoutes(deps.bots))
   app.route('/', authRoutes(deps))
   app.route('/', restProxy(deps))
   // Last: the SPA answers every remaining GET, so later-mounted routes would be shadowed.

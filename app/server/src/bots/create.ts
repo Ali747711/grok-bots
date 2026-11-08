@@ -100,7 +100,7 @@ async function runtimeNeedsModel(deps: BotDeps, name: string): Promise<boolean> 
   }
 }
 
-async function refreshQuietly(deps: BotDeps): Promise<void> {
+export async function refreshQuietly(deps: BotDeps): Promise<void> {
   await deps.refresh().catch((error: unknown) => {
     log.warn('roster refresh failed', { error: messageOf(error).slice(0, 200) })
   })
