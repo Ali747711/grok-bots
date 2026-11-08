@@ -9,7 +9,10 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "vendor": "node ../scripts/vendor-hermes.mjs",
+    "vendor:check": "node ../scripts/vendor-hermes.mjs --check",
+    "probe": "node dist/tools/probe.js"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.6",
