@@ -1,13 +1,14 @@
 import { EventEmitter } from 'node:events'
 import { createServer, type IncomingHttpHeaders, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import type { Duplex } from 'node:stream'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { WebSocket, WebSocketServer } from 'ws'
 
 import { signSession } from '../src/auth/session-cookie.js'
 import { loadConfig } from '../src/config.js'
-import { relay, type Pausable } from '../src/hermes/display-proxy.js'
+import { attachDisplayBridge, relay, type Pausable } from '../src/hermes/display-proxy.js'
 import { HermesToken } from '../src/hermes/token.js'
 import { attachWsProxy } from '../src/hermes/ws-proxy.js'
 import { setLogSink } from '../src/log.js'
@@ -131,6 +132,19 @@ describe('display proxy', () => {
     expect(upstreamEvents[0]).toBe('close:1006')
   })
 
+  it('treats a browser close with no code (1005) or 4999 as an abnormal upstream close', async () => {
+    for (const code of [undefined, 4999]) {
+      upstreamEvents.length = 0
+      const before = upstreamSockets.length
+      const ws = await connect()
+      await until(() => upstreamSockets.length === before + 1)
+      if (code === undefined) ws.close()
+      else ws.close(code)
+      await until(() => upstreamEvents.length === 1)
+      expect(upstreamEvents[0]).toBe('close:1006')
+    }
+  })
+
   it('turns a browser 1000 or 1001 into an upstream close 1000', async () => {
     for (const code of [1000, 1001]) {
       upstreamEvents.length = 0
@@ -176,8 +190,8 @@ describe('display proxy', () => {
       expect((await closeInfo(await connect())).code).toBe(4403)
     } finally {
       refusedCrew.closeAllConnections()
-      refusedCrew.close()
-      refuser.close()
+      await new Promise<void>(resolve => refusedCrew.close(() => resolve()))
+      await new Promise<void>(resolve => refuser.close(() => resolve()))
     }
     const dead = createServer()
     await new Promise<void>(resolve => dead.listen(0, '127.0.0.1', resolve))
@@ -194,7 +208,7 @@ describe('display proxy', () => {
       expect((await closeInfo(await connect())).code).toBe(1013)
     } finally {
       deadCrew.closeAllConnections()
-      deadCrew.close()
+      await new Promise<void>(resolve => deadCrew.close(() => resolve()))
       crew = savedCrew
       port = savedPort
     }
@@ -216,12 +230,35 @@ describe('display proxy', () => {
       await closeInfo(await connect())
     } finally {
       other.closeAllConnections()
-      other.close()
+      await new Promise<void>(resolve => other.close(() => resolve()))
       crew = savedCrew
       port = savedPort
     }
     expect(logLines.join('\n')).not.toContain('SECRET')
     expect(logLines.join('\n')).not.toContain(TICKET)
+  })
+})
+
+describe('upstream handshake timeout', () => {
+  it('ends a hung upgrade with 1013', async () => {
+    const hung = createServer()
+    const stuck: Duplex[] = []
+    hung.on('upgrade', (_req, socket) => { stuck.push(socket) }) // accepts TCP, never answers
+    await new Promise<void>(resolve => hung.listen(0, '127.0.0.1', resolve))
+    const wss = new WebSocketServer({ noServer: true })
+    const front = createServer()
+    front.on('upgrade', (req, socket, head) => wss.handleUpgrade(req, socket, head, client =>
+      attachDisplayBridge(client, req, { config: loadConfig({ HOME: '/home/ali', CREW_HERMES_URL: `http://127.0.0.1:${(hung.address() as AddressInfo).port}` }), handshakeTimeoutMs: 100 })))
+    await new Promise<void>(resolve => front.listen(0, '127.0.0.1', resolve))
+    try {
+      const ws = new WebSocket(`ws://127.0.0.1:${(front.address() as AddressInfo).port}/api/display/ws?display_ticket=t`)
+      expect((await closeInfo(ws)).code).toBe(1013)
+    } finally {
+      front.closeAllConnections()
+      for (const socket of stuck) socket.destroy() // upgraded sockets are outside closeAllConnections
+      await new Promise<void>(resolve => front.close(() => resolve()))
+      await new Promise<void>(resolve => hung.close(() => resolve()))
+    }
   })
 })
 
@@ -237,6 +274,17 @@ class FakeSocket extends EventEmitter {
 }
 
 describe('relay backpressure', () => {
+  it('resumes a paused source when the sink closes', () => {
+    const source = new FakeSocket()
+    const sink = new FakeSocket()
+    relay(source as unknown as Pausable, sink as unknown as Pausable)
+    sink.bufferedAmount = 2 * 1024 * 1024
+    source.emit('message', Buffer.from([1]), true)
+    expect(source.paused).toBe(1)
+    sink.emit('close')
+    expect(source.resumed).toBe(1)
+  })
+
   it('pauses the reader under backpressure and resumes when drained', async () => {
     const source = new FakeSocket()
     const sink = new FakeSocket()

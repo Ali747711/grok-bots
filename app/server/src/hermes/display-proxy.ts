@@ -9,6 +9,8 @@ import { forwardableCode } from './close-codes.js'
 
 export interface DisplayProxyDeps {
   readonly config: CrewConfig
+  /** Test hook; production uses the 10 s default. */
+  readonly handshakeTimeoutMs?: number
 }
 
 const UPSTREAM_PATH = '/api/display/ws'
@@ -18,6 +20,7 @@ const UPSTREAM_MAX_PAYLOAD = 16 * 1024 * 1024
 const HIGH_WATER = 1024 * 1024
 const LOW_WATER = 256 * 1024
 const POLL_MS = 20
+const HANDSHAKE_TIMEOUT_MS = 10_000
 const REASON_MAX = 120
 const NO_TICKET = 4401
 const SCREEN_REFUSED = 4403
@@ -55,6 +58,9 @@ export function relay(source: Pausable, sink: Pausable): void {
   const stop = (): void => {
     if (timer) clearInterval(timer)
     timer = null
+    // A paused source never reads its own close frame, so a close would wait for ws's 30 s timer.
+    // Resuming is a no-op on a closed socket.
+    source.resume()
   }
   source.on('close', stop)
   sink.on('close', stop)
@@ -78,12 +84,14 @@ export function attachDisplayBridge(client: WebSocket, req: IncomingMessage, dep
   }
   let upstream: WebSocket
   try {
-    upstream = new WebSocket(upstreamUrl(deps.config, ticket), { perMessageDeflate: false, maxPayload: UPSTREAM_MAX_PAYLOAD })
+    upstream = new WebSocket(upstreamUrl(deps.config, ticket), { perMessageDeflate: false, maxPayload: UPSTREAM_MAX_PAYLOAD, handshakeTimeout: deps.handshakeTimeoutMs ?? HANDSHAKE_TIMEOUT_MS })
   } catch (error) {
     log.warn('hermes display socket unavailable', { error: error instanceof Error ? error.name : 'unknown' })
     client.close(TRY_AGAIN_LATER, 'hermes unavailable')
     return
   }
+  // Browser frames sent before upstream opens are dropped: harmless, because the RFB server speaks
+  // first and noVNC waits for its banner before sending anything.
   relay(client as unknown as Pausable, upstream as unknown as Pausable)
   relay(upstream as unknown as Pausable, client as unknown as Pausable)
 
@@ -95,6 +103,7 @@ export function attachDisplayBridge(client: WebSocket, req: IncomingMessage, dep
   })
   upstream.on('unexpected-response', (_req, res) => {
     res.resume()
+    upstream.terminate()
     client.close(res.statusCode === 403 ? SCREEN_REFUSED : TRY_AGAIN_LATER, 'hermes refused the screen')
   })
   upstream.on('close', (code, reason) => {
