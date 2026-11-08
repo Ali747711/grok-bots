@@ -2,7 +2,7 @@ import type { ChatItem, WorkStep } from './types'
 
 /**
  * A stored message row from `GET /api/sessions/:id/messages`. Only the fields Crew reads are typed;
- * `display_kind` marks scaffolding (`hidden`, `internal_notification`) and `failed_turn`.
+ * `display_kind` marks scaffolding (`hidden` is dropped), relayed messages (`internal_notification`, shown as a notice) and `failed_turn`.
  */
 export interface HistoryRow {
   id: number | string
@@ -15,7 +15,9 @@ export interface HistoryRow {
   tool_calls?: readonly { id?: string; function?: { name?: string; arguments?: string } }[] | null
 }
 
-const HIDDEN_KINDS = new Set(['hidden', 'internal_notification'])
+const HIDDEN_KINDS = new Set(['hidden'])
+const NOTICE_MAX = 300
+const RELAYED = /^Message from [^(]*\(@([^)\s]+)\):\s*/
 
 /** One-line label for a tool call: its first string argument (the command, path, query…) or the tool name. */
 export function summarizeArguments(name: string, raw: string | undefined): string {
@@ -43,6 +45,12 @@ function resultIsError(content: string): boolean {
     // Plain-text results are not errors.
   }
   return false
+}
+
+/** `From @handle: <first 300 chars>` for a relayed bot message, else the text cut to 300 chars. */
+function relayedNotice(text: string): string {
+  const match = RELAYED.exec(text)
+  return match ? `From @${match[1]}: ${text.slice(match[0].length, match[0].length + NOTICE_MAX)}` : text.slice(0, NOTICE_MAX)
 }
 
 const textOf = (row: HistoryRow): string => (row.display_content ?? row.content ?? '').trim()
@@ -89,6 +97,7 @@ export function historyToItems(rows: readonly HistoryRow[]): ChatItem[] {
     if (!text) continue
     flush()
     if (row.display_kind === 'failed_turn') items.push({ kind: 'notice', id, text })
+    else if (row.display_kind === 'internal_notification') items.push({ kind: 'notice', id, text: relayedNotice(text) })
     else if (row.role === 'user' || row.role === 'assistant') items.push({ kind: row.role, id, text })
   }
   flush()

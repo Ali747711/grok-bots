@@ -22,33 +22,47 @@ export interface TurnState {
   status: string | null
   /** True while the last assistant item still receives deltas (a `{text: null}` frame closes it). */
   textOpen: boolean
+  /** Generations whose `message.start` / `message.complete` were applied, so a replay is a no-op. */
+  started: readonly number[]
+  completed: readonly number[]
+  /** `turn_id:segment` keys of interim seals already handled (a re-sent seal is not a new bubble). */
+  sealed: readonly string[]
+  /** Counter behind assistant item ids; ids are never reused. */
+  nextItem: number
 }
 
-export const initialTurnState: TurnState = { items: [], generation: 0, running: false, cursor: {}, status: null, textOpen: false }
+export const initialTurnState: TurnState = {
+  items: [], generation: 0, running: false, cursor: {}, status: null, textOpen: false, started: [], completed: [], sealed: [], nextItem: 0
+}
 
 interface DeltaPayload { text?: string | null; turn_id?: string; segment?: number; offset?: number }
+interface InterimPayload { text?: string | null; already_streamed?: boolean; turn_id?: string | null; segment?: number | null }
+/** The subset of MessageCompletePayload (gateway-contract) Crew reads. */
 interface CompletePayload {
-  text?: string | null
+  text?: unknown
   rendered?: string | null
-  status?: string
+  status?: string | null
   outcome?: string
   interrupted?: boolean
-  error_surface?: unknown
+  error?: string | null
+  failure_reason?: string | null
+  error_surface?: { code?: unknown } | null
 }
 
 const workId = (g: number) => `work-${g}`
 const assistantPrefix = (g: number) => `assistant-${g}-`
 const countWithPrefix = (items: readonly ChatItem[], prefix: string) => items.filter(i => i.id.startsWith(prefix)).length
+const newAssistantId = (state: TurnState) => `${assistantPrefix(state.generation)}${state.nextItem}`
 const noticeId = (items: readonly ChatItem[], g: number) => `notice-${g}-${countWithPrefix(items, `notice-${g}-`)}`
 
 function startTurn(state: TurnState, g: number): TurnState {
-  if (state.items.some(i => i.id === workId(g))) return state
+  if (state.started.includes(g)) return state
   const items: ChatItem[] = [
     ...state.items,
     { kind: 'work', id: workId(g), steps: [] },
-    { kind: 'assistant', id: `${assistantPrefix(g)}0`, text: '' }
+    { kind: 'assistant', id: `${assistantPrefix(g)}${state.nextItem}`, text: '' }
   ]
-  return { ...state, items, generation: g, running: true, textOpen: true, status: null }
+  return { ...state, items, generation: g, running: true, textOpen: true, status: null, started: [...state.started, g], nextItem: state.nextItem + 1 }
 }
 
 function appendText(state: TurnState, text: string): TurnState {
@@ -57,8 +71,7 @@ function appendText(state: TurnState, text: string): TurnState {
   if (state.textOpen && last?.kind === 'assistant' && last.id.startsWith(assistantPrefix(g))) {
     return { ...state, items: [...state.items.slice(0, -1), { ...last, text: last.text + text }] }
   }
-  const id = `${assistantPrefix(g)}${countWithPrefix(state.items, assistantPrefix(g))}`
-  return { ...state, items: [...state.items, { kind: 'assistant', id, text }], textOpen: true }
+  return { ...state, items: [...state.items, { kind: 'assistant', id: newAssistantId(state), text }], textOpen: true, nextItem: state.nextItem + 1 }
 }
 
 function applyDelta(state: TurnState, frame: TurnFrame): TurnState {
@@ -74,41 +87,50 @@ function applyDelta(state: TurnState, frame: TurnFrame): TurnState {
   return { ...appendText(state, fresh), cursor: { ...state.cursor, [key]: end }, status: null }
 }
 
-function errorText(surface: unknown): string {
-  if (typeof surface === 'string' && surface) return surface
-  const message = (surface as { message?: unknown } | null)?.message
-  return typeof message === 'string' && message ? message : 'The turn failed'
+/** Human text first (`error`, `failure_reason`), then the advisory surface code; never invented wording. */
+function errorText(payload: CompletePayload): string {
+  const candidates = [payload.error, payload.failure_reason, payload.error_surface?.code]
+  return candidates.find((c): c is string => typeof c === 'string' && c.length > 0) ?? 'The turn failed'
 }
 
 function applyComplete(state: TurnState, payload: CompletePayload): TurnState {
   const g = state.generation
-  const final = (payload.text ?? payload.rendered ?? '').trim()
+  if (state.completed.includes(g)) return state
+  const final = (typeof payload.text === 'string' ? payload.text : payload.rendered ?? '').trim()
   let items = finishWork(state.items)
   const at = items.findLastIndex(i => i.kind === 'assistant' && i.id.startsWith(assistantPrefix(g)))
   if (final) {
     const target = items[at]
     items = target?.kind === 'assistant'
       ? items.map((i, n) => (n === at ? { ...target, text: final } : i))
-      : [...items, { kind: 'assistant', id: `${assistantPrefix(g)}${countWithPrefix(items, assistantPrefix(g))}`, text: final }]
+      : [...items, { kind: 'assistant', id: newAssistantId(state), text: final }]
   }
   items = items.filter(i => !(i.kind === 'assistant' && i.id.startsWith(assistantPrefix(g)) && i.text.trim() === ''))
   const interrupted = payload.interrupted === true || payload.status === 'interrupted' || payload.outcome === 'interrupted'
   const failed = payload.status === 'error'
   if (interrupted || failed) {
-    const text = interrupted ? 'Stopped' : errorText(payload.error_surface)
-    const done = items.some(i => i.kind === 'notice' && i.text === text && i.id.startsWith(`notice-${g}-`))
-    if (!done) items = [...items, { kind: 'notice', id: noticeId(items, g), text }]
+    const text = interrupted ? 'Stopped' : errorText(payload)
+    items = [...items, { kind: 'notice', id: noticeId(items, g), text }]
   }
-  return { ...state, items, running: false, textOpen: false, status: null }
+  return { ...state, items, running: false, textOpen: false, status: null, completed: [...state.completed, g], nextItem: state.nextItem + 1 }
 }
 
-function applyInterim(state: TurnState, payload: { text?: string | null; rendered?: string | null }): TurnState {
-  const text = (payload.text ?? payload.rendered ?? '').trim()
-  if (!text) return state
-  const g = state.generation
-  const trimmed = state.items.filter(i => !(i.kind === 'assistant' && i.id.startsWith(assistantPrefix(g)) && i.text === '' && i === state.items.at(-1)))
-  const id = `${assistantPrefix(g)}${countWithPrefix(trimmed, assistantPrefix(g))}`
-  return { ...state, items: [...trimmed, { kind: 'assistant', id, text }], textOpen: false }
+/** `already_streamed`: the text arrived as deltas, so only seal the open item. Otherwise add it once per segment. */
+function applyInterim(state: TurnState, payload: InterimPayload): TurnState {
+  const key = typeof payload.turn_id === 'string' ? `${payload.turn_id}:${payload.segment ?? 0}` : null
+  if (key && state.sealed.includes(key)) return state
+  const sealed = key ? [...state.sealed, key] : state.sealed
+  if (payload.already_streamed) return { ...state, textOpen: false, sealed }
+  const text = (payload.text ?? '').trim()
+  if (!text) return { ...state, sealed }
+  const last = state.items.at(-1)
+  const emptyOpen = last?.kind === 'assistant' && last.text === '' && last.id.startsWith(assistantPrefix(state.generation))
+  const items = emptyOpen ? state.items.slice(0, -1) : state.items
+  return {
+    ...state,
+    items: [...items, { kind: 'assistant', id: newAssistantId(state), text }],
+    textOpen: false, sealed, nextItem: state.nextItem + 1
+  }
 }
 
 /** Pure reducer: one gateway frame in, next turn state out. Older generations and `agent.step` are ignored. */
@@ -123,7 +145,7 @@ export function applyFrame(state: TurnState, frame: TurnFrame): TurnState {
     case 'message.delta':
       return applyDelta(base, frame)
     case 'message.interim':
-      return applyInterim(base, payload as { text?: string })
+      return applyInterim(base, payload as InterimPayload)
     case 'tool.start':
     case 'tool.progress':
     case 'tool.complete':
