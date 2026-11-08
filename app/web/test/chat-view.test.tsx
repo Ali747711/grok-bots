@@ -118,6 +118,7 @@ describe('ChatView', () => {
     render(<ChatView bot={dev} state={crewState()} crewConnected panel="routines" onPanel={() => undefined} />)
     await flush()
     expect(screen.getByRole('button', { name: 'Routines' })).toHaveClass('bg-foreground', 'text-background')
+    expect(screen.getByRole('button', { name: 'Routines' }).className).not.toMatch(/dark:bg-input|bg-primary/)
     expect(screen.getByRole('button', { name: 'Profile' })).not.toHaveClass('bg-foreground')
     expect(screen.getByTestId('stub').closest('[aria-hidden="true"]')).not.toBeNull()
   })

@@ -37,7 +37,7 @@ export function ChatHeader({ bot, stale, panel = null, onPanel }: ChatHeaderProp
           key={tab}
           type="button"
           size="sm"
-          variant="outline"
+          variant={panel === tab ? 'default' : 'outline'}
           aria-pressed={panel === tab}
           onClick={() => onPanel(tab)}
           className={cn('rounded-full', panel === tab && 'border-foreground bg-foreground text-background hover:bg-foreground/90 hover:text-background')}
