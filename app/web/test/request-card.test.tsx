@@ -36,6 +36,7 @@ describe('RequestCard: approval', () => {
     const onAnswer = vi.fn(noop)
     render(<RequestCard entry={entry()} onAnswer={onAnswer} />)
     fireEvent.click(screen.getByRole('button', { name: 'Deny' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Deny' })).toBeEnabled())
     expect(onAnswer).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1' }), { choice: 'deny' })
   })
 
@@ -80,10 +81,11 @@ describe('RequestCard: approval', () => {
 describe('RequestCard: clarify', () => {
   const clarify = (over: Partial<PendingView> = {}) => entry({ kind: 'clarify', summary: 'Which branch?', choices: ['main', 'dev'], ...over })
 
-  it('sends a clicked choice', () => {
+  it('sends a clicked choice', async () => {
     const onAnswer = vi.fn(noop)
     render(<RequestCard entry={clarify()} onAnswer={onAnswer} />)
     fireEvent.click(screen.getByRole('button', { name: 'dev' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'dev' })).toBeEnabled())
     expect(onAnswer).toHaveBeenCalledWith(expect.anything(), { answer: 'dev' })
   })
 
@@ -96,6 +98,7 @@ describe('RequestCard: clarify', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Skip' })).toBeEnabled())
     fireEvent.click(screen.getByRole('button', { name: 'Skip' }))
     expect(onAnswer).toHaveBeenLastCalledWith(expect.anything(), { answer: '' })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Skip' })).toBeEnabled())
   })
 })
 
