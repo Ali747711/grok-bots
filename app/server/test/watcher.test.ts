@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { PendingStore } from '../src/watcher/pending-store.js'
 import { applyGatewayEvent, routeServerRequest } from '../src/watcher/request-router.js'
+import { fakeSettings } from './helpers.js'
 import { startWatcher, type WatcherClient } from '../src/watcher/watcher.js'
 
 const ctx = { profileForSession: (sid: string) => (sid === 's1' ? 'crew-test' : undefined), now: () => 5_000 }
@@ -142,7 +143,7 @@ describe('applyGatewayEvent generation', () => {
 describe('startWatcher', () => {
   it('subscribes to every bot chat and records snapshot prompts', async () => {
     const client = new FakeClient()
-    const watcher = startWatcher({ client, connect: c => c.connect(), now: () => 1, reconnectDelayMs: () => 0 })
+    const watcher = startWatcher({ client, connect: c => c.connect(), settings: fakeSettings, now: () => 1, reconnectDelayMs: () => 0 })
     await flush(); await flush()
     const resumes = client.calls.filter(c => c.method === 'session.resume')
     expect(resumes.map(r => [r.params.profile, r.params.session_id])).toEqual([['default', 'stored-default'], ['crew-test', 'stored-fixture']])
@@ -156,7 +157,7 @@ describe('startWatcher', () => {
 
   it('resubscribes after reconnect without duplicating pending prompts', async () => {
     const client = new FakeClient()
-    const watcher = startWatcher({ client, connect: c => c.connect(), now: () => 1, reconnectDelayMs: () => 0 })
+    const watcher = startWatcher({ client, connect: c => c.connect(), settings: fakeSettings, now: () => 1, reconnectDelayMs: () => 0 })
     await flush(); await flush()
     client.emitState('closed')
     await flush(); await flush(); await flush()
@@ -168,7 +169,7 @@ describe('startWatcher', () => {
 
   it('refreshes subscriptions when sessions change', async () => {
     const client = new FakeClient()
-    const watcher = startWatcher({ client, connect: c => c.connect(), now: () => 1, reconnectDelayMs: () => 0 })
+    const watcher = startWatcher({ client, connect: c => c.connect(), settings: fakeSettings, now: () => 1, reconnectDelayMs: () => 0 })
     await flush(); await flush()
     client.emitEvent({ type: 'sessions.changed' })
     await flush(); await flush()
@@ -179,7 +180,7 @@ describe('startWatcher', () => {
   it('drops pending prompts that a fresh snapshot no longer lists (missed settled event)', async () => {
     const client = new FakeClient()
     let clock = 0
-    const watcher = startWatcher({ client, connect: c => c.connect(), now: () => ++clock, reconnectDelayMs: () => 0 })
+    const watcher = startWatcher({ client, connect: c => c.connect(), settings: fakeSettings, now: () => ++clock, reconnectDelayMs: () => 0 })
     await flush(); await flush()
     client.emitEvent({ type: 'approval.request', session_id: 'run-fixture', payload: { prompt_id: 'p-2', command: 'rm -r /tmp/y' } })
     client.emitEvent({ type: 'approval.request', session_id: 'run-other', payload: { prompt_id: 'p-3', command: 'ls' } })
@@ -197,7 +198,7 @@ describe('startWatcher', () => {
 
 describe('watcher live state', () => {
   const make = (client: FakeClient, extra: Partial<Parameters<typeof startWatcher>[0]> = {}) =>
-    startWatcher({ client, connect: c => c.connect(), now: () => 1, reconnectDelayMs: () => 0, ...extra })
+    startWatcher({ client, connect: c => c.connect(), settings: fakeSettings, now: () => 1, reconnectDelayMs: () => 0, ...extra })
 
   it('reports the roster, status and connection', async () => {
     const client = new FakeClient()

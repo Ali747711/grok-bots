@@ -1,4 +1,5 @@
 import { log as logger } from '../log.js'
+import type { SettingsStore } from '../settings/settings-store.js'
 import type { ServerRequest } from '../vendor/hermes/json-rpc-channel.js'
 import { type AnswerInput, answerRequest } from './answer.js'
 import { BotStateTracker, type CrewState, type ProfileInput } from './bot-state.js'
@@ -17,6 +18,7 @@ export interface WatcherClient {
 export interface WatcherDeps {
   readonly client: WatcherClient
   readonly connect: (client: WatcherClient) => Promise<void>
+  readonly settings: Pick<SettingsStore, 'get' | 'onChange'>
   readonly now: () => number
   readonly reconnectDelayMs: (attempt: number) => number
   /** Observe WebSocket close codes (4401 = Hermes says our token is no longer valid). */
@@ -292,6 +294,7 @@ export function startWatcher(deps: WatcherDeps): Watcher {
         id: entry.id, kind: entry.kind, profile: entry.profile, reason: entry.settled, answeredByCrew: sentByCrew.has(entry.id)
       })
     }),
+    deps.settings.onChange(changed),
     store.onChange(() => {
       for (const id of held.keys()) if (!store.list().some(p => p.id === id)) held.delete(id)
       changed()
@@ -314,6 +317,7 @@ export function startWatcher(deps: WatcherDeps): Watcher {
       return {
         hermes,
         bots: tracker.view(open),
+        settings: deps.settings.get(),
         pending: open.map(({ settled: _s, settledAt: _t, answerState, answerError, ...rest }) => ({
           ...rest,
           state: answerState ?? ('open' as const),

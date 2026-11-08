@@ -4,7 +4,7 @@ import { createApp } from '../src/app.js'
 import { signSession } from '../src/auth/session-cookie.js'
 import { setLogSink } from '../src/log.js'
 import { startWatcher, type WatcherClient } from '../src/watcher/watcher.js'
-import { HOST, makeDeps, ORIGIN } from './helpers.js'
+import { fakeSettings, HOST, makeDeps, ORIGIN } from './helpers.js'
 
 const base = makeDeps()
 const sessionValue = signSession(base.secrets.cookie, { sid: 's', exp: base.now() + 60_000 })
@@ -50,7 +50,7 @@ let app: ReturnType<typeof createApp>
 beforeEach(async () => {
   connectImpl = async () => undefined
   client = new Fake()
-  watcher = startWatcher({ client, connect: () => connectImpl(), now: () => 1, reconnectDelayMs: () => 60_000 })
+  watcher = startWatcher({ client, connect: () => connectImpl(), settings: fakeSettings, now: () => 1, reconnectDelayMs: () => 60_000 })
   await flush(); await flush()
   app = createApp({ ...base, watcher })
 })
@@ -167,7 +167,7 @@ describe('POST /crew/requests/:id/answer', () => {
 
   it('accepts the replayed request after reconnect and answers it with the fresh object', async () => {
     watcher.stop()
-    watcher = startWatcher({ client, connect: () => connectImpl(), now: () => 1, reconnectDelayMs: () => 0 })
+    watcher = startWatcher({ client, connect: () => connectImpl(), settings: fakeSettings, now: () => 1, reconnectDelayMs: () => 0 })
     app = createApp({ ...base, watcher })
     await flush(); await flush()
     const stale = secretRequest()
@@ -264,7 +264,7 @@ describe('POST /crew/requests/:id/answer', () => {
       return result
     }) as typeof c.request
     client = c
-    watcher = startWatcher({ client: c, connect: async () => undefined, now: () => 1, reconnectDelayMs: () => 60_000 })
+    watcher = startWatcher({ client: c, connect: async () => undefined, settings: fakeSettings, now: () => 1, reconnectDelayMs: () => 60_000 })
     app = createApp({ ...base, watcher })
     await flush(); await flush(); await flush()
     const req = secretRequest()
@@ -417,7 +417,7 @@ describe('session tip following', () => {
 
   it('resumes a changed tip, repairs an unknown-owner approval and answers with the right profile and session', async () => {
     const c = tipClient()
-    const w = startWatcher({ client: c as unknown as WatcherClient, connect: async () => undefined, now: () => 1, reconnectDelayMs: () => 60_000 })
+    const w = startWatcher({ client: c as unknown as WatcherClient, connect: async () => undefined, settings: fakeSettings, now: () => 1, reconnectDelayMs: () => 60_000 })
     await flush(); await flush()
     expect(c.calls.filter(x => x.method === 'session.resume').map(x => x.params.session_id)).toEqual(['A'])
     c.setTip('B')
@@ -447,7 +447,7 @@ describe('session tip following', () => {
 
   it('does not resume again while the tip is unchanged', async () => {
     const c = tipClient()
-    const w = startWatcher({ client: c as unknown as WatcherClient, connect: async () => undefined, now: () => 1, reconnectDelayMs: () => 60_000 })
+    const w = startWatcher({ client: c as unknown as WatcherClient, connect: async () => undefined, settings: fakeSettings, now: () => 1, reconnectDelayMs: () => 60_000 })
     await flush(); await flush()
     c.emitEvent({ type: 'sessions.changed' })
     await flush(); await flush()
@@ -457,7 +457,7 @@ describe('session tip following', () => {
 
   it('repairs an unknown owner as soon as the roster names the session, even before a resume', async () => {
     const c = tipClient()
-    const w = startWatcher({ client: c as unknown as WatcherClient, connect: async () => undefined, now: () => 1, reconnectDelayMs: () => 60_000 })
+    const w = startWatcher({ client: c as unknown as WatcherClient, connect: async () => undefined, settings: fakeSettings, now: () => 1, reconnectDelayMs: () => 60_000 })
     await flush(); await flush()
     w.store.add({ id: 'orphan', kind: 'approval', profile: 'unknown', sessionId: 'root', summary: 's', receivedAt: 1, source: 'event', promptId: 'orphan', executionGeneration: 1, choices: ['once'] })
     c.emitEvent({ type: 'sessions.changed' })
@@ -472,7 +472,7 @@ describe('stale server-request handles after a reconnect', () => {
   async function reconnecting() {
     watcher.stop()
     let clock = 0
-    watcher = startWatcher({ client, connect: () => connectImpl(), now: () => ++clock, reconnectDelayMs: () => 0 })
+    watcher = startWatcher({ client, connect: () => connectImpl(), settings: fakeSettings, now: () => ++clock, reconnectDelayMs: () => 0 })
     app = createApp({ ...base, watcher })
     await flush(); await flush()
     const stale = secretRequest()

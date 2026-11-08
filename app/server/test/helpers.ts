@@ -17,3 +17,6 @@ export function makeDeps(nowMs = 1_000_000): AppDeps {
     fetchUpstream: fetch
   }
 }
+
+/** In-memory stand-in for SettingsStore in watcher tests (defaults, no listeners fire). */
+export const fakeSettings = { get: () => ({ maxWorkingBots: 2 }), onChange: () => () => undefined }

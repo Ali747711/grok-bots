@@ -1,3 +1,4 @@
+import type { CrewSettings } from '../settings/settings-store.js'
 import type { PendingRequest } from './pending-store.js'
 import type { WatcherEvent } from './request-router.js'
 
@@ -28,6 +29,7 @@ export interface CrewState {
   readonly hermes: 'connected' | 'connecting' | 'signed_out' | 'offline'
   readonly bots: readonly BotView[]
   readonly pending: readonly PendingView[]
+  readonly settings: CrewSettings
 }
 
 /** The roster fields Crew reads from a `profiles.list` row (all optional on the wire). */
