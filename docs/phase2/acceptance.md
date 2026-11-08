@@ -40,4 +40,14 @@ Run: `cd app/e2e && npx playwright test` on the VM against live Hermes (127.0.0.
 
 ## Controller live checks
 
-(placeholder: the controller adds the live checks it ledgered.)
+Run by the controller against live Hermes during the build (temporary test bots, each deleted afterwards):
+
+- **Create (Task 3):** `POST /crew/bots` made `crewsmoke` in 886 ms. Hermes stored exactly the official shape: `description` "Smoke Test — Temporary bot for a Crew check", `ui_meta['hermes-bots']` `{shape, color, imageKind:'shape', title, created}` at revision 1, the official SOUL text, the inherited model, and a hidden `Bot Chat` (the roster's `sessionId`). A duplicate name → `409 name_taken`.
+- **Detail + delete (Task 4):** `GET /crew/bots/:name` returned the right look, description, soul and model; `DELETE` → 204, the roster dropped the bot at once, and the profile folder and its cron job were gone.
+- **Routines (Task 5):** daily 09:00 Asia/Seoul previewed as 2026-11-09T00:00Z; create → 201 (`deliver: 'local'`, timezone kept); pause → disabled; Run now → 202, an immediate second press → 409 `already_running`; run history showed a completed 2 s run with its session. Found live: Hermes's trigger un-pauses a paused job, so Crew now re-pauses it after Run now.
+- **Settings (Task 6):** the dialog opens from the footer gear with 1–12 / No limit and the credit line; 0 console errors.
+- **New bot dialog (Task 7):** handle preview, look picker and model list loaded; Create opened the new bot. Found live: two fields (Name + Title) showed the bot by its Title, so the dialog now has one Name field (display name = Hermes `ui_meta.title`, handle derived from it).
+- **Profile panel (Task 8):** rename → Save → sidebar updated; Delete needs the typed handle, then goes home; 0 console errors.
+- **Routines panel (Task 9):** form, preview (3 times in the chosen zone), Save and Run now worked (status `ok`). Found live: rows showed the raw cron `0 9 * * *`, so they now read "Every day at 9:00 AM"; the picker got a "When" label.
+- **Run history (Task 10):** History rows ("Done · 1 s") and transcripts opened. A routine told to `rm -r /tmp/crew-fixture/t10-blocked` was blocked by Hermes's cron policy (the folder stayed) and Crew showed "Blocked by policy". Found live: transcripts opened with Hermes's cron preamble and run titles kept the `[bot:…]` tag; both are now hidden.
+- **Full suite:** the controller re-ran `npx playwright test` independently: 14/14 in 2.1 min, and 14/14 in 2.2 min after the Task 11 fixes (the final suite has 15 specs: 15/15 per the implementer's last run). Afterwards only `default` and `crew-test` existed and the live working-bot limit was still 2.
