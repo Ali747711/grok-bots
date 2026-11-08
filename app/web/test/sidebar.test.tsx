@@ -90,4 +90,18 @@ describe('Sidebar', () => {
     render(<Sidebar state={null} selected={null} onSelect={() => undefined} />)
     expect(screen.getByText('Crew')).toBeInTheDocument()
   })
+
+  it('treats the roster as stale and says so when the Crew stream is down', () => {
+    render(<Sidebar state={crewState()} selected={null} onSelect={() => undefined} crewConnected={false} />)
+    expect(screen.getByText('Reconnecting to Crew…')).toBeInTheDocument()
+    expect(screen.getByTestId('roster')).toHaveAttribute('data-stale', 'true')
+    expect(screen.queryByTestId('status-default')).toBeNull()
+  })
+
+  it('opens the Needs you view', () => {
+    const onNeedsYou = vi.fn()
+    render(<Sidebar state={crewState()} selected={null} onSelect={() => undefined} onNeedsYou={onNeedsYou} />)
+    fireEvent.click(screen.getByRole('button', { name: /Needs you/ }))
+    expect(onNeedsYou).toHaveBeenCalled()
+  })
 })
