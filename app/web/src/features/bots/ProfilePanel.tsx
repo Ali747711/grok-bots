@@ -114,6 +114,7 @@ function Loaded({ bot, detail, setDetail, reload }: LoadedProps) {
     // The picker's current value: the stored avatar, else the derived type with no colour.
     const avatar = held ?? detail.avatar ?? { type: deriveAvatarType(bot.name) }
     const result = await finishBot(bot.name, { title: form.name.trim(), avatar })
+    if (result.complete) setHeld(null)
     await reloadMerged()
     return result.complete ? null : (result.error?.message ?? 'a step failed')
   }
@@ -123,7 +124,7 @@ function Loaded({ bot, detail, setDetail, reload }: LoadedProps) {
       {bot.setupIncomplete && !bot.isPrimary && <FinishSetup onFinish={finish} />}
       <ProfileAvatar
         detail={detail} onDetail={refreshed} onBusyChange={setAvatarBusy} disabled={saver.busy}
-        held={bot.setupIncomplete && !bot.isPrimary} onHeld={setHeld}
+        held={bot.setupIncomplete && !bot.isPrimary} heldChoice={held} onHeld={setHeld}
       />
       <ProfileFields form={form} handle={handleOf(bot)} allowDefault={detail.model === null} onChange={edit} />
       {saver.conflict && <ConflictBanner conflict={saver.conflict} busy={saver.busy} onReload={saver.takeTheirs} onSaveAnyway={saver.saveAnyway} />}

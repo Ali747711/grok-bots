@@ -354,6 +354,33 @@ describe('ProfilePanel', () => {
     expect(JSON.parse(String(call?.[1]?.body))).toEqual({ title: 'Dev', avatar: { type: 'ghost', color: '#2ec4c4' } })
   })
 
+  it('sends a held pick once when another save ends setup before Finish', async () => {
+    const fn = stub({ patch: () => json({ status: 'saved', detail: detail({ avatar: { type: 'ghost', color: '#2ec4c4' } }) }) })
+    const tree = (b: ReturnType<typeof bot>) => (
+      <MemoryRouter initialEntries={['/bots/dev']}><Routes><Route path="*" element={<ProfilePanel bot={b} />} /></Routes></MemoryRouter>
+    )
+    const { rerender } = render(tree(bot({ name: 'dev', title: 'Dev', setupIncomplete: true })))
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: 'ghost' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Teal' }))
+    expect(patches(fn)).toHaveLength(0)
+    rerender(tree(bot({ name: 'dev', title: 'Dev', setupIncomplete: false })))
+    await waitFor(() => expect(patches(fn)).toHaveLength(1))
+    expect(patches(fn)[0]).toEqual({ avatar: { type: 'ghost', color: '#2ec4c4' } })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'ghost' })).toBeEnabled())
+    expect(patches(fn)).toHaveLength(1)
+  })
+
+  it('locks the picker while a photo is being prepared', async () => {
+    vi.stubGlobal('createImageBitmap', vi.fn(() => new Promise(() => undefined)))
+    stub()
+    open()
+    await loaded()
+    fireEvent.change(screen.getByLabelText('Upload photo'), { target: { files: [new File([new Uint8Array(5)], 'a.png', { type: 'image/png' })] } })
+    await screen.findByText('Preparing photo…')
+    expect(screen.getByRole('button', { name: 'ghost' })).toBeDisabled()
+  })
+
   it('shows a pinned model that is not in the list, never the default sentinel', async () => {
     const pinned = { provider: 'openrouter', model: 'z/pinned' }
     stub({ get: () => json(detail({ model: pinned })) })

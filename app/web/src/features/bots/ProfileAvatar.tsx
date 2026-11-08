@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { deriveAvatarType } from '@/features/avatars/avatar-model'
@@ -15,7 +15,9 @@ interface ProfileAvatarProps {
   onBusyChange: (busy: boolean) => void
   /** Unfinished setup: type and colour picks are held and reported (no save), then sent by Finish setup. */
   held?: boolean
-  onHeld?: (choice: AvatarChoice) => void
+  /** The held (unsent) pick, or null once it was sent or dropped. */
+  heldChoice?: AvatarChoice | null
+  onHeld?: (choice: AvatarChoice | null) => void
   /** A form save is in flight: hold the picker so it cannot race it. */
   disabled?: boolean
 }
@@ -30,17 +32,31 @@ function valueOf(detail: BotDetail): AvatarValue {
 const choiceOf = (v: AvatarValue): AvatarChoice => ({ type: v.type, ...(v.color ? { color: v.color } : {}) })
 
 /** Avatar editing: type, colour and photo save at once (one write at a time); an unfinished bot only holds its picks. */
-export function ProfileAvatar({ detail, onDetail, onBusyChange, held = false, onHeld, disabled = false }: ProfileAvatarProps) {
+export function ProfileAvatar({ detail, onDetail, onBusyChange, held = false, heldChoice = null, onHeld, disabled = false }: ProfileAvatarProps) {
   const [error, setError] = useState<string | null>(null)
   const [value, setValue] = useState<AvatarValue>(() => valueOf(detail))
   const [saving, setSaving] = useState(false)
   const [preparing, setPreparing] = useState(false)
+  // The latest bot, for async callbacks that outlive the render that started them.
+  const latest = useRef(detail)
+  latest.current = detail
+  const wasHeld = useRef(held)
 
   // Follow the saved bot; a held bot keeps its local type and colour (nothing is saved yet).
   useEffect(() => {
     setValue(prev => (held ? { ...prev, photo: photoUrl(detail) } : valueOf(detail)))
   }, [detail, held])
   useEffect(() => onBusyChange(saving || preparing), [saving, preparing, onBusyChange])
+  // Another save can end setup before Finish; a held pick must not be lost, so send it once.
+  useEffect(() => {
+    const ended = wasHeld.current && !held
+    wasHeld.current = held
+    if (!ended || !heldChoice || latest.current.avatar) return
+    const next = { ...heldChoice, photo: photoUrl(latest.current) }
+    onHeld?.(null)
+    setValue(next)
+    void save(next, false)
+  }, [held])
 
   const save = async (next: AvatarValue, photoChanged: boolean) => {
     setError(null)
@@ -54,7 +70,7 @@ export function ProfileAvatar({ detail, onDetail, onBusyChange, held = false, on
       if (out.status === 'saved') onDetail(out.detail)
       else throw new Error('not saved')
     } catch {
-      setValue(valueOf(detail))
+      setValue(valueOf(latest.current))
       setError(photoChanged ? 'Could not change the photo. Try again.' : 'Could not change the avatar. Try again.')
     } finally {
       setSaving(false)
@@ -73,7 +89,7 @@ export function ProfileAvatar({ detail, onDetail, onBusyChange, held = false, on
 
   return (
     <>
-      <AvatarPicker value={value} onChange={change} onBusyChange={setPreparing} disabled={disabled || saving} />
+      <AvatarPicker value={value} onChange={change} onBusyChange={setPreparing} disabled={disabled || saving || preparing} />
       {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
     </>
   )
