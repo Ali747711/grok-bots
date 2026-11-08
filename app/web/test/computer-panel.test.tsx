@@ -228,6 +228,7 @@ describe('ComputerPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Expand the screen' }))
     const dialog = await screen.findByRole('dialog')
     await waitFor(() => expect(rfbs.list).toHaveLength(2))
+    expect(within(dialog).queryByRole('button', { name: 'Close' })).toBeNull() // the view has its own collapse button
     expect(within(dialog).getByTestId('live-view')).toBeInTheDocument()
     expect(rfbs.list[0]!.disconnects).toBe(1)
     fireEvent.click(within(dialog).getByRole('button', { name: 'Close expanded view' }))

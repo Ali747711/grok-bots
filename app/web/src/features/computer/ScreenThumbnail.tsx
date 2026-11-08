@@ -21,13 +21,16 @@ export function ScreenThumbnail({ bot, hidden, onOpen }: ScreenThumbnailProps) {
   const thumb = useThumbnail(bot.name, view.kind === 'live' && !hidden)
   if (hidden || view.kind !== 'live') return null
   if (thumb.suppressed) {
-    return <span role="status" className="shrink-0 whitespace-nowrap rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">{view.control === 'you' ? "You're in control" : 'Someone is in control'}</span>
+    const text = view.control === 'you' ? "You're in control" : 'Someone is in control'
+    // min-w-0 + truncate: the chip gives way before the bot name does.
+    return <button type="button" onClick={onOpen} title={text} className="min-w-0 truncate rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/50">{text}</button>
   }
   if (!thumb.src) return null
   return (
     <button
       type="button"
       onClick={onOpen}
+      aria-label={`Open ${bot.title}'s screen`}
       data-stale={thumb.stale ? 'true' : undefined}
       title={thumb.stale ? 'This preview may be out of date' : undefined}
       className={cn('h-8 w-[3.2rem] shrink-0 overflow-hidden rounded border border-border bg-muted outline-none focus-visible:ring-3 focus-visible:ring-ring/50', thumb.stale && 'opacity-50')}

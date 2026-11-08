@@ -72,7 +72,7 @@ describe('header thumbnail', () => {
     render(header())
     await flush(9000)
     expect(thumbCalls()).toHaveLength(0)
-    expect(screen.queryByRole('button', { name: "Dev's screen" })).toBeNull()
+    expect(screen.queryByRole('button', { name: "Open Dev's screen" })).toBeNull()
   })
 
   it('shows the control chip when suppressed and hides when the screen answers null', async () => {
@@ -84,7 +84,7 @@ describe('header thumbnail', () => {
     thumb = () => ({ data_url: null })
     await flush(4000)
     expect(screen.queryByText('Someone is in control')).toBeNull()
-    expect(screen.queryByRole('button', { name: "Dev's screen" })).toBeNull()
+    expect(screen.queryByRole('button', { name: "Open Dev's screen" })).toBeNull()
   })
 
   it('marks the thumbnail stale after three misses and recovers on a good frame', async () => {
@@ -93,19 +93,46 @@ describe('header thumbnail', () => {
     thumb = () => { throw new Error('timeout') }
     await flush(4000)
     await flush(4000)
-    expect(screen.getByRole('button', { name: "Dev's screen" })).not.toHaveAttribute('data-stale')
+    expect(screen.getByRole('button', { name: "Open Dev's screen" })).not.toHaveAttribute('data-stale')
     await flush(4000)
-    expect(screen.getByRole('button', { name: "Dev's screen" })).toHaveAttribute('data-stale', 'true')
+    expect(screen.getByRole('button', { name: "Open Dev's screen" })).toHaveAttribute('data-stale', 'true')
     thumb = () => ({ data_url: JPEG })
     await flush(4000)
-    expect(screen.getByRole('button', { name: "Dev's screen" })).not.toHaveAttribute('data-stale')
+    expect(screen.getByRole('button', { name: "Open Dev's screen" })).not.toHaveAttribute('data-stale')
   })
 
   it('opens the Computer tab on click', async () => {
     const onPanel = vi.fn()
     render(header(null, onPanel))
     await flush()
-    fireEvent.click(screen.getByRole('button', { name: "Dev's screen" }))
+    fireEvent.click(screen.getByRole('button', { name: "Open Dev's screen" }))
     expect(onPanel).toHaveBeenCalledWith('computer')
+  })
+  it('opens the Computer tab from the control chip too, and truncates it', async () => {
+    thumb = () => ({ data_url: null, suppressed: 'human_has_control' })
+    const onPanel = vi.fn()
+    render(header(null, onPanel))
+    await flush()
+    const chip = screen.getByRole('button', { name: 'Someone is in control' })
+    expect(chip).toHaveClass('min-w-0', 'truncate')
+    expect(chip).toHaveAttribute('title', 'Someone is in control')
+    fireEvent.click(chip)
+    expect(onPanel).toHaveBeenCalledWith('computer')
+  })
+
+  it('stops polling after an unmount and switches polling when the bot changes', async () => {
+    const { rerender, unmount } = render(header())
+    await flush()
+    const before = thumbCalls().length
+    rerender(<ChatHeader bot={bot({ name: 'ops', title: 'Ops' })} stale={false} panel={null} onPanel={() => undefined} />)
+    await flush(0)
+    await flush(8000)
+    const profiles = thumbCalls().slice(before).map(c => c.params.profile)
+    expect(profiles.length).toBeGreaterThan(0)
+    expect(profiles.every(p => p === 'ops')).toBe(true)
+    unmount()
+    const after = thumbCalls().length
+    await flush(20_000)
+    expect(thumbCalls()).toHaveLength(after)
   })
 })
