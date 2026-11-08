@@ -13,7 +13,7 @@ const headers = { Host: HOST, Origin: ORIGIN, Cookie: `crew_session=${session}; 
 
 const view: RoutineView = {
   id: 'abc', bot: 'scout', title: 'T', instruction: 'I', schedule: { kind: 'daily', time: '09:00' }, scheduleText: '0 9 * * *', timezone: 'UTC',
-  deliverToChat: false, enabled: true, nextRunAt: null, lastRunAt: null, lastStatus: null, lastError: null, running: false
+  deliverToChat: false, enabled: true, nextRunAt: null, lastRunAt: null, lastStatus: null, lastError: null, running: false, state: 'scheduled', finished: false
 }
 const body: RoutineInput = { title: 'Morning', instruction: 'Do it', schedule: { kind: 'daily', time: '09:00' }, timezone: 'Asia/Seoul', deliverToChat: false }
 
@@ -119,6 +119,13 @@ describe('routine routes', () => {
     const busy = await send('POST', '/crew/routines/abc/run?bot=scout')
     expect(busy.status).toBe(409)
     expect(await busy.json()).toEqual({ status: 'already_running' })
+  })
+
+  it('run answers 409 finished with a plain message for a one-time routine that already ran', async () => {
+    overrides.runNow = () => 'finished'
+    const res = await send('POST', '/crew/routines/abc/run?bot=scout')
+    expect(res.status).toBe(409)
+    expect(await res.json()).toEqual({ status: 'finished', message: 'This one-time routine has already run.' })
   })
 
   it('runs honours limit 1-100 with default 20', async () => {

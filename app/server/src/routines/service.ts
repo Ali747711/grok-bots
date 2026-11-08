@@ -13,7 +13,7 @@ export interface RoutineService {
   pause(bot: string, id: string): Promise<RoutineView>
   resume(bot: string, id: string): Promise<RoutineView>
   remove(bot: string, id: string): Promise<void>
-  runNow(bot: string, id: string): Promise<'started' | 'already_running'>
+  runNow(bot: string, id: string): Promise<'started' | 'already_running' | 'finished'>
   runs(bot: string, id: string, limit?: number): Promise<RunView[]>
 }
 

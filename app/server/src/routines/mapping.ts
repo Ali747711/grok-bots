@@ -29,6 +29,10 @@ export interface RoutineView {
   readonly lastStatus: (typeof LAST_STATUSES)[number] | null
   readonly lastError: string | null
   readonly running: boolean
+  /** Hermes job state: scheduled | paused | completed | error | ... */
+  readonly state: string | null
+  /** A terminal job (`completed` or `error`, Hermes `is_terminal_job`): it will not fire again. */
+  readonly finished: boolean
 }
 
 export interface RunView {
@@ -52,6 +56,8 @@ export const jobSchema = z.object({
   profile_name: str,
   enabled: z.boolean().nullish(),
   state: str,
+  /** Hermes attaches the newest claimed/running execution to every listed job (null when idle). */
+  live_execution: z.unknown().optional(),
   deliver: str,
   timezone: str,
   schedule: z.object({ kind: z.enum(['once', 'interval', 'cron']).nullish(), run_at: str, minutes: z.number().nullish(), expr: str, display: str }).passthrough().nullish(),
@@ -88,6 +94,8 @@ function toMs(value: unknown): number | null {
   return null
 }
 
+export const isFinished = (state: string | null | undefined): boolean => state === 'completed' || state === 'error'
+
 export function viewOf(bot: string, job: Job, running: boolean, repausing: boolean): RoutineView {
   const sched = job.schedule
   const zone = job.timezone || serverZone()
@@ -110,7 +118,9 @@ export function viewOf(bot: string, job: Job, running: boolean, repausing: boole
     lastRunAt: toMs(job.last_run_at),
     lastStatus: status,
     lastError: job.last_error || job.last_delivery_error || job.last_fire_error || null,
-    running
+    running: running || Boolean(job.live_execution),
+    state: job.state ?? null,
+    finished: isFinished(job.state)
   }
 }
 

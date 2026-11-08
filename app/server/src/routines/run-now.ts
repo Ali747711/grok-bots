@@ -1,7 +1,7 @@
 import { HermesRestError } from '../hermes/errors.js'
 import type { HermesRest } from '../hermes/rest-client.js'
 import { log } from '../log.js'
-import { jobKey, jobPath, jobSchema } from './mapping.js'
+import { isFinished, jobKey, jobPath, jobSchema } from './mapping.js'
 
 const RUN_NOW_WAIT_MS = 3_000
 
@@ -15,10 +15,15 @@ export interface RunNowContext {
 
 const reason = (error: unknown): string => (error instanceof Error ? error.message : String(error)).slice(0, 200)
 
-/** A failed read propagates: without knowing the state, triggering could un-pause the routine for good. */
-async function wasPaused(ctx: RunNowContext, bot: string, id: string): Promise<boolean> {
+/**
+ * A failed read propagates: without knowing the state, triggering could un-pause the routine for good.
+ * A finished job is never "paused" (re-pausing a terminal record would make it impossible to resume).
+ */
+async function readState(ctx: RunNowContext, bot: string, id: string): Promise<{ paused: boolean; finished: boolean }> {
   const job = jobSchema.safeParse(await ctx.rest.request<unknown>('GET', jobPath(id), { query: { profile: bot } }))
-  return job.success && (job.data.enabled === false || job.data.state === 'paused')
+  if (!job.success) return { paused: false, finished: false }
+  const finished = isFinished(job.data.state)
+  return { finished, paused: !finished && (job.data.enabled === false || job.data.state === 'paused') }
 }
 
 async function repause(ctx: RunNowContext, bot: string, id: string): Promise<void> {
@@ -33,14 +38,20 @@ async function repause(ctx: RunNowContext, bot: string, id: string): Promise<voi
 /**
  * Start the trigger (a synchronous Hermes call that waits for the whole run, so no Crew timeout) and
  * report after at most 3 s. The id stays in `running` until the request settles; a paused routine is
- * paused again then, because Hermes enables a job when it triggers it.
+ * paused again then, because Hermes enables a job when it triggers it. A job that already finished
+ * (a one-time routine that ran) is not triggered at all.
  */
-export async function runNow(ctx: RunNowContext, bot: string, id: string): Promise<'started' | 'already_running'> {
+export async function runNow(ctx: RunNowContext, bot: string, id: string): Promise<'started' | 'already_running' | 'finished'> {
   const k = jobKey(bot, id)
   if (ctx.running.has(k)) return 'already_running'
   ctx.running.add(k)
   try {
-    if (await wasPaused(ctx, bot, id)) ctx.restorePause.add(k)
+    const state = await readState(ctx, bot, id)
+    if (state.finished) {
+      ctx.running.delete(k)
+      return 'finished'
+    }
+    if (state.paused) ctx.restorePause.add(k)
   } catch (error) {
     ctx.running.delete(k)
     throw error

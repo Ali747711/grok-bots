@@ -11,6 +11,7 @@ import type { CrewEnv } from './session-guard.js'
 
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/
 const DEFAULT_RUN_LIMIT = 20
+const FINISHED_MESSAGE = 'This one-time routine has already run.'
 
 const timezone = z.string().refine(zone => IANAZone.isValidZone(zone), 'unknown time zone')
 const routineBody = z.object({
@@ -57,7 +58,8 @@ const update: Action = async (svc, bot, id, c) => {
 
 const run: Action = async (svc, bot, id, c) => {
   const status = await svc.runNow(bot, id)
-  return status === 'started' ? c.json({ status }, 202) : c.json({ status }, 409)
+  if (status === 'started') return c.json({ status }, 202)
+  return status === 'finished' ? c.json({ status, message: FINISHED_MESSAGE }, 409) : c.json({ status }, 409)
 }
 
 const runs: Action = async (svc, bot, id, c) => {

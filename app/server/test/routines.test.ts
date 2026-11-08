@@ -43,7 +43,7 @@ describe('list', () => {
     expect(views).toEqual([{
       id: 'abc123', bot: 'scout', title: 'Morning brief', instruction: 'Summarise the news', schedule: { kind: 'daily', time: '09:00' }, scheduleText: '0 9 * * *',
       timezone: 'Asia/Seoul', deliverToChat: false, enabled: true, nextRunAt: Date.parse(iso), lastRunAt: Date.parse('2026-11-08T00:00:00+00:00'),
-      lastStatus: 'ok', lastError: null, running: false
+      lastStatus: 'ok', lastError: null, running: false, state: 'scheduled', finished: false
     }])
   })
 
@@ -66,6 +66,19 @@ describe('list', () => {
     expect(views![0]).toMatchObject({ title: '', instruction: '', enabled: true, nextRunAt: null, lastStatus: null, timezone: null })
     expect(views![1]).toMatchObject({ lastStatus: null, nextRunAt: null })
     expect(lines.filter(l => JSON.parse(l).level === 'warn')).toHaveLength(1)
+  })
+})
+
+describe('state, finished and live runs', () => {
+  it('reports state and finished for terminal states, leaving enabled as Hermes says', async () => {
+    cron.handler = () => [job({ id: 'a', enabled: false, state: 'completed' }), job({ id: 'b', enabled: false, state: 'error' }), job({ id: 'c', enabled: false, state: 'paused' }), job({ id: 'd' }), job({ id: 'e', state: undefined })]
+    const views = await svc.list('scout')
+    expect(views.map(v => [v.state, v.finished, v.enabled])).toEqual([['completed', true, false], ['error', true, false], ['paused', false, false], ['scheduled', false, true], [null, false, true]])
+  })
+
+  it("shows running for a run Hermes reports as live even though Crew didn't trigger it", async () => {
+    cron.handler = () => [job({ id: 'live', live_execution: { id: 'exec-1', status: 'running' } }), job({ id: 'idle', live_execution: null }), job({ id: 'none' })]
+    expect((await svc.list('scout')).map(v => v.running)).toEqual([true, false, false])
   })
 })
 
@@ -213,6 +226,16 @@ describe('runs', () => {
       { id: 'm', title: 'MISSED · scheduler down', started_at: 2 }
     ] })
     expect((await svc.runs('scout', 'abc123')).map(r => [r.status, r.error, r.sessionId])).toEqual([['cancelled', 'stopped by user', null], ['missed', 'scheduler down', null]])
+  })
+})
+
+describe('runNow on a finished routine', () => {
+  it('sends no trigger and never re-pauses it', async () => {
+    cron.handler = () => job({ enabled: false, state: 'completed' })
+    await expect(svc.runNow('scout', 'abc123')).resolves.toBe('finished')
+    expect(cron.calls.map(c => c.path)).toEqual(['/api/cron/jobs/abc123'])
+    cron.handler = () => job()
+    await expect(svc.runNow('scout', 'abc123')).resolves.toBe('started')
   })
 })
 

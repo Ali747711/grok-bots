@@ -8,7 +8,7 @@ export type RestMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 export interface RestOptions {
   readonly query?: Record<string, string>
   readonly body?: unknown
-  /** 0 = no Crew-side timeout. */
+  /** 0 = no Crew-side timeout (Node's fetch still ends a request that gets no headers for ~300 s). */
   readonly timeoutMs?: number
 }
 
