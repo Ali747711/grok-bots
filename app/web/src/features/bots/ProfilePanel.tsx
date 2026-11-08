@@ -2,13 +2,13 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
+import { deriveAvatarType } from '@/features/avatars/avatar-model'
 import type { BotView } from '@/state/types'
 
 import { finishBot, updateBot } from './bots-api'
 import { DeleteBotDialog } from './DeleteBotDialog'
 import { ProfileFields } from './ProfileFields'
 import { buildPatch, freshSync, hasChanges, mergeFresh, type FormSync, type ProfileForm } from './profile-form'
-import { toBotLook } from './LookPicker'
 import { ProfileLook } from './ProfileLook'
 import { ConfirmModelDialog, ConflictBanner } from './ProfileNotices'
 import { useBotDetail } from './use-bot-detail'
@@ -99,7 +99,7 @@ function Loaded({ bot, detail, setDetail, reload }: LoadedProps) {
   const patch = buildPatch(form, sync.loaded)
 
   const finish = async () => {
-    const result = await finishBot(bot.name, { title: form.name.trim(), look: toBotLook(form.look) })
+    const result = await finishBot(bot.name, { title: form.name.trim(), avatar: { type: deriveAvatarType(bot.name), color: form.look.color } })
     await reloadMerged()
     return result.complete ? null : (result.error?.message ?? 'a step failed')
   }

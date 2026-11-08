@@ -47,3 +47,15 @@ export function resolvedAvatar(bot: Pick<BotView, 'name' | 'avatar' | 'imageKind
   const type = bot.avatar?.type ?? deriveAvatarType(bot.name)
   return bot.avatar?.color ? { kind: 'avatar', type, color: bot.avatar.color } : { kind: 'avatar', type }
 }
+
+/** Fur-friendly colours the picker offers after "Default" (which sends no colour). Data, not theme tokens. */
+export const AVATAR_SWATCHES = [
+  { name: 'Blue', hex: '#4aa8ff' },
+  { name: 'Violet', hex: '#7c5cff' },
+  { name: 'Pink', hex: '#ff6fae' },
+  { name: 'Orange', hex: '#ff8a3d' },
+  { name: 'Yellow', hex: '#ffcf3d' },
+  { name: 'Green', hex: '#3ccf7a' },
+  { name: 'Teal', hex: '#2ec4c4' },
+  { name: 'Slate', hex: '#8a94a6' }
+] as const

@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { deriveAvatarType } from '@/features/avatars/avatar-model'
 import { ProfilePanel } from '@/features/bots/ProfilePanel'
 import type { BotDetail } from '@/features/bots/types'
 
@@ -180,7 +181,7 @@ describe('ProfilePanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Finish setup' }))
     await waitFor(() => expect(fn.mock.calls.some(([u]) => u === '/crew/bots/dev/finish')).toBe(true))
     const call = fn.mock.calls.find(([u]) => u === '/crew/bots/dev/finish')
-    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ title: 'Dev', look: { shape: 'squircle', color: '#6366f1' } })
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ title: 'Dev', avatar: { type: deriveAvatarType('dev'), color: '#6366f1' } })
   })
 
   it('removes a photo at once', async () => {

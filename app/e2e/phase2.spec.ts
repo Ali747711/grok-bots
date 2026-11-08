@@ -223,12 +223,15 @@ test('the working-bot limit setting persists', async ({ page }) => {
   const dialog = page.getByRole('dialog')
   const openSettings = async () => {
     await page.getByRole('button', { name: 'Settings' }).click()
-    return page.getByLabel('Bots working at the same time')
+    return page.getByRole('combobox', { name: 'Bots working at the same time' })
   }
+  // The select shows the option text: the number, or "No limit" for the stored value 'none'.
+  const optionText = (value: string) => (value === 'none' ? 'No limit' : value)
   // Save and wait for the dialog to close (it closes only after the PUT succeeded) before anything reloads the page.
   const saveLimit = async (value: string) => {
     const select = await openSettings()
-    await select.selectOption(value)
+    await select.click()
+    await page.getByRole('option', { name: optionText(value), exact: true }).click()
     await page.getByRole('button', { name: 'Save' }).click()
     await expect(dialog).toBeHidden({ timeout: 30_000 })
   }
@@ -237,7 +240,7 @@ test('the working-bot limit setting persists', async ({ page }) => {
   try {
     await saveLimit('none')
     await page.reload()
-    await expect(await openSettings()).toHaveValue('none')
+    await expect((await openSettings()).locator('[data-slot=select-value]')).toHaveText('No limit')
     expect(await liveLimit(page)).toBeNull()
   } finally {
     try {
@@ -251,5 +254,5 @@ test('the working-bot limit setting persists', async ({ page }) => {
   }
   expect(await liveLimit(page)).toBe(original)
   await page.reload()
-  await expect(await openSettings()).toHaveValue(original === null ? 'none' : String(original))
+  await expect((await openSettings()).locator('[data-slot=select-value]')).toHaveText(optionText(original === null ? 'none' : String(original)))
 })

@@ -1,8 +1,14 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { deriveAvatarType } from '@/features/avatars/avatar-model'
 import { NewBotDialog } from '@/features/bots/NewBotDialog'
 import type { CreateResult } from '@/features/bots/types'
+
+vi.mock('bot-avatars', async () => {
+  const actual = await vi.importActual<typeof import('bot-avatars')>('bot-avatars')
+  return { ...actual, BotAvatar: (props: Record<string, unknown>) => <div data-testid="stub" data-type={String(props.type)} /> }
+})
 
 const json = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status }))
 const complete: CreateResult = { name: 'research-bot', complete: true, steps: { profile: 'ok', look: 'ok', avatar: 'skipped', chat: 'ok' }, needsModel: false }
@@ -66,8 +72,33 @@ describe('NewBotDialog', () => {
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith('research-bot'))
     expect(onOpenChange).toHaveBeenCalledWith(false)
     expect(JSON.parse(String(call(fn, '/crew/bots')?.[1]?.body))).toEqual({
-      name: 'research-bot', title: 'Research Bot', mission: 'Find things', look: { shape: 'squircle', color: '#7c3aed' }
+      name: 'research-bot', title: 'Research Bot', mission: 'Find things', avatar: { type: deriveAvatarType('research-bot'), color: '#7c5cff' }
     })
+  })
+
+  it('preselects the derived type for a new handle until the user picks one', () => {
+    stub(() => json(complete, 201))
+    setup()
+    type('Name', 'Research Bot')
+    expect(screen.getByRole('button', { name: deriveAvatarType('research-bot') })).toHaveAttribute('aria-pressed', 'true')
+    type('Name', 'Other Bot')
+    expect(screen.getByRole('button', { name: deriveAvatarType('other-bot') })).toHaveAttribute('aria-pressed', 'true')
+    const picked = deriveAvatarType('research-bot') === 'cat' ? 'ghost' : 'cat'
+    fireEvent.click(screen.getByRole('button', { name: picked }))
+    type('Name', 'Third Bot')
+    expect(screen.getByRole('button', { name: picked })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('posts the avatar in the new bot draft, with no look', async () => {
+    const fn = stub(() => json(complete, 201))
+    setup()
+    type('Name', 'Research Bot')
+    fireEvent.click(screen.getByRole('button', { name: 'cat' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+    await waitFor(() => expect(call(fn, '/crew/bots')).toBeDefined())
+    const body = JSON.parse(String(call(fn, '/crew/bots')?.[1]?.body))
+    expect(body.avatar).toEqual({ type: 'cat' })
+    expect(body).not.toHaveProperty('look')
   })
 
   it('has one Name field that is also the display title', async () => {
@@ -121,6 +152,8 @@ describe('NewBotDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Finish setup' }))
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith('research-bot'))
     expect(call(fn, '/crew/bots/research-bot/finish')?.[1]?.method).toBe('POST')
+    const finishBody = JSON.parse(String(call(fn, '/crew/bots/research-bot/finish')?.[1]?.body))
+    expect(finishBody).toEqual({ avatar: { type: deriveAvatarType('research-bot') }, title: 'Research Bot' })
   })
 
   it('opens the half-made bot', async () => {

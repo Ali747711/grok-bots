@@ -15,6 +15,15 @@ function stubFetch(put: (init: RequestInit) => Promise<Response>) {
 
 afterEach(() => vi.unstubAllGlobals())
 
+const limitBox = () => screen.getByRole('combobox', { name: 'Bots working at the same time' })
+const choose = (name: string) => {
+  fireEvent.click(limitBox())
+  // Base UI only commits an item click that started with a pointer-down on it.
+  const option = screen.getByRole('option', { name })
+  fireEvent.pointerDown(option)
+  fireEvent.click(option)
+}
+
 const open = (value: number | null = 2, onOpenChange = vi.fn()) =>
   render(<SettingsDialog open onOpenChange={onOpenChange} maxWorkingBots={value} usage={{ state: 'ok', remaining: 2 }} />)
 
@@ -22,7 +31,7 @@ describe('SettingsDialog', () => {
   it('shows the current limit, the credit helper and the credit line', async () => {
     stubFetch(() => json({ maxWorkingBots: 2 }))
     open(3)
-    expect(screen.getByLabelText('Bots working at the same time')).toHaveValue('3')
+    expect(limitBox()).toHaveTextContent('3')
     expect(screen.getByText('Each working bot spends credit.')).toBeInTheDocument()
     expect(screen.getByText('$2.00 credit left')).toBeInTheDocument()
   })
@@ -31,7 +40,7 @@ describe('SettingsDialog', () => {
     const fetchFn = stubFetch(() => json({ maxWorkingBots: null }))
     const onOpenChange = vi.fn()
     open(2, onOpenChange)
-    fireEvent.change(screen.getByLabelText('Bots working at the same time'), { target: { value: 'none' } })
+    choose('No limit')
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
     const call = fetchFn.mock.calls.find(([url]) => url === '/crew/settings')
@@ -42,7 +51,7 @@ describe('SettingsDialog', () => {
   it('saves a number', async () => {
     const fetchFn = stubFetch(() => json({ maxWorkingBots: 6 }))
     open(2)
-    fireEvent.change(screen.getByLabelText('Bots working at the same time'), { target: { value: '6' } })
+    choose('6')
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(fetchFn.mock.calls.some(([url]) => url === '/crew/settings')).toBe(true))
     const call = fetchFn.mock.calls.find(([url]) => url === '/crew/settings')

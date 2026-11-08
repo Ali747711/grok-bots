@@ -11,11 +11,17 @@ export interface ModelChoice {
   readonly model: string
 }
 
+/** The avatar as the create and finish routes take it; no colour means the type's own. */
+export interface AvatarChoice {
+  readonly type: string
+  readonly color?: string
+}
+
 export interface BotDraft {
   readonly name: string
   readonly title: string
   readonly mission: string
-  readonly look: BotLook
+  readonly avatar: AvatarChoice
   readonly image?: string
   readonly model?: ModelChoice
 }
@@ -31,7 +37,7 @@ export interface CreateResult {
 }
 
 export interface FinishBody {
-  readonly look?: BotLook
+  readonly avatar?: AvatarChoice
   readonly title?: string
   readonly image?: string
 }

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Input } from '@/components/ui/input'
 
 import { CrewApiError, deleteBot } from './bots-api'
@@ -35,17 +35,17 @@ function DeleteForm({ name, title, onOpenChange, onDeleted }: Omit<DeleteBotDial
 
   return (
     <>
-      <DialogHeader>
-        <DialogTitle>{`Delete ${title}?`}</DialogTitle>
-        <DialogDescription>{`This permanently removes @${name}'s chats, routines, memory and files.`}</DialogDescription>
-      </DialogHeader>
+      <AlertDialogHeader>
+        <AlertDialogTitle>{`Delete ${title}?`}</AlertDialogTitle>
+        <AlertDialogDescription>{`This permanently removes @${name}'s chats, routines, memory and files.`}</AlertDialogDescription>
+      </AlertDialogHeader>
       <label htmlFor="delete-confirm" className="text-sm font-medium">{`Type ${name} to confirm`}</label>
       <Input id="delete-confirm" value={typed} onChange={e => setTyped(e.target.value)} autoComplete="off" />
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-      <div className="flex justify-end gap-2">
+      <AlertDialogFooter>
         <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
         <Button type="button" variant="destructive" disabled={busy || typed !== name} onClick={() => void remove()}>Delete</Button>
-      </div>
+      </AlertDialogFooter>
     </>
   )
 }
@@ -53,10 +53,10 @@ function DeleteForm({ name, title, onOpenChange, onDeleted }: Omit<DeleteBotDial
 /** Permanent delete, enabled only once the handle is typed. */
 export function DeleteBotDialog({ open, ...rest }: DeleteBotDialogProps) {
   return (
-    <Dialog open={open} onOpenChange={rest.onOpenChange}>
-      <DialogContent>
+    <AlertDialog open={open} onOpenChange={rest.onOpenChange}>
+      <AlertDialogContent>
         <DeleteForm {...rest} />
-      </DialogContent>
-    </Dialog>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }
