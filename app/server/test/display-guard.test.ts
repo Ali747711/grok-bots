@@ -40,7 +40,7 @@ describe('checkBrowserFrame', () => {
       [call('display.installFoo', { profile: 'crew-test' }), -32601, 7],
       [call('display.switchSandboxImage', { profile: 'crew-test' }), -32601, 7],
       [call('display.somethingNew', { profile: 'crew-test' }), -32601, 7],
-      ['{"jsonrpc":"2.0","id":1,"method":"display.start","params":{"profile":"crew-test"}}', -32601, 1],
+      ['{"jsonrpc":"2.0","id":1,"method":"display\\u002estart","params":{"profile":"crew-test"}}', -32601, 1],
       ['{"jsonrpc":"2.0","id":2,"method":"display.status"}', -32602, 2],
       ['{"jsonrpc":"2.0","id":3,"method":"prompt.submit","method":"display.status","params":{}}', -32602, 3],
       ['{"jsonrpc":"2.0","id":4,"method":"display.status","params":{"profile":false}}', -32602, 4],
