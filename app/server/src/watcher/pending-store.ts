@@ -1,6 +1,6 @@
 export type PendingKind = 'approval' | 'clarify' | 'sudo' | 'secret'
 /** Where the watcher saw the request — recorded so the Phase 0 experiment shows which channel Hermes uses. */
-export type PendingSource = 'server_request' | 'open_request' | 'snapshot_prompt'
+export type PendingSource = 'server_request' | 'open_request' | 'snapshot_prompt' | 'event'
 export type SettleReason = 'answered' | 'cancelled' | 'expired'
 
 export interface PendingRequest {

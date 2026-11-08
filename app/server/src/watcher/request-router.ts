@@ -67,9 +67,37 @@ export function routeServerRequest(
   return true
 }
 
-/** Settle requests Hermes withdrew (answered elsewhere, interrupted, timed out). */
-export function applyGatewayEvent(event: WatcherEvent, store: PendingStore): void {
+const PROMPT_REQUEST: Readonly<Record<string, PendingKind>> = { 'approval.request': 'approval', 'clarify.request': 'clarify' }
+const PROMPT_SETTLED = new Set(['approval.settled', 'clarify.settled'])
+
+/**
+ * Canonical protocol (session_authority): subscribers learn about prompts through `approval.request` /
+ * `clarify.request` events and their `*.settled` counterparts (docs/phase0/approval-experiment.md E1).
+ * Also settles legacy withdrawals (`request.cancel`, `approval.cancelled`).
+ */
+export function applyGatewayEvent(event: WatcherEvent, store: PendingStore, ctx: RouteContext): void {
   const payload = (event.payload ?? {}) as Params
+  const promptKind = PROMPT_REQUEST[event.type]
+  if (promptKind && typeof payload.prompt_id === 'string') {
+    const sessionId = event.session_id ?? ''
+    const choices = stringList(payload.choices)
+    const generation = payload.execution_generation
+    store.add({
+      id: payload.prompt_id,
+      kind: promptKind,
+      profile: ctx.profileForSession(sessionId) ?? 'unknown',
+      sessionId,
+      summary: summarize(promptKind, payload),
+      ...(choices ? { choices } : {}),
+      receivedAt: ctx.now(),
+      source: 'event',
+      promptId: payload.prompt_id,
+      ...(typeof generation === 'number' ? { executionGeneration: generation } : {})
+    })
+  }
+  if (PROMPT_SETTLED.has(event.type) && typeof payload.prompt_id === 'string') {
+    store.settle(payload.prompt_id, 'answered')
+  }
   if (event.type === 'request.cancel' && typeof payload.id === 'string') {
     store.settle(payload.id, 'cancelled')
   }

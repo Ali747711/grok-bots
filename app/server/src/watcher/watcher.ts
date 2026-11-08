@@ -141,7 +141,7 @@ export function startWatcher(deps: WatcherDeps): Watcher {
     }),
     client.onEvent(event => {
       note('event', `${event.type}${event.session_id ? ` ${event.session_id}` : ''}`)
-      applyGatewayEvent(event, store)
+      applyGatewayEvent(event, store, ctx)
       if (event.type === 'sessions.changed') void sync()
     }),
     client.onState(state => {
