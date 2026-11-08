@@ -291,3 +291,99 @@ describe('POST /crew/requests/:id/answer', () => {
     expect(client.calls.some(c => c.method === 'approval.respond')).toBe(false)
   })
 })
+
+describe('answer audit trail', () => {
+  const capture = () => {
+    const lines: string[] = []
+    const restore = setLogSink(l => lines.push(l))
+    const events = (msg: string) => lines.map(l => JSON.parse(l) as Record<string, unknown>).filter(e => e.msg === msg)
+    return { lines, restore, events }
+  }
+
+  it('logs one `answer received` line per approval request with attribution fields', async () => {
+    const cap = capture()
+    await post('p-1', { choice: 'deny' }, { 'User-Agent': 'Mozilla/5.0 test', 'Sec-Fetch-Site': 'same-origin' })
+    await flush()
+    cap.restore()
+    expect(cap.events('answer received')).toEqual([expect.objectContaining({
+      id: 'p-1', kind: 'approval', profile: 'crew-test', choice: 'deny', hasText: false, status: 202,
+      ua: 'Mozilla/5.0 test', origin: ORIGIN, fetchSite: 'same-origin'
+    })])
+  })
+
+  it('records rejected and unknown requests too, with null for missing headers', async () => {
+    const cap = capture()
+    await post('p-1', { choice: 'bogus' })
+    await post('nope', { choice: 'deny' })
+    cap.restore()
+    const got = cap.events('answer received')
+    expect(got.map(e => [e.id, e.status])).toEqual([['p-1', 400], ['nope', 404]])
+    expect(got[0]).toMatchObject({ ua: null, fetchSite: null })
+    expect(got[1]).toMatchObject({ kind: null, profile: null })
+  })
+
+  it('cuts the user agent to 200 characters', async () => {
+    const cap = capture()
+    await post('p-1', { choice: 'deny' }, { 'User-Agent': 'x'.repeat(300) })
+    cap.restore()
+    expect((cap.events('answer received')[0]!.ua as string).length).toBe(200)
+  })
+
+  it('never logs a secret value or its length', async () => {
+    const cap = capture()
+    secretRequest()
+    await post('srq-1', { value: 'sk-live-123' })
+    await flush()
+    cap.restore()
+    const received = cap.events('answer received')[0]!
+    expect(received).toMatchObject({ id: 'srq-1', kind: 'secret', hasText: true, status: 202 })
+    expect(received).not.toHaveProperty('choice')
+    expect(cap.lines.join('\n')).not.toContain('sk-live-123')
+    expect(cap.lines.join('\n')).not.toMatch(/"(length|len|size)"/)
+    expect(JSON.stringify(cap.events('answer sent'))).not.toContain('sk-live-123')
+  })
+
+  it('logs `answer sent` then `answer outcome` for an RPC answer', async () => {
+    const cap = capture()
+    await post('p-1', { choice: 'deny' })
+    await flush()
+    cap.restore()
+    expect(cap.events('answer sent')).toEqual([expect.objectContaining({ id: 'p-1', kind: 'approval', profile: 'crew-test', method: 'approval.respond', choice: 'deny' })])
+    expect(cap.events('answer outcome')).toEqual([expect.objectContaining({ id: 'p-1', kind: 'approval', ok: true, status: 'resolved' })])
+  })
+
+  it('logs the reason when the RPC rejects', async () => {
+    const cap = capture()
+    client.rpcError = new Error('stale_generation')
+    await post('p-1', { choice: 'deny' })
+    await flush()
+    cap.restore()
+    expect(cap.events('answer outcome')).toEqual([expect.objectContaining({ id: 'p-1', ok: false, reason: 'stale_generation' })])
+  })
+
+  it('logs server_request.respond for a held secret', async () => {
+    const cap = capture()
+    secretRequest()
+    await post('srq-1', { value: 'v' })
+    await flush()
+    cap.restore()
+    expect(cap.events('answer sent')).toEqual([expect.objectContaining({ id: 'srq-1', kind: 'secret', method: 'server_request.respond' })])
+    expect(cap.events('answer outcome')).toEqual([expect.objectContaining({ id: 'srq-1', ok: true })])
+  })
+
+  it('logs `request settled` once, with answeredByCrew false for an event settle and true after a Crew answer', async () => {
+    const cap = capture()
+    client.emitEvent({ type: 'clarify.request', session_id: 'run-fixture', payload: { prompt_id: 'q-1', execution_generation: 4, question: 'Which?' } })
+    client.emitEvent({ type: 'clarify.settled', session_id: 'run-fixture', payload: { prompt_id: 'q-1' } })
+    client.emitEvent({ type: 'clarify.settled', session_id: 'run-fixture', payload: { prompt_id: 'q-1' } })
+    await post('p-1', { choice: 'deny' })
+    await flush()
+    client.emitEvent({ type: 'approval.settled', session_id: 'run-fixture', payload: { prompt_id: 'p-1' } })
+    cap.restore()
+    expect(cap.events('request settled')).toEqual([
+      expect.objectContaining({ id: 'q-1', kind: 'clarify', profile: 'crew-test', reason: 'settled', answeredByCrew: false }),
+      expect.objectContaining({ id: 'p-1', kind: 'approval', profile: 'crew-test', reason: 'settled', answeredByCrew: true })
+    ])
+  })
+})
+

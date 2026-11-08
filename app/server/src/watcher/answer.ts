@@ -11,6 +11,8 @@ export interface AnswerContext {
   readonly client: Pick<WatcherClient, 'request'>
   /** The live `srq-…` request, when Hermes asked through the legacy server-request channel. */
   readonly serverRequest?: ServerRequest
+  /** Called right after the answer is handed to Hermes (before any reply is awaited). */
+  readonly onSent?: (method: 'approval.respond' | 'clarify.respond' | 'server_request.respond') => void
 }
 
 interface PromptResult {
@@ -29,6 +31,7 @@ export async function answerRequest(
 ): Promise<'resolved' | 'already_resolved'> {
   if (ctx.serverRequest) {
     ctx.serverRequest.respond(input)
+    ctx.onSent?.('server_request.respond')
     return 'resolved'
   }
   if (!entry.promptId || entry.executionGeneration === undefined) throw new Error('not_answerable')
@@ -43,6 +46,8 @@ export async function answerRequest(
         ? ['clarify.respond', { ...base, answer: input.answer }]
         : [undefined, undefined]
   if (!method || !params) throw new Error('not_answerable')
-  const result = await ctx.client.request<PromptResult>(method, params, ANSWER_TIMEOUT_MS)
+  const pending = ctx.client.request<PromptResult>(method, params, ANSWER_TIMEOUT_MS)
+  ctx.onSent?.(method as 'approval.respond' | 'clarify.respond')
+  const result = await pending
   return result?.status === 'already_resolved' ? 'already_resolved' : 'resolved'
 }

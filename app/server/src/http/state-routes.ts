@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { streamSSE } from 'hono/streaming'
 import { z } from 'zod'
 
+import { log } from '../log.js'
 import type { Watcher } from '../watcher/watcher.js'
 import type { CrewEnv } from './session-guard.js'
 
@@ -54,16 +55,34 @@ export function stateRoutes(watcher: Pick<Watcher, 'state' | 'onChange' | 'answe
     if (!watcher) return c.json({ error: 'watcher_not_running' }, 503)
     const id = c.req.param('id')
     const entry = watcher.store.get(id)
-    if (!entry) return c.json({ error: 'not_found' }, 404)
-    if (entry.settled) return c.json({ status: 'already_resolved' }, 409)
-    if (entry.answerState === 'answering') return c.json({ status: 'answering' }, 409)
-    if (watcher.state().pending.find(p => p.id === id)?.answerable === false) return c.json({ error: 'unsupported', hint: 'answer in the app that asked' }, 422)
-    const body = bodies[entry.kind].safeParse(await c.req.json().catch(() => null))
-    if (!body.success) return c.json({ error: 'bad_body' }, 400)
-    if ('choice' in body.data && !entry.choices?.includes(body.data.choice)) return c.json({ error: 'bad_choice' }, 400)
+    const raw: unknown = await c.req.json().catch(() => null)
+    const field = (name: string): unknown => (raw && typeof raw === 'object' ? (raw as Record<string, unknown>)[name] : undefined)
+    // Audit: one line per request that reaches this route. Approval choice only; text answers and
+    // secrets are never logged, not even their length.
+    const reply = (body: Record<string, unknown>, status: 202 | 400 | 404 | 409 | 422 | 503) => {
+      const textual = entry !== undefined && entry.kind !== 'approval'
+      const text = field(entry?.kind === 'clarify' ? 'answer' : 'value')
+      log.info('answer received', {
+        id, kind: entry?.kind ?? null, profile: entry?.profile ?? null,
+        ...(entry?.kind === 'approval' && typeof field('choice') === 'string' ? { choice: (field('choice') as string).slice(0, 200) } : {}),
+        hasText: textual && typeof text === 'string' && text.length > 0,
+        status,
+        ua: (c.req.header('user-agent') ?? '').slice(0, 200) || null,
+        origin: c.req.header('origin') ?? null,
+        fetchSite: c.req.header('sec-fetch-site') ?? null
+      })
+      return c.json(body, status)
+    }
+    if (!entry) return reply({ error: 'not_found' }, 404)
+    if (entry.settled) return reply({ status: 'already_resolved' }, 409)
+    if (entry.answerState === 'answering') return reply({ status: 'answering' }, 409)
+    if (watcher.state().pending.find(p => p.id === id)?.answerable === false) return reply({ error: 'unsupported', hint: 'answer in the app that asked' }, 422)
+    const body = bodies[entry.kind].safeParse(raw)
+    if (!body.success) return reply({ error: 'bad_body' }, 400)
+    if ('choice' in body.data && !entry.choices?.includes(body.data.choice)) return reply({ error: 'bad_choice' }, 400)
     const outcome = watcher.answer(id, body.data)
-    if (outcome === 'offline') return c.json({ error: 'hermes_offline' }, 503)
-    return outcome === 'sent' ? c.json({ status: 'sent' }, 202) : c.json({ status: outcome }, 409)
+    if (outcome === 'offline') return reply({ error: 'hermes_offline' }, 503)
+    return outcome === 'sent' ? reply({ status: 'sent' }, 202) : reply({ status: outcome }, 409)
   })
   return routes
 }

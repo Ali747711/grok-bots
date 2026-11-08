@@ -75,6 +75,8 @@ export function startWatcher(deps: WatcherDeps): Watcher {
   const listeners = new Set<() => void>()
   /** Live legacy `srq-…` requests, kept only so the user's answer can be routed back to them. */
   const held = new Map<string, ServerRequest>()
+  /** Ids this process handed an answer to Hermes for (audit: did the allow come through Crew?). */
+  const sentByCrew = new Set<string>()
   let hermes: CrewState['hermes'] = 'connecting'
   let authClosed = false
   /** Bumped on every close; a connect/sync that started before a close must not report `connected`. */
@@ -228,8 +230,15 @@ export function startWatcher(deps: WatcherDeps): Watcher {
 
   async function deliverAnswer(entry: PendingRequest, input: AnswerInput): Promise<void> {
     const serverRequest = held.get(entry.id)
+    const choice = 'choice' in input ? { choice: input.choice.slice(0, 200) } : {}
     try {
-      const outcome = await answerRequest(entry, input, { client, ...(serverRequest ? { serverRequest } : {}) })
+      const onSent = (method: string) => {
+        sentByCrew.add(entry.id)
+        // Never the answer text or secret value: only the approval choice.
+        logger.info('answer sent', { id: entry.id, kind: entry.kind, profile: entry.profile, method, ...choice })
+      }
+      const outcome = await answerRequest(entry, input, { client, onSent, ...(serverRequest ? { serverRequest } : {}) })
+      logger.info('answer outcome', { id: entry.id, kind: entry.kind, ok: true, status: outcome })
       if (outcome === 'already_resolved') store.settle(entry.id, 'settled')
       // A response to an srq- request is final and Hermes never acknowledges it to us, so settle now.
       else if (serverRequest) store.settle(entry.id, 'answered')
@@ -237,6 +246,7 @@ export function startWatcher(deps: WatcherDeps): Watcher {
       // Never include the input: it may be a secret. Hermes' own reason (e.g. stale_generation) is safe.
       const reason = serverRequest ? 'send_failed' : error instanceof Error ? error.message.slice(0, 200) : 'send_failed'
       logger.warn('answer failed', { id: entry.id, kind: entry.kind, reason })
+      logger.info('answer outcome', { id: entry.id, kind: entry.kind, ok: false, reason })
       store.markAnswer(entry.id, 'failed', reason)
     }
   }
@@ -262,6 +272,11 @@ export function startWatcher(deps: WatcherDeps): Watcher {
         setHermes(authClosed ? 'signed_out' : 'offline')
         scheduleReconnect()
       }
+    }),
+    store.onSettle(entry => {
+      logger.info('request settled', {
+        id: entry.id, kind: entry.kind, profile: entry.profile, reason: entry.settled, answeredByCrew: sentByCrew.has(entry.id)
+      })
     }),
     store.onChange(() => {
       for (const id of held.keys()) if (!store.list().some(p => p.id === id)) held.delete(id)

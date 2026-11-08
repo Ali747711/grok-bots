@@ -27,6 +27,7 @@ export interface PendingRequest {
 export class PendingStore {
   private readonly entries = new Map<string, PendingRequest>()
   private readonly listeners = new Set<() => void>()
+  private readonly settleListeners = new Set<(entry: PendingRequest) => void>()
 
   constructor(private readonly now: () => number = Date.now) {}
 
@@ -35,6 +36,14 @@ export class PendingStore {
     this.listeners.add(listener)
     return () => {
       this.listeners.delete(listener)
+    }
+  }
+
+  /** Called once per entry, right after it becomes settled (any reason). */
+  onSettle(listener: (entry: PendingRequest) => void): () => void {
+    this.settleListeners.add(listener)
+    return () => {
+      this.settleListeners.delete(listener)
     }
   }
 
@@ -51,7 +60,9 @@ export class PendingStore {
   settle(id: string, reason: SettleReason): void {
     const entry = this.entries.get(id)
     if (!entry || entry.settled) return
-    this.entries.set(id, { ...entry, settled: reason, settledAt: this.now() })
+    const settled = { ...entry, settled: reason, settledAt: this.now() }
+    this.entries.set(id, settled)
+    for (const listener of [...this.settleListeners]) listener(settled)
     this.notify()
   }
 
