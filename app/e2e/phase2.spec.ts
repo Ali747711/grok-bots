@@ -195,8 +195,22 @@ async function liveLimit(page: Page): Promise<number | null> {
 /** Last resort: put the live limit back through the API, with the CSRF header the browser would send. */
 async function forceLimit(page: Page, value: number | null): Promise<void> {
   const csrf = (await page.context().cookies(CREW)).find(c => c.name === 'crew_csrf')?.value ?? ''
-  await page.request.put(`${CREW}/crew/settings`, { data: { maxWorkingBots: value }, headers: { 'X-Crew-CSRF': csrf } })
+  // Crew's origin guard refuses a state-changing request without an Origin header; page.request sends none.
+  const res = await page.request.put(`${CREW}/crew/settings`, { data: { maxWorkingBots: value }, headers: { 'X-Crew-CSRF': csrf, Origin: CREW } })
+  expect(res.status(), 'API restore of the working-bot limit').toBe(200)
 }
+
+test('the API restore path really writes the working-bot limit', async ({ page }) => {
+  await page.goto(CREW)
+  const original = await liveLimit(page)
+  try {
+    await forceLimit(page, 3)
+    expect(await liveLimit(page)).toBe(3)
+  } finally {
+    await forceLimit(page, original)
+  }
+  expect(await liveLimit(page)).toBe(original)
+})
 
 test('the working-bot limit setting persists', async ({ page }) => {
   await page.goto(CREW)
