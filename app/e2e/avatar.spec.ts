@@ -30,7 +30,7 @@ test('an avatar picked in Crew survives a reload and keeps the webapp in sync', 
   await page.getByLabel('Name', { exact: true }).fill(title)
   await page.getByRole('button', { name: 'Change handle' }).click()
   await page.getByLabel('Handle').fill(handle)
-  await page.getByRole('button', { name: 'Create' }).click()
+  await page.getByRole('button', { name: 'Create', exact: true }).click()
   await expect(page).toHaveURL(new RegExp(`/bots/${handle}$`), { timeout: 120_000 })
 
   await page.goto(`${CREW}/bots/${handle}?panel=profile`)

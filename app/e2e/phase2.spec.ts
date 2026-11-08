@@ -57,7 +57,7 @@ test('a bot created in Crew appears identically in the official Webapp', async (
   await createBotInDialog(page, title, handle, 'Find papers')
   await page.getByRole('button', { name: 'square', exact: true }).click()
   await page.getByRole('button', { name: 'Violet' }).click()
-  await page.getByRole('button', { name: 'Create' }).click()
+  await page.getByRole('button', { name: 'Create', exact: true }).click()
   await expect(page).toHaveURL(new RegExp(`/bots/${handle}$`), { timeout: 120_000 })
   await expect(page.getByRole('complementary').getByText(title, { exact: true })).toBeVisible()
 
@@ -91,7 +91,7 @@ test('concurrent edits keep both changes', async ({ page }) => {
   // Crew then saves a new name: its read-modify-write must keep `pinned`.
   const renamed = `${title} B`
   await name.fill(renamed)
-  await page.getByRole('button', { name: 'Save' }).click()
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect.poll(async () => (await metaOf(handle))?.title, { timeout: 30_000 }).toBe(renamed)
   expect(await metaOf(handle)).toMatchObject({ title: renamed, pinned: true })
 
@@ -101,7 +101,7 @@ test('concurrent edits keep both changes', async ({ page }) => {
   await page.getByText('Advanced').click()
   const ours = `Our persona ${run}`
   await page.getByLabel('Persona (SOUL.md)').fill(ours)
-  await page.getByRole('button', { name: 'Save' }).click()
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.getByText(/Changed in another app: Persona/)).toBeVisible({ timeout: 30_000 })
   expect(await soulOf(handle)).toBe(theirs)
   await page.getByRole('button', { name: 'Save anyway' }).click()
@@ -122,7 +122,7 @@ test('a failed creation step can be finished', async ({ page }) => {
     const body = JSON.parse(request.postData() ?? '{}') as Record<string, unknown>
     await route.continue({ postData: JSON.stringify({ ...body, image: GIF_DATA_URL }) })
   })
-  await page.getByRole('button', { name: 'Create' }).click()
+  await page.getByRole('button', { name: 'Create', exact: true }).click()
   await expect(page.getByText(new RegExp(`Created @${handle2}, but avatar failed`))).toBeVisible({ timeout: 120_000 })
   expect((await profileRow(handle2))?.has_avatar).toBeFalsy()
 
@@ -150,7 +150,7 @@ test('a routine runs on schedule and via Run now, shows in history and in Hermes
   await page.getByLabel('Amount').fill('1')
   await page.getByRole('combobox', { name: 'Unit' }).click()
   await page.getByRole('option', { name: 'minutes' }).click()
-  await page.getByRole('button', { name: 'Save' }).click()
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(routineRow(page, pingTitle)).toBeVisible({ timeout: 60_000 })
 
   // Check Hermes right away: a one-shot may be removed once it has run.
@@ -172,7 +172,7 @@ test('a routine runs on schedule and via Run now, shows in history and in Hermes
   // A daily routine started with Run now.
   const dailyTitle = `Daily ${run}`
   await addRoutine(page, dailyTitle, `Reply with exactly: ${ROUTINE_MARK}-NOW`)
-  await page.getByRole('button', { name: 'Save' }).click()
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
   const daily = routineRow(page, dailyTitle)
   await expect(daily).toBeVisible({ timeout: 60_000 })
   await daily.getByRole('button', { name: 'History' }).click()
@@ -227,7 +227,7 @@ test('the working-bot limit setting persists', async ({ page }) => {
   await page.goto(CREW)
   const dialog = page.getByRole('dialog')
   const openSettings = async () => {
-    await page.getByRole('button', { name: 'Settings' }).click()
+    await page.getByRole('button', { name: 'Settings', exact: true }).click()
     return page.getByRole('combobox', { name: 'Bots working at the same time' })
   }
   // The select shows the option text: the number, or "No limit" for the stored value 'none'.
@@ -239,7 +239,7 @@ test('the working-bot limit setting persists', async ({ page }) => {
     const select = await openSettings()
     await select.click()
     await page.getByRole('option', { name: optionText(value), exact: true }).click()
-    await page.getByRole('button', { name: 'Save' }).click()
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
     await expect(dialog).toBeHidden({ timeout: 30_000 })
   }
   // Whatever the live limit is now (2 by default) is put back at the end.
