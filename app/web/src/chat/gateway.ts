@@ -19,6 +19,10 @@ export function connectGateway(): JsonRpcGatewayClient {
   if (shared) return shared
   const client = new JsonRpcGatewayClient({ requestIdPrefix: 'web' })
   shared = client
+  // Accept server requests (approvals, secrets, sudo) but never reply. An error reply, including the
+  // channel's default -32601, makes Hermes treat the request as skipped for every client. Crew answers
+  // only through POST /crew/requests/:id/answer.
+  client.onRequest(() => true)
   let attempt = 0
   let timer: ReturnType<typeof setTimeout> | null = null
 
