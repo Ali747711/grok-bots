@@ -1,25 +1,19 @@
 import { HermesRpcError, type Rpc } from '../hermes/errors.js'
 import type { HermesRest } from '../hermes/rest-client.js'
 import { log } from '../log.js'
+import { type CrewAvatar, avatarMetaPatch, deriveAvatarType } from './avatar.js'
 import { withBotLock } from './bot-lock.js'
 import { composeSoul } from './soul.js'
-import { type BotMeta, readBotMeta, updateBotMeta } from './ui-meta.js'
+import { readBotMeta, updateBotMeta } from './ui-meta.js'
 
 const CREATE_TIMEOUT_MS = 120_000
 const BOT_CHAT_TITLE = 'Bot Chat'
-const DEFAULT_LOOK: BotLook = { shape: 'squircle', color: '#6366f1' }
-
-export interface BotLook {
-  readonly shape: 'circle' | 'squircle'
-  /** `#rrggbb` */
-  readonly color: string
-}
 
 export interface BotDraft {
   readonly name: string
   readonly title: string
   readonly mission: string
-  readonly look: BotLook
+  readonly avatar: CrewAvatar
   readonly image?: string
   readonly model?: { readonly provider: string; readonly model: string }
 }
@@ -54,7 +48,7 @@ export class CreateBotError extends Error {
 }
 
 interface FinishBody {
-  readonly look?: BotLook
+  readonly avatar?: CrewAvatar
   readonly title?: string
   readonly image?: string
 }
@@ -147,8 +141,7 @@ async function runCreate(deps: BotDeps, draft: BotDraft): Promise<CreateResult> 
   const steps = new Steps()
   await steps.run('look', async () => {
     await updateBotMeta(deps.rpc, draft.name, {
-      shape: draft.look.shape,
-      color: draft.look.color,
+      ...avatarMetaPatch(draft.avatar),
       imageKind: draft.image ? 'photo' : 'shape',
       title: draft.title,
       created: deps.now()
@@ -173,9 +166,9 @@ async function runFinish(deps: BotDeps, name: string, body: FinishBody): Promise
   const { revision } = await readBotMeta(deps.rpc, name)
   const steps = new Steps()
   if (revision === 0) {
-    const look = body.look ?? DEFAULT_LOOK
-    const patch: Partial<BotMeta> = {
-      shape: look.shape, color: look.color, imageKind: body.image ? 'photo' : 'shape', title: body.title ?? titleCase(name), created: deps.now()
+    const patch = {
+      ...avatarMetaPatch(body.avatar ?? { type: deriveAvatarType(name) }),
+      imageKind: body.image ? 'photo' as const : 'shape' as const, title: body.title ?? titleCase(name), created: deps.now()
     }
     await steps.run('look', async () => {
       await updateBotMeta(deps.rpc, name, patch)

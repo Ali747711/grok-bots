@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { z } from 'zod'
 
+import { crewAvatarSchema } from '../bots/avatar.js'
 import { type BotDeps, createBot, finishBot } from '../bots/create.js'
 import { PROFILE_NAME_RE, validateBotName } from '../bots/names.js'
 import { failure } from './bot-errors.js'
@@ -10,17 +11,16 @@ import type { CrewEnv } from './session-guard.js'
 const BODY_MAX_BYTES = 3 * 1024 * 1024
 const IMAGE_MAX_CHARS = 2_700_000
 
-const look = z.object({ shape: z.enum(['circle', 'squircle']), color: z.string().regex(/^#[0-9a-fA-F]{6}$/) })
 const image = z.string().regex(/^data:image\/(png|jpeg|webp);base64,/).max(IMAGE_MAX_CHARS)
 const createBody = z.object({
   name: z.string(),
   title: z.string().max(80).default(''),
   mission: z.string().max(2000).default(''),
-  look,
+  avatar: crewAvatarSchema,
   image: image.optional(),
   model: z.object({ provider: z.string().min(1), model: z.string().min(1) }).optional()
 })
-const finishBody = z.object({ look: look.optional(), title: z.string().max(80).optional(), image: image.optional() })
+const finishBody = z.object({ avatar: crewAvatarSchema.optional(), title: z.string().max(80).optional(), image: image.optional() })
 
 /** `POST /crew/bots` (create) and `POST /crew/bots/:name/finish` (complete a half-made bot). */
 export function botRoutes(bots: BotDeps | undefined): Hono<CrewEnv> {

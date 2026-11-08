@@ -1,3 +1,4 @@
+import { type CrewAvatar, readCrewAvatar } from '../bots/avatar.js'
 import type { CrewSettings } from '../settings/settings-store.js'
 import type { PendingRequest } from './pending-store.js'
 import type { WatcherEvent } from './request-router.js'
@@ -11,6 +12,9 @@ export interface BotView {
   readonly shape: string | null
   readonly isPrimary: boolean
   readonly hasAvatar: boolean
+  /** The Crew avatar type and colour; null when never set or invalid. */
+  readonly avatar: CrewAvatar | null
+  readonly imageKind: 'photo' | 'shape' | null
   readonly model: string | null
   readonly sessionId: string | null
   readonly preview: string | null
@@ -113,6 +117,8 @@ export class BotStateTracker {
         shape: str(meta.shape),
         isPrimary,
         hasAvatar: row.has_avatar === true,
+        avatar: readCrewAvatar(meta.crewAvatar),
+        imageKind: meta.imageKind === 'photo' || meta.imageKind === 'shape' ? meta.imageKind : null,
         model: str(row.model),
         sessionId: chat?.resolved_id ?? chat?.id ?? null,
         preview: str(chat?.preview),
