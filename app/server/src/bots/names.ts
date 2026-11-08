@@ -31,11 +31,10 @@ export function slugifyProfileName(value: string): string {
 
 export type NameCheck = { ok: true } | { ok: false; reason: 'empty' | 'format' | 'reserved' }
 
-/** Mirrors the server: strip + lowercase, then the id regex, then the reserved list. */
+/** Strict, like the official client's NAME_RE: callers pass the final name, nothing is normalized. */
 export function validateBotName(name: string): NameCheck {
-  const normalized = name.trim().toLowerCase()
-  if (!normalized) return { ok: false, reason: 'empty' }
-  if (!PROFILE_NAME_RE.test(normalized)) return { ok: false, reason: 'format' }
-  if ((RESERVED_NAMES as readonly string[]).includes(normalized)) return { ok: false, reason: 'reserved' }
+  if (!name) return { ok: false, reason: 'empty' }
+  if (!PROFILE_NAME_RE.test(name)) return { ok: false, reason: 'format' }
+  if ((RESERVED_NAMES as readonly string[]).includes(name)) return { ok: false, reason: 'reserved' }
   return { ok: true }
 }

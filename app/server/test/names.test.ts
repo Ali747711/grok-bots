@@ -34,12 +34,15 @@ describe('slugifyProfileName', () => {
 describe('validateBotName', () => {
   it('accepts a good name and rejects reserved and malformed ones', () => {
     expect(validateBotName('scout')).toEqual({ ok: true })
-    for (const reserved of ['hermes', 'default', 'test', 'tmp', 'root', 'sudo', 'Default']) {
+    for (const reserved of ['hermes', 'default', 'test', 'tmp', 'root', 'sudo']) {
       expect(validateBotName(reserved)).toEqual({ ok: false, reason: 'reserved' })
+    }
+    for (const loose of ['Scout', ' scout ', 'MyBot', 'Default']) {
+      expect(validateBotName(loose)).toEqual({ ok: false, reason: 'format' })
     }
     expect(validateBotName('-a')).toEqual({ ok: false, reason: 'format' })
     expect(validateBotName('a'.repeat(65))).toEqual({ ok: false, reason: 'format' })
     expect(validateBotName('')).toEqual({ ok: false, reason: 'empty' })
-    expect(validateBotName('  ')).toEqual({ ok: false, reason: 'empty' })
+    expect(validateBotName('  ')).toEqual({ ok: false, reason: 'format' })
   })
 })
