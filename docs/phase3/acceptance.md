@@ -1,6 +1,6 @@
 # Crew Phase 3 (the bot computer): live acceptance
 
-Branch `crew-phase3`. Run on 2026-11-09 against the live VM (Hermes on 127.0.0.1:9120, Crew on 127.0.0.1:7070), on the final tree (the commit that adds this file; the web code under test is `fix: keep shift in the pasted ctrl+v chord` and everything before it).
+Branch `crew-phase3`. Run on 2026-11-09 against the live VM (Hermes on 127.0.0.1:9120, Crew on 127.0.0.1:7070), in two stages. The full e2e run (23/23) and the browser console/CSP checks ran on the tree before `9ce6bed` and before the final fix wave. After the fix wave the unit suites and every live spec that spends no LLM credit were re-run (see item 4); `crew.spec.ts` and the routine and delete specs, which spend credit, were not re-run after it.
 Every screenshot was taken on a test-owned `e2e<digits>` bot, deleted afterwards. Every other roster row (Hermes, Fixture, Reese, X) is masked grey with Playwright's `mask`, and no non-e2e transcript is visible. Every PNG was opened and checked before it was committed.
 Honest limits are marked **unverified** or **failed** below.
 
@@ -23,10 +23,11 @@ Evidence: `computer.spec.ts` "a Crew-started screen has the 15-minute idle stop 
 - Closed view hands back: `live-view.test.tsx` "hands back and closes 1000 when the Computer tab unmounts", `computer-panel.test.tsx` "hands back and closes 1000 when the Computer tab is left"; moving between the panel and Expand does not hand back ("keeps control when the view moves between the panel and Expand", and the three-round-trip test).
 
 ### 4. All unit suites pass, the 16 existing live e2e specs plus `computer.spec.ts` pass, no console errors or CSP violations
-- Web: `npm test -w web` gives 44 files, 528 tests passed. Server: `npm test -w server` gives 36 files, 433 tests passed.
-- Full live e2e, `cd app/e2e && npx playwright test`, run once on the final tree: **23 passed (4.4m)**. That is the 16 earlier specs, the 6 specs of `computer.spec.ts`, and the slow `idle-stop.spec.ts`.
+- After the final fix wave: web `npm test -w web` gives 46 files, 535 tests passed; server `npm test -w server` gives 37 files, 436 tests passed.
+- After the final fix wave, the live specs that spend no LLM credit, `npx playwright test computer.spec.ts idle-stop.spec.ts avatar.spec.ts phase2.spec.ts -g "^(?!.*(routine runs|deleting the bot))"`: **13 passed (1.6m)** (avatar 1, computer 6, idle-stop 1, phase2 5; the routine spec and the delete spec that follows it were left out, and `crew.spec.ts` spends credit).
+- Full live e2e, `cd app/e2e && npx playwright test`, run once, **before** `9ce6bed` and the final fix wave: **23 passed (4.4m)**. That is the 16 earlier specs, the 6 specs of `computer.spec.ts`, and the slow `idle-stop.spec.ts`.
 - `computer.spec.ts` covers: start from the Computer tab and non-blank canvas pixels; idle stop 15 in the config; take control reads a human lease from `display.status`, Expand and close keep it, Hand back reads agent; the header thumbnail with the tab closed; the use-screen switch round-trips `browser.headed` and `bot_desktop.auto_start` in Hermes's raw config; Stop.
-- Browser check (headless Chromium, live screen open, Take control, Expand, close, Hand back in each combination): **console errors 0, "Refused to" messages 0, `securitypolicyviolation` events 0** at 1440x900 light, 1440x900 dark, 1000x800 light and 1000x800 dark. The paste and demo runs also had 0 errors and 0 CSP violations.
+- Browser check (run before the final fix wave; headless Chromium, live screen open, Take control, Expand, close, Hand back in each combination): **console errors 0, "Refused to" messages 0, `securitypolicyviolation` events 0** at 1440x900 light, 1440x900 dark, 1000x800 light and 1000x800 dark. The paste and demo runs also had 0 errors and 0 CSP violations.
 
 ### 5. This document, with privacy-clean screenshots
 Screenshots (14 PNGs): `computer-off-*`, `live-bot-*`, `live-you-*`, `expand-*`, `header-thumbnail-*`, `use-screen-switch-*` (light and dark each), `demo-example-com-light.png` and `paste-terminal-light.png`. E2E bots only; the user's rows masked.
