@@ -8,6 +8,7 @@ import type { HermesToken } from './hermes/token.js'
 import { hostGuard } from './http/host-guard.js'
 import { originGuard } from './http/origin-guard.js'
 import { type CrewEnv, sessionGuard } from './http/session-guard.js'
+import type { Watcher } from './watcher/watcher.js'
 
 export interface AppDeps {
   readonly config: CrewConfig
@@ -16,6 +17,8 @@ export interface AppDeps {
   readonly now: () => number
   readonly token: HermesToken
   readonly fetchUpstream: typeof fetch
+  /** Absent in tests that don't need it; /crew/pending then answers 503. */
+  readonly watcher?: Pick<Watcher, 'store' | 'debug'>
 }
 
 export const PUBLIC_PATHS = [
@@ -33,6 +36,10 @@ export function createApp(deps: AppDeps): Hono<CrewEnv> {
   app.use('*', sessionGuard(deps.secrets.cookie, deps.now, PUBLIC_PATHS))
   app.get('/crew/health', c => c.json({ ok: true }))
   app.on(['GET', 'POST'], '/crew/whoami', c => c.json({ sid: c.get('sid') }))
+  app.get('/crew/pending', c => {
+    if (!deps.watcher) return c.json({ error: 'watcher_not_running' }, 503)
+    return c.json({ pending: deps.watcher.store.list(), debug: deps.watcher.debug() })
+  })
   app.route('/', authRoutes(deps))
   app.route('/', restProxy(deps))
   return app

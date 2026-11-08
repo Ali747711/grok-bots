@@ -7,9 +7,11 @@ import { createApp } from './app.js'
 import { ensureSecret } from './auth/secrets.js'
 import { TicketStore } from './auth/tickets.js'
 import { loadConfig } from './config.js'
+import { connectGateway, createGatewayClient } from './hermes/gateway-client.js'
 import { HermesToken } from './hermes/token.js'
 import { attachWsProxy } from './hermes/ws-proxy.js'
 import { log } from './log.js'
+import { startWatcher } from './watcher/watcher.js'
 
 /** Start the Crew server on loopback and return the Node server (WebSocket upgrades attach to it). */
 export async function start(): Promise<Server> {
@@ -19,7 +21,23 @@ export async function start(): Promise<Server> {
     cookie: await ensureSecret(join(config.stateDir, 'cookie-secret'))
   }
   const token = new HermesToken(config.hermesTokenFile)
-  const app = createApp({ config, secrets, tickets: new TicketStore(), now: Date.now, token, fetchUpstream: fetch })
+  const gateway = { config, token }
+  const client = createGatewayClient(gateway)
+  const watcher = startWatcher({
+    client,
+    connect: async () => {
+      try {
+        await connectGateway(client, gateway)
+      } catch (error) {
+        // A rotated token surfaces as a failed connect: re-read it before the next backoff attempt.
+        await token.refresh().catch(() => undefined)
+        throw error
+      }
+    },
+    now: Date.now,
+    reconnectDelayMs: attempt => Math.min(30_000, 1000 * 2 ** attempt)
+  })
+  const app = createApp({ config, secrets, tickets: new TicketStore(), now: Date.now, token, fetchUpstream: fetch, watcher })
   const server = serve({ fetch: app.fetch, hostname: config.host, port: config.port }, info => {
     log.info('crew listening', { host: config.host, port: info.port })
   }) as Server
