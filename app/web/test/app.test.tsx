@@ -38,9 +38,9 @@ describe('App routes', () => {
     expect(await screen.findByText('Bot not found')).toBeInTheDocument()
   })
 
-  it('has a Needs you placeholder', () => {
+  it('shows the Needs you page', () => {
     renderAt('/needs-you')
-    expect(screen.getByText('Coming soon')).toBeInTheDocument()
+    expect(screen.getByText('Nothing needs you right now.')).toBeInTheDocument()
   })
 
   it('waits for state before redirecting', () => {

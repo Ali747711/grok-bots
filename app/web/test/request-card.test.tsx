@@ -1,0 +1,126 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
+
+import { RequestCard } from '@/features/requests/RequestCard'
+import { choiceCopy } from '@/features/requests/choice-copy'
+import type { PendingView } from '@/state/types'
+
+const entry = (over: Partial<PendingView> = {}): PendingView => ({
+  id: 'p1', kind: 'approval', profile: 'dev', sessionId: 's', summary: 'Delete files — rm -r /tmp/x', choices: ['once', 'deny'],
+  receivedAt: 1, source: 'event', state: 'open', answerable: true, ...over
+})
+const noop = () => Promise.resolve(null)
+
+describe('choiceCopy', () => {
+  it('maps the known choices and falls back to the raw choice', () => {
+    expect(choiceCopy('once')).toEqual({ label: 'Allow once', hint: 'Just this time' })
+    expect(choiceCopy('session')).toEqual({ label: 'Allow for this chat', hint: 'Saves a rule for this kind of command until the chat ends' })
+    expect(choiceCopy('always')).toEqual({ label: 'Always allow', hint: 'Saves a permanent rule for this kind of command for this bot' })
+    expect(choiceCopy('deny')).toEqual({ label: 'Deny', hint: 'The bot is told no' })
+    expect(choiceCopy('weird')).toEqual({ label: 'weird', hint: '' })
+  })
+})
+
+describe('RequestCard: approval', () => {
+  it('renders only the choices hermes offered', () => {
+    render(<RequestCard entry={entry()} onAnswer={noop} />)
+    expect(screen.getAllByRole('button').map(b => b.textContent)).toEqual(['Allow once', 'Deny'])
+  })
+
+  it('shows the real command and description', () => {
+    render(<RequestCard entry={entry()} onAnswer={noop} />)
+    expect(screen.getByText('Delete files — rm -r /tmp/x')).toBeInTheDocument()
+  })
+
+  it('posts the chosen answer', async () => {
+    const onAnswer = vi.fn(noop)
+    render(<RequestCard entry={entry()} onAnswer={onAnswer} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Deny' }))
+    expect(onAnswer).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1' }), { choice: 'deny' })
+  })
+
+  it('explains session and always scopes in plain text and as a tooltip', () => {
+    render(<RequestCard entry={entry({ choices: ['once', 'session', 'always', 'deny'] })} onAnswer={noop} />)
+    expect(screen.getByRole('button', { name: 'Always allow' })).toHaveAttribute('title', 'Saves a permanent rule for this kind of command for this bot')
+    expect(screen.getByText(/Saves a rule for this kind of command until the chat ends/)).toBeInTheDocument()
+    expect(screen.getByText(/Saves a permanent rule for this kind of command for this bot/, { selector: 'p *, p' })).toBeInTheDocument()
+  })
+
+  it('shows the message returned by a rejected answer', async () => {
+    const onAnswer = vi.fn(() => Promise.resolve('Already answered'))
+    render(<RequestCard entry={entry()} onAnswer={onAnswer} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Allow once' }))
+    expect(await screen.findByText('Already answered')).toBeInTheDocument()
+  })
+
+  it('shows a spinner and disables the buttons while answering', () => {
+    render(<RequestCard entry={entry({ state: 'answering' })} onAnswer={noop} />)
+    expect(screen.getByText('Sending…')).toBeInTheDocument()
+    for (const b of screen.getAllByRole('button')) expect(b).toBeDisabled()
+  })
+
+  it('shows the failure reason in plain words and lets the user try again', () => {
+    const { rerender } = render(<RequestCard entry={entry({ state: 'failed', error: 'not_connected' })} onAnswer={noop} />)
+    expect(screen.getByText(/Hermes was offline/)).toBeInTheDocument()
+    for (const b of screen.getAllByRole('button')) expect(b).toBeEnabled()
+    rerender(<RequestCard entry={entry({ state: 'failed', error: 'stale_generation' })} onAnswer={noop} />)
+    expect(screen.getByText(/This request is no longer current/)).toBeInTheDocument()
+    rerender(<RequestCard entry={entry({ state: 'failed', error: 'odd_code' })} onAnswer={noop} />)
+    expect(screen.getByText(/odd_code/)).toBeInTheDocument()
+  })
+
+  it('has no controls for a request that cannot be answered here', () => {
+    render(<RequestCard entry={entry({ answerable: false })} onAnswer={noop} />)
+    expect(screen.queryAllByRole('button')).toHaveLength(0)
+    expect(screen.getByText('Delete files — rm -r /tmp/x')).toBeInTheDocument()
+    expect(screen.getByText('Answer this in the app that asked')).toBeInTheDocument()
+  })
+})
+
+describe('RequestCard: clarify', () => {
+  const clarify = (over: Partial<PendingView> = {}) => entry({ kind: 'clarify', summary: 'Which branch?', choices: ['main', 'dev'], ...over })
+
+  it('sends a clicked choice', () => {
+    const onAnswer = vi.fn(noop)
+    render(<RequestCard entry={clarify()} onAnswer={onAnswer} />)
+    fireEvent.click(screen.getByRole('button', { name: 'dev' }))
+    expect(onAnswer).toHaveBeenCalledWith(expect.anything(), { answer: 'dev' })
+  })
+
+  it('sends free text, and an empty skip', () => {
+    const onAnswer = vi.fn(noop)
+    render(<RequestCard entry={clarify({ choices: undefined })} onAnswer={onAnswer} />)
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'release' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    expect(onAnswer).toHaveBeenLastCalledWith(expect.anything(), { answer: 'release' })
+    fireEvent.click(screen.getByRole('button', { name: 'Skip' }))
+    expect(onAnswer).toHaveBeenLastCalledWith(expect.anything(), { answer: '' })
+  })
+})
+
+describe('RequestCard: secret and sudo', () => {
+  it('uses a masked input labelled by kind, clears it after submit and never keeps the value', async () => {
+    const onAnswer = vi.fn(noop)
+    render(<RequestCard entry={entry({ kind: 'sudo', summary: 'apt update', choices: undefined })} onAnswer={onAnswer} />)
+    expect(screen.getByText('Password needed to run: apt update')).toBeInTheDocument()
+    const input = screen.getByLabelText(/Password needed/) as HTMLInputElement
+    expect(input.type).toBe('password')
+    expect(input.autocomplete).toBe('off')
+    fireEvent.change(input, { target: { value: 'hunter2' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    expect(onAnswer).toHaveBeenCalledWith(expect.anything(), { value: 'hunter2' })
+    await waitFor(() => expect(input.value).toBe(''))
+    expect(document.body.innerHTML).not.toContain('hunter2')
+  })
+
+  it('clears the value even when the answer is rejected', async () => {
+    const onAnswer = vi.fn(() => Promise.resolve('Hermes is offline — try again when it’s back'))
+    render(<RequestCard entry={entry({ kind: 'secret', summary: 'API key for X', choices: undefined })} onAnswer={onAnswer} />)
+    const input = screen.getByLabelText('API key for X') as HTMLInputElement
+    fireEvent.change(input, { target: { value: 'sekret' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(await screen.findByText(/Hermes is offline/)).toBeInTheDocument()
+    expect(input.value).toBe('')
+    expect(document.body.innerHTML).not.toContain('sekret')
+  })
+})

@@ -64,6 +64,24 @@ describe('ChatView', () => {
     expect(transcript.contains(screen.getByRole('heading', { name: 'Dev' }))).toBe(false)
   })
 
+  it('pins this bot\u2019s requests above the composer, outside the transcript, oldest first, and answers through Crew', async () => {
+    const fetchMock = vi.fn((url: string) => Promise.resolve(new Response(String(url).includes('/answer') ? '{"status":"sent"}' : JSON.stringify({ messages: [] }), { status: url.includes('/answer') ? 202 : 200 })))
+    vi.stubGlobal('fetch', fetchMock)
+    const mk = (id: string, profile: string, receivedAt: number) => ({ id, kind: 'approval' as const, profile, sessionId: 's', summary: `cmd ${id}`, choices: ['once', 'deny'], receivedAt, source: 'event' as const, state: 'open' as const, answerable: true })
+    render(<ChatView bot={dev} state={crewState({ pending: [mk('late', 'dev', 20), mk('other', 'researcher', 5), mk('early', 'dev', 10)] })} crewConnected />)
+    await flush()
+    const cards = screen.getAllByTestId('request-card')
+    expect(cards.map(c => c.textContent)).toEqual([expect.stringContaining('cmd early'), expect.stringContaining('cmd late')])
+    const transcript = screen.getByTestId('transcript')
+    for (const c of cards) expect(transcript.contains(c)).toBe(false)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Allow once' })[0]!)
+    await flush()
+    const call = fetchMock.mock.calls.find(c => String(c[0]).includes('/answer'))!
+    expect(call[0]).toBe('/crew/requests/early/answer')
+    expect((call[1] as RequestInit).method).toBe('POST')
+    expect(JSON.parse((call[1] as RequestInit).body as string)).toEqual({ choice: 'once' })
+  })
+
   it('sends from the composer and shows the message', async () => {
     render(<ChatView bot={dev} state={crewState()} crewConnected />)
     await flush()
