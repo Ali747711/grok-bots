@@ -1,6 +1,6 @@
 # Crew UI rebuild: live acceptance
 
-Branch `crew-ui`, base 93e530a. Run on 2026-11-09 against the live VM (Hermes on 127.0.0.1:9120, Crew on 127.0.0.1:7070).
+Branch `crew-ui`. Task 11 work started from 93e530a; the binding full e2e run (16/16) was on c33f633; the final-review fix wave (6cbcee8) was re-checked with the unit suites and the 6-spec cheap e2e subset (see the ledger). Run on 2026-11-09 against the live VM (Hermes on 127.0.0.1:9120, Crew on 127.0.0.1:7070).
 Every screenshot was taken on test-owned `e2e<digits>` bots (deleted afterwards) or on the Fixture bot with its whole transcript masked.
 All other roster rows (Hermes, Fixture, Reese, x) are masked grey in the roster shots.
 
