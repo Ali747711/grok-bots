@@ -115,6 +115,19 @@ export class PendingStore {
     }
   }
 
+  /**
+   * Resume replays the server requests Hermes still holds for a session. Server-request entries
+   * (srq-…) of those sessions that are absent were answered, withdrawn or expired meanwhile.
+   */
+  reconcileRequests(sessionIds: readonly string[], liveIds: ReadonlySet<string>, requestedAt: number): void {
+    for (const entry of this.list()) {
+      const requestBased = entry.source === 'server_request' || entry.source === 'open_request'
+      if (requestBased && sessionIds.includes(entry.sessionId) && !liveIds.has(entry.id) && entry.receivedAt < requestedAt) {
+        this.settle(entry.id, 'settled')
+      }
+    }
+  }
+
   /** Unsettled requests, oldest first. */
   list(): readonly PendingRequest[] {
     return [...this.entries.values()].filter(entry => !entry.settled)

@@ -76,12 +76,15 @@ export function stateRoutes(watcher: Pick<Watcher, 'state' | 'onChange' | 'answe
     if (!entry) return reply({ error: 'not_found' }, 404)
     if (entry.settled) return reply({ status: 'already_resolved' }, 409)
     if (entry.answerState === 'answering') return reply({ status: 'answering' }, 409)
-    if (watcher.state().pending.find(p => p.id === id)?.answerable === false) return reply({ error: 'unsupported', hint: 'answer in the app that asked' }, 422)
+    // Offline is reported as 503 by watcher.answer; "unsupported" only makes sense while connected.
+    const snapshot = watcher.state()
+    if (snapshot.hermes === 'connected' && snapshot.pending.find(p => p.id === id)?.answerable === false) return reply({ error: 'unsupported', hint: 'answer in the app that asked' }, 422)
     const body = bodies[entry.kind].safeParse(raw)
     if (!body.success) return reply({ error: 'bad_body' }, 400)
     if ('choice' in body.data && !entry.choices?.includes(body.data.choice)) return reply({ error: 'bad_choice' }, 400)
     const outcome = watcher.answer(id, body.data)
     if (outcome === 'offline') return reply({ error: 'hermes_offline' }, 503)
+    if (outcome === 'unsupported') return reply({ error: 'unsupported', hint: 'answer in the app that asked' }, 422)
     return outcome === 'sent' ? reply({ status: 'sent' }, 202) : reply({ status: outcome }, 409)
   })
   return routes

@@ -18,6 +18,7 @@ class Fake implements WatcherClient {
   readonly calls: { method: string; params: Record<string, unknown>; timeout?: number }[] = []
   rpcResult: unknown = { status: 'resolved', prompt_id: 'p-1' }
   rpcError: Error | null = null
+  openRequests: { id: string; method: string; params: Record<string, unknown> }[] = []
   private requestHandlers: ((r: Req) => boolean | void)[] = []
   private eventHandlers: Handler<{ type: string; session_id?: string; payload?: unknown }>[] = []
   close(): void {}
@@ -32,7 +33,7 @@ class Fake implements WatcherClient {
     this.calls.push({ method, params, ...(timeout ? { timeout } : {}) })
     if (method === 'profiles.list') return { profiles: [{ name: 'crew-test', canonical_session: { id: 'stored' } }] } as T
     if (method === 'session.resume') {
-      return { session_id: 'run-fixture', stored_session_id: 'stored', execution_generation: 3, running: false,
+      return { session_id: 'run-fixture', stored_session_id: 'stored', execution_generation: 3, running: false, open_requests: this.openRequests,
         prompts: [{ kind: 'approval', prompt_id: 'p-1', execution_generation: 3, choices: ['once', 'deny'], command: 'rm -r /tmp/x' }] } as T
     }
     if (this.rpcError) throw this.rpcError
@@ -177,6 +178,7 @@ describe('POST /crew/requests/:id/answer', () => {
     expect(watcher.state().hermes).toBe('connecting')
     expect((await post('srq-1', { value: 'v' })).status).toBe(503)
     expect(entry('srq-1')).toMatchObject({ state: 'failed', error: 'not_connected' })
+    client.openRequests = [{ id: 'srq-1', method: 'secret', params: { session_id: 'run-fixture' } }]
     release()
     await flush(); await flush(); await flush()
     expect(watcher.state().hermes).toBe('connected')
@@ -462,5 +464,63 @@ describe('session tip following', () => {
     await flush(); await flush()
     expect(w.state().pending[0]).toMatchObject({ id: 'orphan', profile: 'crew-test' })
     w.stop()
+  })
+})
+
+
+describe('stale server-request handles after a reconnect', () => {
+  async function reconnecting() {
+    watcher.stop()
+    let clock = 0
+    watcher = startWatcher({ client, connect: () => connectImpl(), now: () => ++clock, reconnectDelayMs: () => 0 })
+    app = createApp({ ...base, watcher })
+    await flush(); await flush()
+    const stale = secretRequest()
+    let release: () => void = () => undefined
+    connectImpl = () => new Promise<void>(resolve => { release = resolve })
+    client.emitState('closed')
+    await flush()
+    return { stale, reconnect: async () => { release(); await flush(); await flush(); await flush() } }
+  }
+
+  it('drops the handle on disconnect: the entry is not answerable until reconciled', async () => {
+    const { stale } = await reconnecting()
+    expect(entry('srq-1')?.answerable).toBe(false)
+    expect((await post('srq-1', { value: 'v' })).status).toBe(503)
+    expect(stale.respond).not.toHaveBeenCalled()
+  })
+
+  it('settles a held secret that Hermes no longer lists after reconnect, and never calls the old closure', async () => {
+    const { stale, reconnect } = await reconnecting()
+    client.openRequests = []
+    await reconnect()
+    expect(watcher.state().hermes).toBe('connected')
+    expect(entry('srq-1')).toBeUndefined()
+    expect(watcher.store.get('srq-1')?.settled).toBe('settled')
+    const res = await post('srq-1', { value: 'v' })
+    expect(res.status).not.toBe(202)
+    expect(res.status).toBe(409)
+    expect(stale.respond).not.toHaveBeenCalled()
+  })
+
+  it('refuses answers between reconnect and the replayed handle (422, nothing sent)', async () => {
+    const { stale, reconnect } = await reconnecting()
+    client.openRequests = [{ id: 'srq-1', method: 'secret', params: { session_id: 'run-fixture' } }]
+    await reconnect()
+    expect(entry('srq-1')).toMatchObject({ answerable: false })
+    const res = await post('srq-1', { value: 'v' })
+    expect(res.status).toBe(422)
+    expect(stale.respond).not.toHaveBeenCalled()
+  })
+
+  it('binds the new handle when Hermes still lists the request, and answers only through it', async () => {
+    const { stale, reconnect } = await reconnecting()
+    client.openRequests = [{ id: 'srq-1', method: 'secret', params: { session_id: 'run-fixture' } }]
+    await reconnect()
+    const fresh = secretRequest()
+    expect(entry('srq-1')).toMatchObject({ answerable: true })
+    expect((await post('srq-1', { value: 'again' })).status).toBe(202)
+    expect(fresh.respond).toHaveBeenCalledWith({ value: 'again' })
+    expect(stale.respond).not.toHaveBeenCalled()
   })
 })

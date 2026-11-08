@@ -36,7 +36,7 @@ export interface Watcher {
   /** Fires (debounced 100 ms) when anything in `state()` may have changed. */
   onChange(listener: () => void): () => void
   /** Send the user's answer to Hermes without waiting for it; progress shows in `state()`. */
-  answer(id: string, input: AnswerInput): 'sent' | 'not_found' | 'already_resolved' | 'answering' | 'offline'
+  answer(id: string, input: AnswerInput): 'sent' | 'not_found' | 'already_resolved' | 'answering' | 'offline' | 'unsupported'
   /** The bot's avatar as a `data:` URL via `profiles.get_asset`; `found: false` when it has none. */
   getAvatar(name: string): Promise<{ found: boolean; mime?: string; data?: string }>
   debug(): readonly DebugEntry[]
@@ -161,6 +161,7 @@ export function startWatcher(deps: WatcherDeps): Watcher {
         recordSnapshot(row.name, snap)
         const sessionIds = [snap.session_id, snap.stored_session_id].filter((id): id is string => Boolean(id))
         store.reconcile(sessionIds, new Set((snap.prompts ?? []).map(p => p.prompt_id)), requestedAt)
+        store.reconcileRequests(sessionIds, new Set((snap.open_requests ?? []).map(r => r.id)), requestedAt)
         note('subscribed', `${row.name} ${storedId} → ${snap.session_id}`)
         changed()
       } catch (error) {
@@ -280,6 +281,8 @@ export function startWatcher(deps: WatcherDeps): Watcher {
     client.onState(state => {
       if (state === 'closed' || state === 'error') {
         connectionEpoch += 1
+        // Handles are bound to the dead connection: answering through one would report success for nothing.
+        held.clear()
         setHermes(authClosed ? 'signed_out' : 'offline')
         scheduleReconnect()
       }
@@ -329,6 +332,7 @@ export function startWatcher(deps: WatcherDeps): Watcher {
         store.markAnswer(id, 'failed', 'not_connected')
         return 'offline'
       }
+      if (!isAnswerable(entry)) return 'unsupported'
       store.markAnswer(id, 'answering')
       void deliverAnswer(entry, input)
       return 'sent'
