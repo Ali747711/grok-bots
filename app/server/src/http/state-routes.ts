@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { streamSSE } from 'hono/streaming'
 import { z } from 'zod'
 
-import type { Watcher } from '../watcher/watcher.js'
+import { isUnsupported, type Watcher } from '../watcher/watcher.js'
 import type { CrewEnv } from './session-guard.js'
 
 const HEARTBEAT_MS = 15_000
@@ -42,6 +42,7 @@ export function stateRoutes(watcher: Pick<Watcher, 'state' | 'onChange' | 'answe
     if (!entry) return c.json({ error: 'not_found' }, 404)
     if (entry.settled) return c.json({ status: 'already_resolved' }, 409)
     if (entry.answerState === 'answering') return c.json({ status: 'answering' }, 409)
+    if (isUnsupported(entry)) return c.json({ error: 'unsupported', hint: 'answer in the app that asked' }, 422)
     const body = bodies[entry.kind].safeParse(await c.req.json().catch(() => null))
     if (!body.success) return c.json({ error: 'bad_body' }, 400)
     if ('choice' in body.data && !entry.choices?.includes(body.data.choice)) return c.json({ error: 'bad_choice' }, 400)

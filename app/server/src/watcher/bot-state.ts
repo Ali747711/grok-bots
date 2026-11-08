@@ -19,6 +19,8 @@ export interface BotView {
 
 export type PendingView = Omit<PendingRequest, 'settled'> & {
   readonly state: 'open' | 'answering' | 'failed'
+  /** False when Crew cannot answer it (answer in the app that asked). */
+  readonly answerable: boolean
   readonly error?: string
 }
 

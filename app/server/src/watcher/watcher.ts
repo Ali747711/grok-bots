@@ -62,6 +62,9 @@ const AUTH_CLOSE_CODES = new Set([4401, 4403])
 const AUTH_ERROR = /\b(4401|4403|401|403)\b/
 const noop = () => undefined
 
+/** Batch clarify server requests (other clients' turns) need an answer shape Crew has no UI for. */
+export const isUnsupported = (e: Pick<PendingRequest, 'kind' | 'source'>): boolean => e.kind === 'clarify' && e.source === 'server_request'
+
 /**
  * Headless observer: one upstream connection, subscribed to every bot's canonical "Bot Chat", holding
  * approval/question/secret requests for the Needs-you inbox. It never answers on the user's behalf.
@@ -220,6 +223,8 @@ export function startWatcher(deps: WatcherDeps): Watcher {
     try {
       const outcome = await answerRequest(entry, input, { client, ...(serverRequest ? { serverRequest } : {}) })
       if (outcome === 'already_resolved') store.settle(entry.id, 'settled')
+      // A response to an srq- request is final and Hermes never acknowledges it to us, so settle now.
+      else if (serverRequest) store.settle(entry.id, 'answered')
     } catch (error) {
       // Never include the input: it may be a secret. Hermes' own reason (e.g. stale_generation) is safe.
       const reason = serverRequest ? 'send_failed' : error instanceof Error ? error.message.slice(0, 200) : 'send_failed'
@@ -273,6 +278,7 @@ export function startWatcher(deps: WatcherDeps): Watcher {
         pending: open.map(({ settled: _s, settledAt: _t, answerState, answerError, ...rest }) => ({
           ...rest,
           state: answerState ?? ('open' as const),
+          answerable: !isUnsupported(rest),
           ...(answerState === 'failed' && answerError ? { error: answerError } : {})
         }))
       }

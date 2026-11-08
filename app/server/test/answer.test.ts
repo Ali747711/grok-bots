@@ -60,8 +60,8 @@ function post(id: string, body: unknown, headers: Record<string, string> = {}) {
 }
 const entry = (id: string) => watcher.state().pending.find(p => p.id === id)
 
-function secretRequest(value = 'srq-1') {
-  const req = { id: value, method: 'secret', params: { session_id: 'run-fixture', prompt: 'API key', env_var: 'K' },
+function secretRequest(value = 'srq-1', method = 'secret', extra: Record<string, unknown> = {}) {
+  const req = { id: value, method, params: { session_id: 'run-fixture', prompt: 'API key', env_var: 'K', ...extra },
     replayed: false, respond: vi.fn(), fail: vi.fn(), decline: vi.fn() }
   client.emitRequest(req as unknown as Req)
   return req
@@ -126,8 +126,36 @@ describe('POST /crew/requests/:id/answer', () => {
     expect(req.decline).not.toHaveBeenCalled()
     await flush()
     restore()
+    expect(entry('srq-1')).toBeUndefined()
+    expect(watcher.store.get('srq-1')?.settled).toBe('answered')
     const exposed = JSON.stringify(watcher.state()) + JSON.stringify(watcher.debug()) + lines.join('\n') + JSON.stringify(watcher.store.get('srq-1'))
     expect(exposed).not.toContain('sk-live-123')
+  })
+
+  it('settles a held approval server request after respond, and keeps a failed one open', async () => {
+    const ok = secretRequest('srq-2', 'approval', { choices: ['once', 'deny'] })
+    expect((await post('srq-2', { choice: 'once' })).status).toBe(202)
+    expect(ok.respond).toHaveBeenCalledWith({ choice: 'once' })
+    expect(entry('srq-2')).toBeUndefined()
+    expect(watcher.store.get('srq-2')?.settled).toBe('answered')
+    const bad = secretRequest('srq-3', 'sudo')
+    bad.respond.mockImplementation(() => { throw new Error('closed') })
+    await post('srq-3', { value: 'pw' })
+    await flush()
+    expect(entry('srq-3')?.state).toBe('failed')
+    expect(watcher.store.get('srq-3')?.settled).toBeUndefined()
+  })
+
+  it('does not answer held clarify server requests: 422 unsupported, nothing sent, answerable false', async () => {
+    const req = secretRequest('srq-4', 'clarify')
+    expect(entry('srq-4')?.answerable).toBe(false)
+    expect(entry('p-1')?.answerable).toBe(true)
+    const res = await post('srq-4', { answer: 'x' })
+    expect(res.status).toBe(422)
+    expect(await res.json()).toEqual({ error: 'unsupported', hint: 'answer in the app that asked' })
+    expect(req.respond).not.toHaveBeenCalled()
+    expect(req.fail).not.toHaveBeenCalled()
+    expect(req.decline).not.toHaveBeenCalled()
   })
 
   it('does not leak the value when the answer fails', async () => {
