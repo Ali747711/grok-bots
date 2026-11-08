@@ -130,6 +130,23 @@ describe('RunHistory', () => {
   })
 })
 
+describe('status badges', () => {
+  it('colours each status with theme tokens', async () => {
+    stub({
+      [RUNS]: () => json([
+        run({ id: 'a' }), run({ id: 'b', status: 'running', endedAt: null }), run({ id: 'c', status: 'failed', sessionId: null, error: 'x' }),
+        run({ id: 'd', status: 'cancelled', sessionId: null }), run({ id: 'e', status: 'missed', endedAt: null, sessionId: null })
+      ])
+    })
+    open()
+    expect(await screen.findByText('Running')).toHaveClass('bg-sky-soft', 'text-sky-ink')
+    expect(screen.getByText('Done')).toHaveClass('bg-muted', 'text-foreground')
+    expect(screen.getByText('Failed')).toHaveClass('bg-danger-soft', 'text-danger-ink')
+    expect(screen.getByText('Cancelled')).toHaveClass('bg-muted', 'text-muted-foreground')
+    expect(screen.getByText('Missed')).toHaveClass('bg-muted', 'text-muted-foreground')
+  })
+})
+
 describe('cron scaffolding', () => {
   const SCAFFOLD = '[IMPORTANT: You are running as a scheduled cron job. DELIVERY: Your final response will be automatically delivered to the user — do not use send_message.]\n\nReply with exactly: X'
 

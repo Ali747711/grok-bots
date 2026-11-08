@@ -5,6 +5,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { SchedulePicker } from '@/features/routines/SchedulePicker'
 import type { ScheduleSpec } from '@/features/routines/types'
 
+import { pickOption } from './select-helpers'
+
 function Harness({ initial, spy }: { initial: ScheduleSpec; spy: (s: ScheduleSpec) => void }) {
   const [value, setValue] = useState(initial)
   return <SchedulePicker value={value} onChange={next => { setValue(next); spy(next) }} />
@@ -18,60 +20,74 @@ const set = (label: string, value: string) => fireEvent.change(screen.getByLabel
 const last = (spy: ReturnType<typeof vi.fn>) => spy.mock.calls.at(-1)?.[0]
 
 describe('SchedulePicker', () => {
+  it('uses a Select for When and keeps free typing in amounts', () => {
+    const spy = setup()
+    expect(screen.getByRole('combobox', { name: 'When' })).toHaveTextContent('Every day')
+    pickOption('When', 'Every…')
+    expect(screen.getByRole('combobox', { name: 'When' })).toHaveTextContent('Every…')
+    expect(screen.getByRole('combobox', { name: 'Unit' })).toHaveTextContent('hours')
+    const amount = screen.getByLabelText('Amount')
+    fireEvent.change(amount, { target: { value: '' } })
+    expect(amount).toHaveValue(null)
+    fireEvent.change(amount, { target: { value: '45' } })
+    expect(amount).toHaveValue(45)
+    expect(last(spy)).toEqual({ kind: 'every', amount: 45, unit: 'h' })
+  })
+
   it('emits Weekdays with the chosen time', () => {
     const spy = setup()
-    set('When', 'weekdays')
+    pickOption('When', 'Weekdays')
     set('Time', '09:30')
     expect(last(spy)).toEqual({ kind: 'weekdays', time: '09:30' })
   })
 
   it('emits Once after an amount and unit', () => {
     const spy = setup()
-    set('When', 'once_in')
+    pickOption('When', 'Once, after…')
     set('Amount', '30')
-    set('Unit', 'm')
+    pickOption('Unit', 'minutes')
     expect(last(spy)).toEqual({ kind: 'once_in', amount: 30, unit: 'm' })
   })
 
   it('emits Once at a date and time', () => {
     const spy = setup()
-    set('When', 'once_at')
+    pickOption('When', 'Once, at…')
     set('Date and time', '2026-12-01T08:15')
     expect(last(spy)).toEqual({ kind: 'once_at', at: '2026-12-01T08:15' })
   })
 
   it('emits Every with an amount and unit', () => {
     const spy = setup()
-    set('When', 'every')
+    pickOption('When', 'Every…')
     set('Amount', '2')
-    set('Unit', 'h')
+    pickOption('Unit', 'hours')
     expect(last(spy)).toEqual({ kind: 'every', amount: 2, unit: 'h' })
   })
 
   it('emits Every day', () => {
     const spy = setup({ kind: 'weekdays', time: '07:00' })
-    set('When', 'daily')
+    pickOption('When', 'Every day')
     expect(last(spy)).toEqual({ kind: 'daily', time: '07:00' })
   })
 
   it('emits Every week with a day (Sunday is 0)', () => {
     const spy = setup()
-    set('When', 'weekly')
-    set('Day of the week', '0')
+    pickOption('When', 'Every week')
+    pickOption('Day of the week', 'Sunday')
     set('Time', '18:00')
     expect(last(spy)).toEqual({ kind: 'weekly', day: 0, time: '18:00' })
   })
 
   it('emits Every month with a day 1-31', () => {
     const spy = setup()
-    set('When', 'monthly')
+    pickOption('When', 'Every month')
     set('Day of the month', '31')
     expect(last(spy)).toEqual({ kind: 'monthly', day: 31, time: '09:00' })
   })
 
   it('emits a custom cron expression', () => {
     const spy = setup()
-    set('When', 'cron')
+    pickOption('When', 'Custom (cron)')
     set('Cron expression', '*/5 * * * *')
     expect(last(spy)).toEqual({ kind: 'cron', expr: '*/5 * * * *' })
   })
@@ -86,7 +102,7 @@ describe('SchedulePicker', () => {
 
   it('labels the kind select When', () => {
     setup()
-    expect(screen.getByLabelText('When')).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'When' })).toBeInTheDocument()
   })
 
   it('lets the amount be cleared and retyped', () => {

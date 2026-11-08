@@ -15,6 +15,12 @@
     --color-contrast-muted: var(--contrast-muted);
     --color-contrast-danger: var(--contrast-danger);
     --color-contrast-line: var(--contrast-line);
+    --color-ok-soft: var(--ok-soft);
+    --color-ok-ink: var(--ok-ink);
+    --color-warn-soft: var(--warn-soft);
+    --color-warn-ink: var(--warn-ink);
+    --color-danger-soft: var(--danger-soft);
+    --color-danger-ink: var(--danger-ink);
     --color-sky: var(--sky);
     --color-sky-ink: var(--sky-ink);
     --color-sky-soft: var(--sky-soft);
@@ -100,6 +106,12 @@
     --contrast-muted: rgba(255, 255, 255, 0.1);
     --contrast-danger: oklch(0.704 0.191 22.216);
     --contrast-line: rgba(255, 255, 255, 0.4);
+    --ok-soft: #e3f6e8;
+    --ok-ink: #146c2e;
+    --warn-soft: #fdf0d5;
+    --warn-ink: #8a4b00;
+    --danger-soft: #fde4e4;
+    --danger-ink: #b42318;
     --sky: #1f8ef1;
     --sky-ink: #126bb8;
     --sky-soft: #e3f0fe;
@@ -144,6 +156,12 @@
     --contrast-muted: rgba(255, 255, 255, 0.08);
     --contrast-danger: oklch(0.704 0.191 22.216);
     --contrast-line: rgba(255, 255, 255, 0.4);
+    --ok-soft: #12301c;
+    --ok-ink: #6ee7a0;
+    --warn-soft: #3a2a0c;
+    --warn-ink: #fbbf24;
+    --danger-soft: #3a1517;
+    --danger-ink: #ff8a8a;
     --sky: #1f8ef1;
     --sky-ink: #1f8ef1;
     --sky-soft: #10263d;

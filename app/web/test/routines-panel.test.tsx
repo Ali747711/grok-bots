@@ -1,10 +1,11 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { RoutinesPanel } from '@/features/routines/RoutinesPanel'
 import type { RoutineView } from '@/features/routines/types'
 
 import { bot } from './fixtures'
+import { pickOption } from './select-helpers'
 
 const json = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status }))
 const routine = (over: Partial<RoutineView> = {}): RoutineView => ({
@@ -46,7 +47,7 @@ describe('RoutinesPanel list', () => {
     expect(await screen.findByText('Daily digest')).toBeInTheDocument()
     expect(screen.getByText(/Every day at 9:00\s?AM/)).toBeInTheDocument()
     expect(screen.queryByText('0 9 * * *')).toBeNull()
-    expect(screen.getByText(/Next: Nov 9, 2026/)).toBeInTheDocument()
+    expect(screen.getByText(/Next · Nov 9, 2026/)).toBeInTheDocument()
     expect(screen.getByText('Delivery failed')).toBeInTheDocument()
   })
 
@@ -124,10 +125,10 @@ describe('RoutinesPanel form', () => {
     const fn = stub({ [LIST]: () => json([]), 'POST /crew/routines?bot=dev': () => json(routine(), 201) })
     open()
     await fill()
-    fireEvent.change(screen.getByLabelText('When'), { target: { value: 'weekdays' } })
+    pickOption('When', 'Weekdays')
     fireEvent.change(screen.getByLabelText('Time'), { target: { value: '09:30' } })
     fireEvent.change(screen.getByLabelText('Timezone'), { target: { value: 'Asia/Tokyo' } })
-    fireEvent.click(screen.getByLabelText(/Also post the result in the chat/))
+    fireEvent.click(screen.getByRole('checkbox', { name: /Also post the result in the chat/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(callsTo(fn, 'POST /crew/routines?bot=dev')).toHaveLength(1))
     expect(body(callsTo(fn, 'POST /crew/routines?bot=dev')[0])).toEqual({
@@ -167,7 +168,7 @@ describe('RoutinesPanel form', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
     expect(screen.getByLabelText('Title')).toHaveValue('Daily digest')
     expect(screen.getByLabelText('Timezone')).toHaveValue('Europe/London')
-    expect(screen.getByLabelText(/Also post the result in the chat/)).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: /Also post the result in the chat/ })).toBeChecked()
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Digest' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(callsTo(fn, 'PUT /crew/routines/r1?bot=dev')).toHaveLength(1))
@@ -178,7 +179,7 @@ describe('RoutinesPanel form', () => {
     const fn = stub({ [LIST]: () => json([]) })
     open()
     await fill()
-    fireEvent.change(screen.getByLabelText('When'), { target: { value: 'cron' } })
+    pickOption('When', 'Custom (cron)')
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
     await new Promise(r => setTimeout(r, 450))
     const previews = () => callsTo(fn, 'POST /crew/routines/preview').map(c => body(c).schedule.kind)
@@ -192,7 +193,7 @@ describe('RoutinesPanel form', () => {
     stub({ [LIST]: () => json([]) })
     open()
     await fill()
-    fireEvent.change(screen.getByLabelText('When'), { target: { value: 'once_at' } })
+    pickOption('When', 'Once, at…')
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
     fireEvent.change(screen.getByLabelText('Date and time'), { target: { value: '2026-12-01T08:15' } })
     expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
@@ -239,6 +240,17 @@ describe('RoutinesPanel form', () => {
 })
 
 describe('RoutinesPanel finished routines and row errors', () => {
+  it('renders routine rows as cards with a pause switch and result badge', async () => {
+    stub({ [LIST]: () => json([routine({ lastStatus: 'ok' }), routine({ id: 'r2', title: 'Other', lastStatus: 'blocked_config', lastError: 'no key' })]) })
+    open()
+    const rows = await screen.findAllByRole('listitem')
+    expect(rows[0]).toHaveClass('bg-muted', 'rounded-2xl')
+    expect(within(rows[0]!).getByRole('switch', { name: 'Daily digest enabled' })).toBeChecked()
+    expect(within(rows[0]!).getByText('OK')).toHaveClass('bg-ok-soft', 'text-ok-ink')
+    expect(within(rows[1]!).getByText('Config problem')).toHaveClass('bg-warn-soft', 'text-warn-ink')
+    expect(within(rows[0]!).getByText(/^Next/)).toHaveClass('label-mono')
+  })
+
   it('W2: a finished routine shows Done with no switch and no Run now', async () => {
     stub({ [LIST]: () => json([routine({ enabled: false, finished: true, state: 'completed', nextRunAt: null })]) })
     open()

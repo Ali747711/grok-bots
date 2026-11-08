@@ -145,9 +145,11 @@ test('a routine runs on schedule and via Run now, shows in history and in Hermes
 
   // One-shot after 1 minute, results kept in run history only.
   await addRoutine(page, pingTitle, `Reply with exactly: ${ROUTINE_MARK}`)
-  await page.getByLabel('When').selectOption('once_in')
+  await page.getByRole('combobox', { name: 'When' }).click()
+  await page.getByRole('option', { name: 'Once, after…' }).click()
   await page.getByLabel('Amount').fill('1')
-  await page.getByLabel('Unit').selectOption('m')
+  await page.getByRole('combobox', { name: 'Unit' }).click()
+  await page.getByRole('option', { name: 'minutes' }).click()
   await page.getByRole('button', { name: 'Save' }).click()
   await expect(routineRow(page, pingTitle)).toBeVisible({ timeout: 60_000 })
 

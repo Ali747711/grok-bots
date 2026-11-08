@@ -1,6 +1,8 @@
 import { useState } from 'react'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 
 import { describeSchedule } from './describe-schedule'
@@ -9,11 +11,11 @@ import { CrewApiError, deleteRoutine, pauseRoutine, resumeRoutine, runRoutine } 
 import type { LastStatus, RoutineView } from './types'
 import { formatInZone } from './use-schedule-preview'
 
-const RESULT: Record<LastStatus, { text: string; bad: boolean }> = {
-  ok: { text: 'OK', bad: false },
-  error: { text: 'Error', bad: true },
-  delivery_failed: { text: 'Delivery failed', bad: true },
-  blocked_config: { text: 'Config problem', bad: true }
+const RESULT: Record<LastStatus, { text: string; tone: string }> = {
+  ok: { text: 'OK', tone: 'bg-ok-soft text-ok-ink' },
+  error: { text: 'Error', tone: 'bg-danger-soft text-danger-ink' },
+  delivery_failed: { text: 'Delivery failed', tone: 'bg-danger-soft text-danger-ink' },
+  blocked_config: { text: 'Config problem', tone: 'bg-warn-soft text-warn-ink' }
 }
 
 interface RoutineRowProps {
@@ -56,24 +58,24 @@ function useRowActions(routine: RoutineView, onChanged: () => void) {
 
 function PauseSwitch({ routine, onToggle }: { routine: RoutineView; onToggle: () => void }) {
   return (
-    <button
-      type="button" role="switch" aria-checked={routine.enabled} aria-label={`${routine.title} enabled`} onClick={onToggle}
-      className={cn('h-5 w-9 rounded-full border border-border p-0.5 transition-colors', routine.enabled ? 'bg-foreground' : 'bg-secondary')}
-    >
-      <span className={cn('block size-3.5 rounded-full bg-background transition-transform', routine.enabled ? 'translate-x-4' : 'bg-muted-foreground')} />
-    </button>
+    <Switch
+      checked={routine.enabled}
+      onCheckedChange={onToggle}
+      aria-label={`${routine.title} enabled`}
+      className="data-checked:bg-foreground data-unchecked:border-muted-foreground"
+    />
   )
 }
 
 /** Next run, "Paused", or "Done" for a routine Hermes has finished (nothing left to pause, resume or run). */
 function StatusLine({ routine }: { routine: RoutineView }) {
   const result = routine.lastStatus ? RESULT[routine.lastStatus] : null
-  const text = routine.finished ? 'Done' : routine.enabled ? (routine.nextRunAt !== null ? `Next: ${formatInZone(routine.nextRunAt, routine.timezone)}` : '') : 'Paused'
+  const text = routine.finished ? 'Done' : routine.enabled ? (routine.nextRunAt !== null ? `Next · ${formatInZone(routine.nextRunAt, routine.timezone)}` : '') : 'Paused'
   return (
-    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-      <span>{text}</span>
-      {routine.finished && routine.lastRunAt !== null && <span>{formatInZone(routine.lastRunAt, routine.timezone)}</span>}
-      {result && <span title={routine.lastError ?? undefined} className={cn('rounded-full bg-secondary px-1.5', result.bad && 'text-destructive')}>{result.text}</span>}
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="label-mono">{text}</span>
+      {routine.finished && routine.lastRunAt !== null && <span className="label-mono">{formatInZone(routine.lastRunAt, routine.timezone)}</span>}
+      {result && <Badge title={routine.lastError ?? undefined} className={cn('h-5 px-2 text-xs', result.tone)}>{result.text}</Badge>}
     </div>
   )
 }
@@ -84,9 +86,9 @@ export function RoutineRow({ routine, onChanged, onEdit, historyOpen, onToggleHi
   const { note, runTick, run, toggle, remove } = useRowActions(routine, onChanged)
 
   return (
-    <li className="flex flex-col gap-1.5 rounded-lg border border-border p-3 text-sm">
+    <li className="flex flex-col gap-2 rounded-2xl bg-muted p-3 text-sm">
       <div className="flex items-center gap-2">
-        <span className="min-w-0 flex-1 truncate font-medium">{routine.title}</span>
+        <span className="min-w-0 flex-1 truncate font-semibold">{routine.title}</span>
         {!routine.finished && <PauseSwitch routine={routine} onToggle={() => void toggle()} />}
       </div>
       <div className="text-xs text-muted-foreground">{describeSchedule(routine.schedule)}</div>

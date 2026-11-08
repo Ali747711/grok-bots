@@ -1,8 +1,10 @@
 import { useState } from 'react'
 
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-import { durationText, STATUS_WORD } from './run-format'
+import { durationText, RUN_TONE, STATUS_WORD } from './run-format'
 import { RunTranscript } from './RunTranscript'
 import type { RunView } from './types'
 import { useRuns } from './use-runs'
@@ -23,15 +25,14 @@ interface RunHistoryProps {
 const cleanTitle = (title: string) => title.replace(/^\[bot:[a-z0-9][a-z0-9_-]*\]\s*/, '')
 
 function RunSummary({ run, timezone }: { run: RunView; timezone: string | null }) {
-  const bad = run.status === 'failed' || run.status === 'missed'
   return (
     <>
       <span className="flex items-center gap-2">
-        <span className={cn('rounded-full bg-secondary px-1.5 text-xs', bad && 'text-destructive')}>{STATUS_WORD[run.status]}</span>
+        <Badge className={cn('h-5 px-2 text-xs', RUN_TONE[run.status])}>{STATUS_WORD[run.status]}</Badge>
         <span className="text-xs text-muted-foreground">{formatInZone(run.startedAt, timezone)}</span>
         <span className="ml-auto text-xs text-muted-foreground">{durationText(run)}</span>
       </span>
-      {run.error && <span className="block text-xs text-destructive">{run.error}</span>}
+      {run.error && <span className="mt-1 block text-xs text-danger-ink">{run.error}</span>}
     </>
   )
 }
@@ -44,7 +45,7 @@ export function RunHistory({ bot, routineId, timezone, instruction, refreshKey }
   if (openSession) {
     return (
       <div className="flex flex-col gap-2">
-        <button type="button" onClick={() => setOpenSession(null)} className="self-start text-xs underline">Back to runs</button>
+        <Button type="button" size="xs" variant="ghost" onClick={() => setOpenSession(null)} className="self-start">Back to runs</Button>
         <RunTranscript bot={bot} sessionId={openSession} instruction={instruction} />
       </div>
     )
@@ -54,14 +55,14 @@ export function RunHistory({ bot, routineId, timezone, instruction, refreshKey }
   return (
     <ul className="flex flex-col gap-1">
       {runs.map(run => (
-        <li key={run.id} className="rounded-md border border-border text-sm">
+        <li key={run.id} className="rounded-xl bg-card text-sm">
           {run.sessionId ? (
-            <button type="button" onClick={() => setOpenSession(run.sessionId)} className="w-full p-2 text-left hover:bg-secondary">
+            <button type="button" onClick={() => setOpenSession(run.sessionId)} className="w-full rounded-xl p-2.5 text-left hover:bg-muted">
               <span className="sr-only">{cleanTitle(run.title)}</span>
               <RunSummary run={run} timezone={timezone} />
             </button>
           ) : (
-            <div className="p-2">
+            <div className="p-2.5">
               <span className="block truncate text-xs">{cleanTitle(run.title)}</span>
               <RunSummary run={run} timezone={timezone} />
             </div>

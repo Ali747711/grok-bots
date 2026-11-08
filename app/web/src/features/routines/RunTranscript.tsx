@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { fetchHistory } from '@/chat/open-bot-chat'
 import type { ChatItem } from '@/chat/types'
 import { MessageList } from '@/features/chat/MessageList'
@@ -54,13 +55,13 @@ export function RunTranscript({ bot, sessionId, instruction }: { bot: string; se
   if (failed) return <p className="p-3 text-sm text-muted-foreground">Couldn't load this run.</p>
   if (!items) return <p className="p-3 text-sm text-muted-foreground">Loading…</p>
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col gap-2">
       {hasBlockedStep(items) && (
-        <p role="status" className="rounded-lg border border-border bg-secondary p-2 text-xs">
-          Blocked by policy — routines can't ask for approval, so that step was skipped.
-        </p>
+        <Alert role="status">
+          <AlertDescription>Blocked by policy — routines can't ask for approval, so that step was skipped.</AlertDescription>
+        </Alert>
       )}
-      <div className="max-h-96 overflow-y-auto"><MessageList items={items} /></div>
+      <div className="max-h-96 overflow-y-auto rounded-xl bg-muted"><MessageList items={items} /></div>
     </div>
   )
 }
