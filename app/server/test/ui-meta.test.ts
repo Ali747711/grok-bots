@@ -1,49 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { HermesRpcError, type Rpc } from '../src/hermes/errors.js'
 import { BotMetaWriteError, BotNotFoundError, readBotMeta, updateBotMeta } from '../src/bots/ui-meta.js'
+import { FakeRpc } from './fake-rpc.js'
 
 type Obj = Record<string, unknown>
-
-/** Scripted Hermes: a profiles.list/configure pair with real compare-and-swap semantics. */
-class FakeRpc {
-  rows = new Map<string, { meta?: Obj; rev?: number }>()
-  configures: Obj[] = []
-  alwaysConflict = false
-  rejectWrites = false
-  private hook: (() => void) | null = null
-
-  meta(name: string, meta: Obj, rev: number): void {
-    this.rows.set(name, { meta, rev })
-  }
-  onNextConfigure(fn: () => void): void {
-    this.hook = fn
-  }
-  call: Rpc = async <T>(method: string, params: Obj) => {
-    if (method === 'profiles.list') {
-      return { profiles: [...this.rows].map(([name, r]) => ({
-        name,
-        ui_meta: r.meta ? { 'hermes-bots': r.meta } : {},
-        ui_meta_revisions: r.rev === undefined ? {} : { 'hermes-bots': r.rev }
-      })) } as T
-    }
-    if (method !== 'profiles.configure') throw new HermesRpcError(-32601, 'method not found')
-    this.configures.push(params)
-    const hook = this.hook
-    this.hook = null
-    hook?.()
-    const row = this.rows.get(params.name as string)!
-    const expected = (params.ui_meta_expected_revisions as Obj)['hermes-bots']
-    const actual = row.rev ?? 0
-    if (this.alwaysConflict || expected !== actual) {
-      return { ok: false, applied: { ui_meta: false, ui_meta_conflicts: { 'hermes-bots': { expected, actual } }, ui_meta_revisions: { 'hermes-bots': actual } } } as T
-    }
-    if (this.rejectWrites) return { ok: false, applied: { ui_meta: false } } as T
-    row.meta = (params.ui_meta as Obj)['hermes-bots'] as Obj
-    row.rev = actual + 1
-    return { ok: true, applied: { ui_meta: true, ui_meta_revisions: { 'hermes-bots': row.rev } } } as T
-  }
-}
 
 let rpc: FakeRpc
 beforeEach(() => {

@@ -16,6 +16,10 @@ export interface BotView {
   readonly preview: string | null
   readonly lastActive: number | null
   readonly status: BotStatus
+  readonly hidden: boolean
+  /** A non-primary bot whose look was never written (create stopped half-way); finish it. */
+  readonly setupIncomplete: boolean
+  readonly created: number | null
 }
 
 export type PendingView = Omit<PendingRequest, 'settled'> & {
@@ -39,6 +43,7 @@ export interface ProfileInput {
   readonly model?: string | null
   readonly has_avatar?: boolean
   readonly ui_meta?: Record<string, unknown> | null
+  readonly ui_meta_revisions?: Record<string, unknown> | null
   readonly canonical_session?: {
     readonly id?: string
     readonly resolved_id?: string
@@ -112,7 +117,10 @@ export class BotStateTracker {
         sessionId: chat?.resolved_id ?? chat?.id ?? null,
         preview: str(chat?.preview),
         lastActive: num(chat?.last_active) ?? null,
-        status
+        status,
+        hidden: meta.hidden === true,
+        setupIncomplete: !isPrimary && !(num(row.ui_meta_revisions?.['hermes-bots']) ?? 0),
+        created: num(meta.created) ?? null
       }
     })
   }
