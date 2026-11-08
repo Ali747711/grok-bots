@@ -118,7 +118,7 @@ async function createProfile(deps: BotDeps, draft: BotDraft): Promise<void> {
   try {
     await deps.rpc('profiles.create', {
       name,
-      description: [title, mission].filter(Boolean).join(' — '),
+      description: mission,
       clone_from: 'default',
       share_auth: true,
       no_skills: false,

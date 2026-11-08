@@ -21,7 +21,7 @@ describe('createBot', () => {
   it('calls hermes in the official order with the official params', async () => {
     const result = await createBot(deps, draft)
     expect(rpc.methods()).toEqual(['profiles.create', 'profiles.list', 'profiles.configure', 'setup.runtime_check', 'session.create'])
-    expect(rpc.params('profiles.create')).toEqual({ name: 'scout', description: 'Researcher — Find papers', clone_from: 'default',
+    expect(rpc.params('profiles.create')).toEqual({ name: 'scout', description: 'Find papers', clone_from: 'default',
       share_auth: true, no_skills: false, soul: composeSoul({ name: 'scout', title: 'Researcher', mission: 'Find papers' }) })
     expect(rpc.of('profiles.create')[0]!.timeoutMs).toBe(120_000)
     expect(rpc.params('session.create')).toEqual({ profile: 'scout', title: 'Bot Chat', hidden: true, follow_profile_config: true })
@@ -34,7 +34,7 @@ describe('createBot', () => {
   it('sends the model, the avatar and a photo imageKind when given', async () => {
     const image = 'data:image/png;base64,AAAA'
     const result = await createBot(deps, { ...draft, mission: '', image, model: { provider: 'openrouter', model: 'x/y' } })
-    expect(rpc.params('profiles.create')).toMatchObject({ description: 'Researcher', model: 'x/y', provider: 'openrouter' })
+    expect(rpc.params('profiles.create')).toMatchObject({ description: '', model: 'x/y', provider: 'openrouter' })
     expect(rpc.methods()).toEqual(['profiles.create', 'profiles.list', 'profiles.configure', 'profiles.set_asset', 'setup.runtime_check', 'session.create'])
     expect(rpc.params('profiles.set_asset')).toEqual({ name: 'scout', asset: 'avatar', data: image })
     expect(((rpc.configures[0]!.ui_meta as Record<string, unknown>)['hermes-bots'] as Record<string, unknown>).imageKind).toBe('photo')
