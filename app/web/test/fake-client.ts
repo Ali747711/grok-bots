@@ -11,6 +11,13 @@ export class FakeClient implements ChatClient {
   private anyHandlers = new Set<(event: GatewayEvent) => void>()
   private stateHandlers = new Set<(state: string) => void>()
 
+  /** Per-session replay barrier promises (resolve true when the client's replay has dispatched). */
+  barriers: Record<string, Promise<boolean> | undefined> = {}
+
+  sessionReplayBarrier(sessionId: string): Promise<boolean> | undefined {
+    return this.barriers[sessionId]
+  }
+
   get connectionState(): string {
     return this.state
   }

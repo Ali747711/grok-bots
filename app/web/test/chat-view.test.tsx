@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MessageList } from '@/features/chat/MessageList'
 import type { ChatItem } from '@/chat/types'
 
+import { JsonRpcGatewayError } from '@/vendor/hermes/json-rpc-channel'
+
 import { FakeClient } from './fake-client'
 import { bot, crewState } from './fixtures'
 
@@ -94,7 +96,7 @@ describe('ChatView', () => {
   })
 
   it('swallows a rejected send (the notice is already in the list)', async () => {
-    client.handlers['prompt.submit'] = () => { throw new Error('session_busy') }
+    client.handlers['prompt.submit'] = () => { throw new JsonRpcGatewayError('session_busy', { code: -32000 }) }
     render(<ChatView bot={dev} state={crewState()} crewConnected />)
     await flush()
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'ping' } })
@@ -133,6 +135,25 @@ describe('ChatView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Stop' }))
     await flush()
     expect(client.calls.find(c => c.method === 'session.interrupt')?.params).toEqual({ profile: 'dev', session_id: 'live-1', execution_generation: 2 })
+  })
+
+  it('disables Stop while disconnected', async () => {
+    render(<ChatView bot={dev} state={crewState()} crewConnected />)
+    await flush()
+    act(() => { client.emit({ type: 'message.start', session_id: 'live-1', payload: {}, execution_generation: 2 }) })
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeEnabled()
+    act(() => client.setState('closed'))
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeDisabled()
+  })
+
+  it('shows a Stop failure in the transcript', async () => {
+    client.handlers['session.interrupt'] = () => { throw new JsonRpcGatewayError('session_busy', { code: -32000 }) }
+    render(<ChatView bot={dev} state={crewState()} crewConnected />)
+    await flush()
+    act(() => { client.emit({ type: 'message.start', session_id: 'live-1', payload: {}, execution_generation: 2 }) })
+    fireEvent.click(screen.getByRole('button', { name: 'Stop' }))
+    await flush()
+    expect(screen.getByText('Couldn’t stop — session busy')).toBeInTheDocument()
   })
 
   it('retries when the first open fails while connected and says so', async () => {

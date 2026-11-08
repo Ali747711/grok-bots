@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ChatSession, type ChatClient } from '@/chat/chat-session'
 import type { ChatItem } from '@/chat/types'
+import { JsonRpcGatewayError } from '@/vendor/hermes/json-rpc-channel'
 import type { JsonRpcGatewayClient } from '@/vendor/hermes/json-rpc-gateway'
 
 import { FakeClient } from './fake-client'
@@ -99,7 +100,7 @@ describe('ChatSession', () => {
   it('replaces the local message with a notice when the submit is rejected', async () => {
     const { client, session } = setup()
     await session.open()
-    client.handlers['prompt.submit'] = () => { throw new Error('session_busy') }
+    client.handlers['prompt.submit'] = () => { throw new JsonRpcGatewayError('session_busy', { code: -32000 }) }
     await expect(session.send('nope')).rejects.toThrow('session_busy')
     expect(texts(session.items)).not.toContain('user:nope')
     expect(texts(session.items).at(-1)).toBe('notice:Not sent: session_busy')
@@ -283,6 +284,210 @@ describe('ChatSession', () => {
       expect(session.canSend).toBe(false)
       expect(session.error).toBe('Reconnecting to the chat…')
       session.close()
+    })
+  })
+
+  describe('history hydration (W5, W4)', () => {
+    it('retries history on the next open instead of treating a failed load as recovered', async () => {
+      fetchMock.mockResolvedValueOnce(new Response('boom', { status: 500 }))
+      const { session } = setup()
+      await expect(session.open()).rejects.toThrow()
+      expect(session.canSend).toBe(false)
+      await session.open()
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(session.canSend).toBe(true)
+      expect(texts(session.items)).toEqual(['user:earlier question', 'assistant:earlier answer'])
+    })
+
+    const deferredHistory = () => {
+      let release: (r: Response) => void = () => undefined
+      fetchMock.mockImplementationOnce(() => new Promise<Response>(resolve => { release = resolve }))
+      return (rows: unknown[]) => release(historyBody(rows))
+    }
+    const complete = (rowIds: number[]) => frame('message.complete', { text: 'Reply', status: 'complete', persisted_turn: { row_ids: rowIds, complete: true } })
+
+    it('shows a turn that finished during the history load exactly once (persisted in history)', async () => {
+      const release = deferredHistory()
+      const { client, session } = setup()
+      const opening = session.open()
+      await flush()
+      client.emit(frame('message.start', {}))
+      client.emit(frame('message.delta', { text: 'Reply', turn_id: 't', segment: 0, offset: 0 }))
+      client.emit(complete([1, 2]))
+      release([row(1, 'user', 'question'), row(2, 'assistant', 'Reply')])
+      await opening
+      expect(texts(session.items)).toEqual(['user:question', 'assistant:Reply'])
+    })
+
+    it('shows a live-only turn once when history does not hold it yet', async () => {
+      const release = deferredHistory()
+      const { client, session } = setup()
+      const opening = session.open()
+      await flush()
+      client.emit(frame('message.start', {}))
+      client.emit(frame('message.delta', { text: 'Reply', turn_id: 't', segment: 0, offset: 0 }))
+      client.emit(complete([3, 4]))
+      release([row(1, 'user', 'question'), row(2, 'assistant', 'older')])
+      await opening
+      expect(texts(session.items)).toEqual(['user:question', 'assistant:older', 'assistant:Reply'])
+    })
+
+    it('does the same after a replay gap reload', async () => {
+      const { client, session } = setup()
+      await session.open()
+      const release = deferredHistory()
+      client.emit(frame('session.replay_gap', {}, { execution_generation: undefined }))
+      await flush()
+      client.emit(frame('message.start', {}, { execution_generation: 5 }))
+      client.emit(frame('message.delta', { text: 'Reply', turn_id: 't9', segment: 0, offset: 0 }, { execution_generation: 5 }))
+      client.emit(frame('message.complete', { text: 'Reply', status: 'complete', persisted_turn: { row_ids: [1, 2], complete: true } }, { execution_generation: 5 }))
+      release([row(1, 'user', 'question'), row(2, 'assistant', 'Reply')])
+      await flush()
+      expect(texts(session.items)).toEqual(['user:question', 'assistant:Reply'])
+    })
+  })
+
+  describe('resume ordering (W3)', () => {
+    it('waits for the replay barrier before advancing the generation or enabling send', async () => {
+      const { client, session } = setup({ running: true, execution_generation: 4 })
+      await session.open()
+      const f = (type: string, payload: unknown, generation: number, extra: Record<string, unknown> = {}) => ({ type, session_id: SID, payload, execution_generation: generation, ...extra })
+      client.emit(f('message.start', {}, 4))
+      client.emit(f('message.delta', { text: 'partial', turn_id: 't4', segment: 0, offset: 0 }, 4))
+      client.setState('closed')
+
+      let openBarrier: (ok: boolean) => void = () => undefined
+      client.barriers[SID] = new Promise<boolean>(resolve => { openBarrier = resolve })
+      client.handlers['session.resume'] = () => ({ session_id: SID, execution_generation: 5, running: true })
+      client.setState('open')
+      await flush()
+      // The resume answered (generation 5) but the replay of generation 4 has not arrived yet.
+      expect(session.canSend).toBe(false)
+      client.emit(f('message.delta', { text: ' ending', turn_id: 't4', segment: 0, offset: 7 }, 4, { replayed: true }))
+      client.emit(f('message.complete', { text: 'partial ending', status: 'complete' }, 4, { replayed: true }))
+      client.emit(f('message.start', {}, 5, { replayed: true }))
+      client.emit(f('message.delta', { text: 'next', turn_id: 't5', segment: 0, offset: 0 }, 5, { replayed: true }))
+      openBarrier(true)
+      await flush()
+      expect(session.canSend).toBe(true)
+      expect(texts(session.items).filter(t => t.startsWith('assistant:'))).toEqual(['assistant:partial ending', 'assistant:next'])
+    })
+
+    it('retries the re-open when the replay barrier reports a lost socket', async () => {
+      const { client, session } = setup()
+      await session.open()
+      client.setState('closed')
+      client.barriers[SID] = Promise.resolve(false)
+      client.setState('open')
+      for (let i = 0; i < 3; i += 1) await flush()
+      expect(session.canSend).toBe(false)
+      expect(session.error).toBe('Reconnecting to the chat…')
+      session.close()
+    })
+  })
+
+  describe('stop (W6)', () => {
+    it('scopes the generation to the session id (a new session at generation 1 stops at 1)', async () => {
+      const { client, session } = setup({ execution_generation: 12 })
+      await session.open()
+      client.setState('closed')
+      client.handlers['session.resume'] = () => ({ session_id: 'live-2', execution_generation: 1, running: true })
+      client.setState('open')
+      for (let i = 0; i < 3; i += 1) await flush()
+      await session.stop()
+      expect(client.callsOf('session.interrupt')[0]?.params).toEqual({ profile: 'default', session_id: 'live-2', execution_generation: 1 })
+    })
+
+    it('shows a notice when the interrupt is rejected, in plain words', async () => {
+      const { client, session } = setup()
+      await session.open()
+      client.handlers['session.interrupt'] = () => { throw new JsonRpcGatewayError('session_busy', { code: -32000 }) }
+      await session.stop()
+      expect(texts(session.items).at(-1)).toBe('notice:Couldn’t stop — session busy')
+    })
+
+    it('does not show raw JSON in the stop failure notice', async () => {
+      const { client, session } = setup()
+      await session.open()
+      client.handlers['session.interrupt'] = () => { throw new Error('{"code":-32000,"data":{"x":1}}') }
+      await session.stop()
+      expect(texts(session.items).at(-1)).toBe('notice:Couldn’t stop — unexpected error')
+    })
+
+    it('reports connected state', async () => {
+      const { client, session } = setup()
+      await session.open()
+      expect(session.connected).toBe(true)
+      client.setState('closed')
+      expect(session.connected).toBe(false)
+    })
+  })
+
+  describe('uncertain delivery (W7)', () => {
+    const transportFailure = () => new Error('WebSocket closed')
+    const lastUser = (session: ChatSession) => session.items.findLast(i => i.kind === 'user') as Extract<ChatItem, { kind: 'user' }>
+
+    it('does not report Not sent when the turn started before the receipt was lost', async () => {
+      const { client, session } = setup()
+      await session.open()
+      client.handlers['prompt.submit'] = () => {
+        client.emit(frame('message.start', {}))
+        throw transportFailure()
+      }
+      await expect(session.send('hello')).resolves.toBeDefined()
+      expect(texts(session.items).join('|')).not.toContain('Not sent')
+      expect(lastUser(session)).toMatchObject({ text: 'hello' })
+      expect(lastUser(session).delivery).toBeUndefined()
+      expect(session.running).toBe(true)
+    })
+
+    it('shows a transport failure as checking, then Not sent with Retry when nothing happened after reconnect', async () => {
+      const { client, session } = setup()
+      await session.open()
+      client.handlers['prompt.submit'] = () => { client.setState('closed'); throw transportFailure() }
+      await session.send('hello')
+      expect(lastUser(session)).toMatchObject({ text: 'hello', delivery: 'checking' })
+      client.handlers['session.resume'] = () => ({ session_id: SID, execution_generation: 3, running: false })
+      client.setState('open')
+      for (let i = 0; i < 4; i += 1) await flush()
+      expect(lastUser(session)).toMatchObject({ text: 'hello', delivery: 'not_sent' })
+
+      client.handlers['prompt.submit'] = () => ({ status: 'started' })
+      await session.retry(lastUser(session).submissionId!)
+      const submits = client.callsOf('prompt.submit')
+      expect(submits).toHaveLength(2)
+      expect(submits[1]?.params.submission_id).toBe(submits[0]?.params.submission_id)
+      expect(lastUser(session).delivery).toBeUndefined()
+    })
+
+    it('marks the message delivered when the snapshot after reconnect shows the turn running', async () => {
+      const { client, session } = setup()
+      await session.open()
+      client.handlers['prompt.submit'] = () => { client.setState('closed'); throw transportFailure() }
+      await session.send('hello')
+      client.handlers['session.resume'] = () => ({ session_id: SID, execution_generation: 4, running: true })
+      client.setState('open')
+      for (let i = 0; i < 4; i += 1) await flush()
+      expect(lastUser(session).delivery).toBeUndefined()
+    })
+
+    it('marks the message delivered when history shows it after reconnect', async () => {
+      const { client, session } = setup()
+      await session.open()
+      client.handlers['prompt.submit'] = () => { client.setState('closed'); throw transportFailure() }
+      await session.send('hello')
+      fetchMock.mockImplementation(() => Promise.resolve(historyBody([row(1, 'user', 'earlier question'), row(2, 'assistant', 'earlier answer'), row(3, 'user', 'hello')])))
+      client.setState('open')
+      for (let i = 0; i < 4; i += 1) await flush()
+      expect(lastUser(session).delivery).toBeUndefined()
+    })
+
+    it('keeps the plain Not sent notice for a definite rejection from Hermes', async () => {
+      const { client, session } = setup()
+      await session.open()
+      client.handlers['prompt.submit'] = () => { throw new JsonRpcGatewayError('session_busy', { code: -32000 }) }
+      await expect(session.send('nope')).rejects.toThrow('session_busy')
+      expect(texts(session.items).at(-1)).toBe('notice:Not sent: session_busy')
     })
   })
 })
