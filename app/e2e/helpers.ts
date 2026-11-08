@@ -61,3 +61,14 @@ export async function deleteTestBots(): Promise<string[]> {
   for (const name of names) await hermesRest('DELETE', `/api/profiles/${encodeURIComponent(name)}`)
   return names
 }
+
+/** Create a bot through the New bot dialog with a chosen handle (test-owned: `e2e<digits>`), and wait until Crew opens it. */
+export async function createBotInDialog(page: Page, title: string, handle: string): Promise<void> {
+  await page.goto(CREW)
+  await page.getByRole('button', { name: '+ New bot', exact: true }).click()
+  await page.getByLabel('Name', { exact: true }).fill(title)
+  await page.getByRole('button', { name: 'Change handle', exact: true }).click()
+  await page.getByLabel('Handle').fill(handle)
+  await page.getByRole('button', { name: 'Create', exact: true }).click()
+  await expect(page).toHaveURL(new RegExp(`/bots/${handle}$`), { timeout: 120_000 })
+}
