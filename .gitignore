@@ -5,3 +5,7 @@ coverage/
 research/*.txt
 .env*
 .superpowers/
+app/e2e/node_modules/
+app/e2e/test-results/
+app/e2e/playwright-report/
+app/e2e/.auth/
