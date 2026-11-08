@@ -130,6 +130,31 @@ describe('turn reducer (captured fixture turn)', () => {
     })
   })
 
+  it('does not overwrite sealed interim commentary with a non-streamed final answer', () => {
+    const start = find('message.start')
+    const delta: TurnFrame = { ...start, type: 'message.delta', payload: { text: 'Checking first', turn_id: 't', segment: 0, offset: 0 } }
+    const seal: TurnFrame = { ...start, type: 'message.interim', payload: { text: 'Checking first', already_streamed: true, turn_id: 't', segment: 0 } }
+    const complete = withPayload(find('message.complete'), { text: 'Final answer' })
+    const state = play(initialTurnState, [start, delta, seal, complete])
+    expect(assistantText(state)).toEqual(['Checking first', 'Final answer'])
+  })
+
+  it('does not duplicate a closed segment whose text equals the final answer', () => {
+    const start = find('message.start')
+    const delta: TurnFrame = { ...start, type: 'message.delta', payload: { text: 'Same text', turn_id: 't', segment: 0, offset: 0 } }
+    const close: TurnFrame = { ...start, type: 'message.delta', payload: { text: null } }
+    const state = play(initialTurnState, [start, delta, close, withPayload(find('message.complete'), { text: 'Same text' })])
+    expect(assistantText(state)).toEqual(['Same text'])
+  })
+
+  it('keeps tool activity when a running turn is opened mid-way (no message.start seen)', () => {
+    const running: TurnState = { ...initialTurnState, generation: 6, running: true }
+    const state = play(running, [find('tool.start'), find('tool.complete')])
+    const works = state.items.filter(i => i.kind === 'work')
+    expect(works).toHaveLength(1)
+    expect(works[0]).toMatchObject({ steps: [{ name: 'terminal', running: false }] })
+  })
+
   it('replaying a completed tool-less turn changes nothing and keeps ids unique', () => {
     const turn = [find('message.start'), { ...find('message.delta'), payload: { text: 'Hello there', turn_id: 't9', segment: 0, offset: 0 } }, withPayload(find('message.complete'), { text: 'Hello there' })]
     const once = play(initialTurnState, turn)
