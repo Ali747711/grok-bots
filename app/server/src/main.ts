@@ -8,6 +8,7 @@ import { ensureSecret } from './auth/secrets.js'
 import { TicketStore } from './auth/tickets.js'
 import { loadConfig } from './config.js'
 import { HermesToken } from './hermes/token.js'
+import { attachWsProxy } from './hermes/ws-proxy.js'
 import { log } from './log.js'
 
 /** Start the Crew server on loopback and return the Node server (WebSocket upgrades attach to it). */
@@ -21,8 +22,9 @@ export async function start(): Promise<Server> {
   const app = createApp({ config, secrets, tickets: new TicketStore(), now: Date.now, token, fetchUpstream: fetch })
   const server = serve({ fetch: app.fetch, hostname: config.host, port: config.port }, info => {
     log.info('crew listening', { host: config.host, port: info.port })
-  })
-  return server as Server
+  }) as Server
+  attachWsProxy(server, { config, token, cookieKey: secrets.cookie, now: Date.now })
+  return server
 }
 
 start().catch(error => {
