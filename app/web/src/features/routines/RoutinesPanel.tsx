@@ -14,6 +14,8 @@ type Editing = { kind: 'new' } | { kind: 'edit'; routine: RoutineView } | null
 export function RoutinesPanel({ bot }: { bot: BotView }) {
   const { routines, error, reload } = useRoutines(bot.name)
   const [editing, setEditing] = useState<Editing>(null)
+  // One routine's history is open at a time.
+  const [historyFor, setHistoryFor] = useState<string | null>(null)
 
   if (editing) {
     return (
@@ -36,7 +38,10 @@ export function RoutinesPanel({ bot }: { bot: BotView }) {
       )}
       {routines && routines.length > 0 && (
         <ul className="flex flex-col gap-2">
-          {routines.map(r => <RoutineRow key={r.id} routine={r} onChanged={() => void reload()} onEdit={() => setEditing({ kind: 'edit', routine: r })} />)}
+          {routines.map(r => <RoutineRow
+              key={r.id} routine={r} onChanged={() => void reload()} onEdit={() => setEditing({ kind: 'edit', routine: r })}
+              historyOpen={historyFor === r.id} onToggleHistory={() => setHistoryFor(cur => (cur === r.id ? null : r.id))}
+            />)}
         </ul>
       )}
     </div>

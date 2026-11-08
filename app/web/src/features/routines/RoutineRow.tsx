@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 import { describeSchedule } from './describe-schedule'
+import { RunHistory } from './RunHistory'
 import { deleteRoutine, pauseRoutine, resumeRoutine, runRoutine } from './routines-api'
 import type { LastStatus, RoutineView } from './types'
 import { formatInZone } from './use-schedule-preview'
@@ -19,11 +20,15 @@ interface RoutineRowProps {
   routine: RoutineView
   onChanged: () => void
   onEdit: () => void
+  historyOpen: boolean
+  onToggleHistory: () => void
 }
 
 /** Every action ends with a re-read; a failure shows as a note on the row. */
 function useRowActions(routine: RoutineView, onChanged: () => void) {
   const [note, setNote] = useState<string | null>(null)
+  // Bumped after Run now so an open history re-reads at once.
+  const [runTick, setRunTick] = useState(0)
   const act = async (action: () => Promise<unknown>, fail: string) => {
     setNote(null)
     try {
@@ -35,9 +40,11 @@ function useRowActions(routine: RoutineView, onChanged: () => void) {
   }
   return {
     note,
+    runTick,
     run: () =>
       act(async () => {
         if ((await runRoutine(routine.bot, routine.id)) === 'already_running') setNote('Already running')
+        setRunTick(t => t + 1)
       }, 'Could not start the routine'),
     toggle: () => act(() => (routine.enabled ? pauseRoutine : resumeRoutine)(routine.bot, routine.id), 'Could not change the routine'),
     remove: () => act(() => deleteRoutine(routine.bot, routine.id), 'Could not delete the routine')
@@ -45,9 +52,9 @@ function useRowActions(routine: RoutineView, onChanged: () => void) {
 }
 
 /** One routine: schedule, next run, last result, pause switch, Run now, Edit, Delete (with confirmation). */
-export function RoutineRow({ routine, onChanged, onEdit }: RoutineRowProps) {
+export function RoutineRow({ routine, onChanged, onEdit, historyOpen, onToggleHistory }: RoutineRowProps) {
   const [confirming, setConfirming] = useState(false)
-  const { note, run, toggle, remove } = useRowActions(routine, onChanged)
+  const { note, runTick, run, toggle, remove } = useRowActions(routine, onChanged)
   const result = routine.lastStatus ? RESULT[routine.lastStatus] : null
 
   return (
@@ -76,10 +83,12 @@ export function RoutineRow({ routine, onChanged, onEdit }: RoutineRowProps) {
       ) : (
         <div className="flex gap-1.5">
           <Button type="button" size="sm" variant="outline" disabled={routine.running} onClick={() => void run()}>{routine.running ? 'Running…' : 'Run now'}</Button>
+          <Button type="button" size="sm" variant="ghost" aria-expanded={historyOpen} onClick={onToggleHistory}>History</Button>
           <Button type="button" size="sm" variant="ghost" onClick={onEdit}>Edit</Button>
           <Button type="button" size="sm" variant="ghost" onClick={() => setConfirming(true)}>Delete</Button>
         </div>
       )}
+      {historyOpen && <RunHistory bot={routine.bot} routineId={routine.id} timezone={routine.timezone} refreshKey={runTick} />}
     </li>
   )
 }

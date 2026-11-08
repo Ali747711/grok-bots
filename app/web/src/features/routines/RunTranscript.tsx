@@ -1,0 +1,56 @@
+import { useEffect, useState } from 'react'
+
+import { fetchHistory } from '@/chat/open-bot-chat'
+import type { ChatItem } from '@/chat/types'
+import { MessageList } from '@/features/chat/MessageList'
+
+const BLOCKED = /^\s*BLOCKED:/
+
+/** A tool result that starts with BLOCKED: (plain text, or in the `error` / `output` field of a JSON result). */
+function isBlockedResult(detail: string): boolean {
+  if (BLOCKED.test(detail)) return true
+  try {
+    const body: unknown = JSON.parse(detail)
+    if (body && typeof body === 'object') {
+      return Object.values(body).some(v => typeof v === 'string' && BLOCKED.test(v))
+    }
+  } catch {
+    // Not JSON: the plain-text check above already ran.
+  }
+  return false
+}
+
+export const hasBlockedStep = (items: readonly ChatItem[]): boolean =>
+  items.some(item => item.kind === 'work' && item.steps.some(s => s.detail !== undefined && isBlockedResult(s.detail)))
+
+/** Read-only transcript of one routine run (a cron session of the bot). */
+export function RunTranscript({ bot, sessionId }: { bot: string; sessionId: string }) {
+  const [items, setItems] = useState<ChatItem[] | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    setItems(null)
+    setFailed(false)
+    fetchHistory(bot, sessionId).then(
+      result => active && setItems(result.items),
+      () => active && setFailed(true)
+    )
+    return () => {
+      active = false
+    }
+  }, [bot, sessionId])
+
+  if (failed) return <p className="p-3 text-sm text-muted-foreground">Couldn't load this run.</p>
+  if (!items) return <p className="p-3 text-sm text-muted-foreground">Loading…</p>
+  return (
+    <div className="flex flex-col">
+      {hasBlockedStep(items) && (
+        <p role="status" className="rounded-lg border border-border bg-secondary p-2 text-xs">
+          Blocked by policy — routines can't ask for approval, so that step was skipped.
+        </p>
+      )}
+      <div className="max-h-96 overflow-y-auto"><MessageList items={items} /></div>
+    </div>
+  )
+}
