@@ -60,11 +60,17 @@ export function ModelSelect({ value, onChange, allowDefault = true, id = 'bot-mo
   }, [])
 
   const models = options?.models ?? []
-  const chosen = value && models.includes(value.model) ? value.model : DEFAULT
-  const pick = (model: string) => onChange(model === DEFAULT || !options ? null : { provider: options.provider, model })
+  // A pinned model missing from the list (still loading, failed, or out of the provider's list) still gets an item,
+  // so the trigger shows its id; the default sentinel is only ever the value when its item exists.
+  const listed = value && !models.includes(value.model) ? [value.model, ...models] : models
+  const chosen = value ? value.model : allowDefault ? DEFAULT : null
+  const pick = (model: string) => {
+    if (model === value?.model) return
+    onChange(model === DEFAULT || !options ? null : { provider: options.provider, model })
+  }
   const items = [
     ...(allowDefault ? [{ value: DEFAULT, label: options?.model ? `Default (${options.model})` : 'Default' }] : []),
-    ...models.map(m => ({ value: m, label: m }))
+    ...listed.map(m => ({ value: m, label: m }))
   ]
 
   return (

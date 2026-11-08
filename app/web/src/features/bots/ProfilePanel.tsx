@@ -15,7 +15,7 @@ import { buildPatch, freshSync, hasChanges, mergeFresh, type FormSync, type Prof
 import { ConfirmModelDialog, ConflictBanner } from './ProfileNotices'
 import { useBotDetail } from './use-bot-detail'
 import { failureText, useProfileSave } from './use-profile-save'
-import type { BotDetail } from './types'
+import type { AvatarChoice, BotDetail } from './types'
 
 const handleOf = (bot: BotView) => (bot.isPrimary ? 'hermes' : bot.name)
 
@@ -103,7 +103,8 @@ function useProfileSync({ detail, setDetail, reload }: Omit<LoadedProps, 'bot'>)
 function Loaded({ bot, detail, setDetail, reload }: LoadedProps) {
   const navigate = useNavigate()
   const { sync, refreshed, reset, reloadMerged, edit } = useProfileSync({ detail, setDetail, reload })
-  const [photoBusy, setPhotoBusy] = useState(false)
+  const [avatarBusy, setAvatarBusy] = useState(false)
+  const [held, setHeld] = useState<AvatarChoice | null>(null)
   const [deleting, setDeleting] = useState(false)
   const { form } = sync
   const saver = useProfileSave({ name: bot.name, onReset: reset, reload: reloadMerged })
@@ -111,7 +112,7 @@ function Loaded({ bot, detail, setDetail, reload }: LoadedProps) {
 
   const finish = async () => {
     // The picker's current value: the stored avatar, else the derived type with no colour.
-    const avatar = detail.avatar ?? { type: deriveAvatarType(bot.name) }
+    const avatar = held ?? detail.avatar ?? { type: deriveAvatarType(bot.name) }
     const result = await finishBot(bot.name, { title: form.name.trim(), avatar })
     await reloadMerged()
     return result.complete ? null : (result.error?.message ?? 'a step failed')
@@ -120,11 +121,14 @@ function Loaded({ bot, detail, setDetail, reload }: LoadedProps) {
   return (
     <div className="flex flex-col gap-4 p-4">
       {bot.setupIncomplete && !bot.isPrimary && <FinishSetup onFinish={finish} />}
-      <ProfileAvatar detail={detail} onDetail={refreshed} onBusyChange={setPhotoBusy} />
+      <ProfileAvatar
+        detail={detail} onDetail={refreshed} onBusyChange={setAvatarBusy} disabled={saver.busy}
+        held={bot.setupIncomplete && !bot.isPrimary} onHeld={setHeld}
+      />
       <ProfileFields form={form} handle={handleOf(bot)} allowDefault={detail.model === null} onChange={edit} />
       {saver.conflict && <ConflictBanner conflict={saver.conflict} busy={saver.busy} onReload={saver.takeTheirs} onSaveAnyway={saver.saveAnyway} />}
       {saver.error && <ErrorAlert>{saver.error}</ErrorAlert>}
-      <Button type="button" disabled={saver.busy || photoBusy || !hasChanges(patch)} onClick={() => void saver.send(patch)}>Save</Button>
+      <Button type="button" disabled={saver.busy || avatarBusy || !hasChanges(patch)} onClick={() => void saver.send(patch)}>Save</Button>
       <HideSection detail={detail} onDetail={refreshed} />
       {!bot.isPrimary && (
         <>

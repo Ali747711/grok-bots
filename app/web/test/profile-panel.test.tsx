@@ -20,12 +20,12 @@ const detail = (over: Partial<BotDetail> = {}): BotDetail => ({
   description: 'Does dev', soul: 'Be nice', model: { provider: 'openrouter', model: 'a/one' }, metaRevision: 3, ...over
 })
 
-interface Routes { get?: () => Promise<Response>; patch?: (body: unknown) => Promise<Response>; del?: () => Promise<Response>; other?: Record<string, () => Promise<Response>> }
+interface Routes { models?: () => Promise<Response>; get?: () => Promise<Response>; patch?: (body: unknown) => Promise<Response>; del?: () => Promise<Response>; other?: Record<string, () => Promise<Response>> }
 
 function stub(r: Routes = {}) {
   const fn = vi.fn((url: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET'
-    if (url === '/api/model/options') return json(MODELS)
+    if (url === '/api/model/options') return (r.models ?? (() => json(MODELS)))()
     const other = r.other?.[`${method} ${url}`]
     if (other) return other()
     if (url === '/crew/bots/dev' || url === '/crew/bots/hermes' || url === '/crew/bots/default') {
@@ -291,6 +291,85 @@ describe('ProfilePanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Teal' }))
     await waitFor(() => expect(patches(fn)).toHaveLength(2))
     expect(patches(fn)[1]).toEqual({ avatar: { type: 'cat', color: '#2ec4c4' } })
+  })
+
+  it('holds a second pick back until the first save is done, so it keeps the first pick', async () => {
+    let release: (v: Response) => void = () => undefined
+    const stored = detail({ avatar: { type: 'cat' } })
+    const fn = stub({ get: () => json(stored), patch: () => new Promise<Response>(resolve => { release = resolve }) })
+    open()
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: 'Teal' }))
+    await waitFor(() => expect(patches(fn)).toHaveLength(1))
+    expect(screen.getByRole('button', { name: 'ghost' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'ghost' }))
+    expect(patches(fn)).toHaveLength(1)
+    release(new Response(JSON.stringify({ status: 'saved', detail: detail({ avatar: { type: 'cat', color: '#2ec4c4' } }) })))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'ghost' })).toBeEnabled())
+    expect(screen.getByRole('button', { name: 'Teal' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('keeps Save off until a photo upload has finished', async () => {
+    let release: (v: Response) => void = () => undefined
+    vi.stubGlobal('createImageBitmap', vi.fn(() => Promise.resolve({ width: 10, height: 10, close: vi.fn() })))
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn() } as unknown as CanvasRenderingContext2D)
+    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/png;base64,AAAA')
+    stub({ other: { 'PUT /crew/bots/dev/avatar': () => new Promise<Response>(resolve => { release = resolve }) } })
+    open()
+    await loaded()
+    change('Name', 'Dev Two')
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+    fireEvent.change(screen.getByLabelText('Upload photo'), { target: { files: [new File([new Uint8Array(5)], 'a.png', { type: 'image/png' })] } })
+    await waitFor(() => expect(screen.getByLabelText('Upload photo')).toBeDisabled())
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    release(new Response(JSON.stringify(detail({ look: { shape: 'squircle', color: '#6366f1', imageKind: 'photo' } }))))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled())
+    vi.restoreAllMocks()
+  })
+
+  it('says "photo" when a photo change fails', async () => {
+    vi.stubGlobal('createImageBitmap', vi.fn(() => Promise.resolve({ width: 10, height: 10, close: vi.fn() })))
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn() } as unknown as CanvasRenderingContext2D)
+    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/png;base64,AAAA')
+    stub({ other: { 'PUT /crew/bots/dev/avatar': () => json({ error: 'hermes_error' }, 502) } })
+    open()
+    await loaded()
+    fireEvent.change(screen.getByLabelText('Upload photo'), { target: { files: [new File([new Uint8Array(5)], 'a.png', { type: 'image/png' })] } })
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not change the photo. Try again.')
+    vi.restoreAllMocks()
+  })
+
+  it('holds picks locally for an unfinished bot and sends them with Finish setup', async () => {
+    const fn = stub({ other: { 'POST /crew/bots/dev/finish': () => json({ name: 'dev', complete: true, steps: {}, needsModel: false }) } })
+    open(bot({ name: 'dev', title: 'Dev', setupIncomplete: true }))
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: 'ghost' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Teal' }))
+    expect(patches(fn)).toHaveLength(0)
+    expect(screen.getByRole('button', { name: 'ghost' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Teal' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'Finish setup' }))
+    await waitFor(() => expect(fn.mock.calls.some(([u]) => u === '/crew/bots/dev/finish')).toBe(true))
+    const call = fn.mock.calls.find(([u]) => u === '/crew/bots/dev/finish')
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ title: 'Dev', avatar: { type: 'ghost', color: '#2ec4c4' } })
+  })
+
+  it('shows a pinned model that is not in the list, never the default sentinel', async () => {
+    const pinned = { provider: 'openrouter', model: 'z/pinned' }
+    stub({ get: () => json(detail({ model: pinned })) })
+    open()
+    await loaded()
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Model' })).toHaveTextContent('z/pinned'))
+    expect(screen.getByRole('combobox', { name: 'Model' })).not.toHaveTextContent('__default__')
+  })
+
+  it('shows the pinned model id when the model list fails to load', async () => {
+    stub({ models: () => json({}, 500), get: () => json(detail({ model: { provider: 'openrouter', model: 'a/one' } })) })
+    open()
+    await loaded()
+    expect(await screen.findByText("Couldn't load models")).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Model' })).toHaveTextContent('a/one')
+    expect(screen.getByRole('combobox', { name: 'Model' })).not.toHaveTextContent('__default__')
   })
 
   it('does not send guarded fields or baselines with an avatar pick, and Save stays off', async () => {

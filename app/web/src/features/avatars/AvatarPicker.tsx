@@ -23,12 +23,14 @@ interface AvatarPickerProps {
   onBusyChange?: (busy: boolean) => void
   /** Fires only when the user clicks a type (not for colour or photo changes). */
   onTypePick?: (type: AvatarType) => void
+  /** Holds every control while a save is in flight, so a second pick cannot be built from stale state. */
+  disabled?: boolean
 }
 
 const PREVIEW_SIZE = 72
 const RING = 'ring-2 ring-foreground ring-offset-2 ring-offset-popover'
 
-function TypeGrid({ value, onChange, onTypePick }: Pick<AvatarPickerProps, 'value' | 'onChange' | 'onTypePick'>) {
+function TypeGrid({ value, onChange, onTypePick, disabled }: Pick<AvatarPickerProps, 'value' | 'onChange' | 'onTypePick' | 'disabled'>) {
   return (
     <div role="group" aria-label="Type" className="grid grid-cols-6 gap-1.5">
       {AVATAR_TYPES.map(type => (
@@ -37,6 +39,7 @@ function TypeGrid({ value, onChange, onTypePick }: Pick<AvatarPickerProps, 'valu
           type="button"
           aria-label={type}
           aria-pressed={value.type === type}
+          disabled={disabled}
           onClick={() => {
             onTypePick?.(type)
             onChange({ ...value, type })
@@ -50,13 +53,14 @@ function TypeGrid({ value, onChange, onTypePick }: Pick<AvatarPickerProps, 'valu
   )
 }
 
-function Swatches({ value, onChange }: Pick<AvatarPickerProps, 'value' | 'onChange'>) {
+function Swatches({ value, onChange, disabled }: Pick<AvatarPickerProps, 'value' | 'onChange' | 'disabled'>) {
   const { color, ...rest } = value
   return (
     <div role="group" aria-label="Colour" className="flex flex-wrap items-center gap-2">
       <button
         type="button"
         aria-pressed={color === undefined}
+        disabled={disabled}
         onClick={() => onChange(rest)}
         className={cn('h-6 rounded-full bg-muted px-2.5 text-xs font-medium', color === undefined && 'bg-foreground text-background')}
       >
@@ -68,6 +72,7 @@ function Swatches({ value, onChange }: Pick<AvatarPickerProps, 'value' | 'onChan
           type="button"
           aria-label={s.name}
           aria-pressed={color === s.hex}
+          disabled={disabled}
           onClick={() => onChange({ ...value, color: s.hex })}
           className={cn('size-6 rounded-full', color === s.hex ? RING : 'ring-1 ring-border')}
           style={{ backgroundColor: s.hex }}
@@ -77,7 +82,7 @@ function Swatches({ value, onChange }: Pick<AvatarPickerProps, 'value' | 'onChan
   )
 }
 
-function PhotoControls({ value, onChange, onBusyChange }: AvatarPickerProps) {
+function PhotoControls({ value, onChange, onBusyChange, disabled }: AvatarPickerProps) {
   const [error, setError] = useState<string | null>(null)
   const [preparing, setPreparing] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -105,14 +110,15 @@ function PhotoControls({ value, onChange, onBusyChange }: AvatarPickerProps) {
           type="file"
           accept="image/png,image/jpeg,image/webp,image/gif"
           aria-label="Upload photo"
+          disabled={disabled}
           className="hidden"
           onChange={e => {
             void pick(e.target.files?.[0])
             e.target.value = ''
           }}
         />
-        <Button type="button" size="sm" variant="outline" onClick={() => fileInput.current?.click()}>Upload photo</Button>
-        {value.photo && <Button type="button" size="sm" variant="ghost" onClick={() => onChange({ ...value, photo: null })}>Remove photo</Button>}
+        <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => fileInput.current?.click()}>Upload photo</Button>
+        {value.photo && <Button type="button" size="sm" variant="ghost" disabled={disabled} onClick={() => onChange({ ...value, photo: null })}>Remove photo</Button>}
         {preparing && <span role="status" className="text-xs text-muted-foreground">Preparing photo…</span>}
       </div>
       {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
@@ -135,17 +141,17 @@ function Preview({ value }: { value: AvatarValue }) {
 }
 
 /** Choose a bot's avatar: one of 18 plush types, a colour, or an uploaded photo, with a live preview. */
-export function AvatarPicker({ value, onChange, onBusyChange, onTypePick }: AvatarPickerProps) {
+export function AvatarPicker({ value, onChange, onBusyChange, onTypePick, disabled }: AvatarPickerProps) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-start gap-3">
         <Preview value={value} />
         <div className="flex min-w-0 flex-1 flex-col gap-2">
-          <Swatches value={value} onChange={onChange} />
-          <PhotoControls value={value} onChange={onChange} onBusyChange={onBusyChange} />
+          <Swatches value={value} onChange={onChange} disabled={disabled} />
+          <PhotoControls value={value} onChange={onChange} onBusyChange={onBusyChange} disabled={disabled} />
         </div>
       </div>
-      <TypeGrid value={value} onChange={onChange} onTypePick={onTypePick} />
+      <TypeGrid value={value} onChange={onChange} onTypePick={onTypePick} disabled={disabled} />
     </div>
   )
 }

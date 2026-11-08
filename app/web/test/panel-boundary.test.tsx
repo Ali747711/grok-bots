@@ -16,6 +16,7 @@ describe('PanelBoundary', () => {
     const reload = vi.fn()
     render(<PanelBoundary onReload={reload}><Boom /></PanelBoundary>)
     expect(screen.getByText('Something went wrong in this panel')).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Reload' }))
     expect(reload).toHaveBeenCalled()
   })
