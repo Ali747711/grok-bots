@@ -61,8 +61,6 @@ interface FieldsProps {
   editingHandle: boolean
   onEditHandle: (v: string) => void
   handleError: string | undefined
-  title: string
-  onTitle: (v: string) => void
   mission: string
   onMission: (v: string) => void
   look: LookValue
@@ -70,6 +68,7 @@ interface FieldsProps {
   model: ModelChoice | null
   onModel: (v: ModelChoice | null) => void
   initial: string
+  onPhotoBusy: (busy: boolean) => void
 }
 
 function BotFields(f: FieldsProps) {
@@ -77,20 +76,16 @@ function BotFields(f: FieldsProps) {
     <>
       <div className={FIELD}>
         <label htmlFor="bot-name" className={LABEL}>Name</label>
-        <Input id="bot-name" value={f.name} onChange={e => f.onName(e.target.value)} autoFocus />
+        <Input id="bot-name" value={f.name} maxLength={80} onChange={e => f.onName(e.target.value)} autoFocus />
         <HandleLine handle={f.handle} editing={f.editingHandle} onEdit={() => f.onEditHandle(f.handle)} onChange={f.onEditHandle} error={f.handleError} />
       </div>
       <div className={FIELD}>
-        <label htmlFor="bot-title" className={LABEL}>Title</label>
-        <Input id="bot-title" value={f.title} maxLength={80} onChange={e => f.onTitle(e.target.value)} placeholder={f.name.trim()} />
-      </div>
-      <div className={FIELD}>
         <label htmlFor="bot-mission" className={LABEL}>Job &amp; personality</label>
-        <Textarea id="bot-mission" value={f.mission} maxLength={2000} onChange={e => f.onMission(e.target.value)} placeholder="What should this bot do? How should it behave?" />
+        <Textarea id="bot-mission" value={f.mission} maxLength={2000} onChange={e => f.onMission(e.target.value)} placeholder="What does it do? e.g. Research assistant who finds papers about agents." />
       </div>
       <div className={FIELD}>
         <span className={LABEL}>Look</span>
-        <LookPicker value={f.look} onChange={f.onLook} initial={f.initial} />
+        <LookPicker value={f.look} onChange={f.onLook} initial={f.initial} onBusyChange={f.onPhotoBusy} />
       </div>
       <div className={FIELD}>
         <label htmlFor="bot-model" className={LABEL}>Model</label>
@@ -104,7 +99,7 @@ function NewBotForm(props: Omit<NewBotDialogProps, 'open'>) {
   const { onOpenChange, onCreated } = props
   const [name, setName] = useState('')
   const [handleEdit, setHandleEdit] = useState<string | null>(null)
-  const [title, setTitle] = useState('')
+  const [photoBusy, setPhotoBusy] = useState(false)
   const [mission, setMission] = useState('')
   const [look, setLook] = useState<LookValue>(START_LOOK)
   const [model, setModel] = useState<ModelChoice | null>(null)
@@ -113,8 +108,8 @@ function NewBotForm(props: Omit<NewBotDialogProps, 'open'>) {
   const handle = handleEdit ?? slugifyProfileName(name)
   const check = validateBotName(handle)
   const touched = name.trim() !== '' || handleEdit !== null
-  // The bot shows exactly what the user typed when Title is left empty.
-  const finalTitle = title.trim() || name.trim()
+  // In Hermes the display name is ui_meta.title; the handle is the profile name.
+  const finalTitle = name.trim()
   const image = look.image ? { image: look.image } : {}
   const forget = <T,>(set: (v: T) => void) => (v: T) => { set(v); flow.setFailure({}) }
 
@@ -126,8 +121,8 @@ function NewBotForm(props: Omit<NewBotDialogProps, 'open'>) {
       <BotFields
         name={name} onName={forget(setName)} handle={handle} editingHandle={handleEdit !== null} onEditHandle={forget(setHandleEdit)}
         handleError={!check.ok && touched ? NAME_MESSAGES[check.reason] : flow.failure.handle}
-        title={title} onTitle={setTitle} mission={mission} onMission={setMission} look={look} onLook={setLook} model={model} onModel={setModel}
-        initial={finalTitle.charAt(0).toUpperCase() || '?'}
+        mission={mission} onMission={setMission} look={look} onLook={setLook} model={model} onModel={setModel}
+        initial={finalTitle.charAt(0).toUpperCase() || '?'} onPhotoBusy={setPhotoBusy}
       />
       {flow.failure.general && <p role="alert" className="text-sm text-destructive">{flow.failure.general}</p>}
       {flow.partial ? (
@@ -135,7 +130,7 @@ function NewBotForm(props: Omit<NewBotDialogProps, 'open'>) {
       ) : (
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button type="button" disabled={flow.busy || !check.ok} onClick={() => void create()}>Create</Button>
+          <Button type="button" disabled={flow.busy || photoBusy || !check.ok} onClick={() => void create()}>Create</Button>
         </div>
       )}
     </>

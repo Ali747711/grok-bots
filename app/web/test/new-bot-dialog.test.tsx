@@ -70,6 +70,37 @@ describe('NewBotDialog', () => {
     })
   })
 
+  it('has one Name field that is also the display title', async () => {
+    const fn = stub(() => json(complete, 201))
+    setup()
+    expect(screen.queryByLabelText('Title')).toBeNull()
+    expect(screen.getByLabelText('Name')).toHaveAttribute('maxlength', '80')
+    type('Name', '  Smoke Scout  ')
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+    await waitFor(() => expect(call(fn, '/crew/bots')).toBeDefined())
+    const body = JSON.parse(String(call(fn, '/crew/bots')?.[1]?.body))
+    expect(body.name).toBe('smoke-scout')
+    expect(body.title).toBe('Smoke Scout')
+  })
+
+  it('keeps Create disabled while a photo is being prepared', async () => {
+    stub(() => json(complete, 201))
+    let release: (v: { width: number; height: number; close: () => void }) => void = () => undefined
+    vi.stubGlobal('createImageBitmap', vi.fn(() => new Promise(resolve => { release = resolve })))
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn() } as unknown as CanvasRenderingContext2D)
+    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/png;base64,AAAA')
+    setup()
+    type('Name', 'Scout')
+    expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled()
+    fireEvent.change(screen.getByLabelText('Upload photo'), { target: { files: [new File([new Uint8Array(5)], 'a.png', { type: 'image/png' })] } })
+    expect(await screen.findByText('Preparing photo…')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled()
+    release({ width: 10, height: 10, close: vi.fn() })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled())
+    expect(screen.queryByText('Preparing photo…')).toBeNull()
+    vi.restoreAllMocks()
+  })
+
   it('sends the chosen model with the current provider', async () => {
     const fn = stub(() => json(complete, 201))
     setup()

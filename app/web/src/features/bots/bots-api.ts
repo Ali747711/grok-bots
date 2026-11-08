@@ -33,6 +33,6 @@ export const finishBot = (name: string, body: FinishBody) => send<CreateResult>(
 export const getBot = (name: string) => send<BotDetail>(bot(name), 'GET')
 /** 409 is a normal answer here (`conflict` / `confirm_required`), so it resolves instead of throwing. */
 export const updateBot = (name: string, patch: BotPatch) => send<UpdateOutcome>(bot(name), 'PATCH', patch, [409])
-export const setAvatar = (name: string, image: string) => send<unknown>(`${bot(name)}/avatar`, 'PUT', { image })
-export const clearAvatar = (name: string) => send<unknown>(`${bot(name)}/avatar`, 'DELETE')
+export const setAvatar = (name: string, image: string) => send<BotDetail>(`${bot(name)}/avatar`, 'PUT', { image })
+export const clearAvatar = (name: string) => send<BotDetail>(`${bot(name)}/avatar`, 'DELETE')
 export const deleteBot = (name: string) => send<void>(bot(name), 'DELETE')
