@@ -21,7 +21,7 @@ const FAILURES: Record<string, string> = {
   stale_generation: 'This request is no longer current'
 }
 const SECONDARY = 'text-contrast-foreground/70'
-const DARK_INPUT = 'border-contrast-border bg-contrast-muted text-contrast-foreground placeholder:text-contrast-foreground/60 dark:bg-contrast-muted'
+const DARK_INPUT = 'border-contrast-line bg-contrast-muted text-contrast-foreground placeholder:text-contrast-foreground/60 dark:bg-contrast-muted'
 const SCOPED = new Set(['session', 'always'])
 /** Same limit the server enforces on answers. */
 const ANSWER_MAX = 4000
@@ -35,14 +35,14 @@ function ApprovalDetail({ entry }: { entry: PendingView }) {
   if (entry.command === undefined && entry.description === undefined) return <p className="mb-2 font-medium break-words">{entry.summary}</p>
   return (
     <div className="mb-2 space-y-2">
-      {(hasHidden(entry.command) || hasHidden(entry.description)) && <p className="text-xs font-medium text-primary">This command contains hidden characters.</p>}
+      {(hasHidden(entry.command) || hasHidden(entry.description)) && <p className="text-xs font-medium text-contrast-danger">This command contains hidden characters.</p>}
       {entry.description && <p className="font-medium break-words whitespace-pre-wrap"><RevealHidden text={entry.description} /></p>}
       {entry.command && (
         <pre data-testid="approval-command" className="max-h-[40vh] overflow-auto rounded-lg bg-contrast-muted p-2.5 font-mono text-xs break-all whitespace-pre-wrap">
           <RevealHidden text={entry.command} />
         </pre>
       )}
-      {entry.detailTruncated && <p className="text-xs font-medium text-primary">This command is too long to show in full. Review it in the Hermes app.</p>}
+      {entry.detailTruncated && <p className="text-xs font-medium text-contrast-danger">This command is too long to show in full. Review it in the Hermes app.</p>}
     </div>
   )
 }
@@ -50,7 +50,6 @@ function ApprovalDetail({ entry }: { entry: PendingView }) {
 function ApprovalControls({ entry, disabled, send }: { entry: PendingView; disabled: boolean; send: (b: AnswerBody) => Promise<string | null> }) {
   // Never offer an allow choice for text the user cannot see in full.
   const choices = (entry.choices ?? []).filter(c => !entry.detailTruncated || c === 'deny')
-  const firstAllow = choices.find(c => c !== 'deny')
   return (
     <>
       <div className="flex flex-wrap gap-2">
@@ -61,7 +60,7 @@ function ApprovalControls({ entry, disabled, send }: { entry: PendingView; disab
               key={choice}
               type="button"
               size="sm"
-              variant={choice === firstAllow ? 'default' : 'contrast-outline'}
+              variant={choice === 'once' ? 'default' : 'contrast-outline'}
               title={hint || undefined}
               disabled={disabled}
               onClick={() => void send({ choice })}
@@ -170,7 +169,7 @@ export function RequestCard({ entry, onAnswer, botTitle }: RequestCardProps) {
         <span aria-hidden="true">● </span>
         Needs you
       </p>
-      {entry.kind === 'approval' && <h3 className="mb-1.5 text-base font-semibold">{botTitle ?? entry.profile} wants to run a command</h3>}
+      {entry.kind === 'approval' && <h3 className="mb-1.5 text-base font-semibold">{botTitle ?? entry.profile} needs your approval</h3>}
       {entry.kind === 'approval' && <ApprovalDetail entry={entry} />}
       {(entry.kind === 'clarify' || (secret && !entry.answerable)) && <p className="mb-2 font-medium break-words">{entry.summary}</p>}
       {!entry.answerable ? (
@@ -183,7 +182,7 @@ export function RequestCard({ entry, onAnswer, botTitle }: RequestCardProps) {
         </>
       )}
       {disabled && <p role="status" className={`mt-2 text-xs ${SECONDARY}`}>Sending…</p>}
-      {retry && entry.answerable && <p className="mt-2 text-xs font-medium text-primary">Couldn’t send: {FAILURES[entry.error ?? ''] ?? entry.error ?? 'unknown error'}. Try again.</p>}
+      {retry && entry.answerable && <p className="mt-2 text-xs font-medium text-contrast-danger">Couldn’t send: {FAILURES[entry.error ?? ''] ?? entry.error ?? 'unknown error'}. Try again.</p>}
       {message && <p className={`mt-2 text-xs ${SECONDARY}`}>{message}</p>}
     </div>
   )

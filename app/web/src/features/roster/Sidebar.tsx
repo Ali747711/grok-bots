@@ -18,6 +18,8 @@ interface SidebarProps {
   /** Browser-to-Crew stream is up; false makes the roster stale like an offline Hermes. */
   crewConnected?: boolean
   onNeedsYou?: () => void
+  /** The Needs you page is open: the row gets the selected look. */
+  needsYouActive?: boolean
   /** Shows the "+ New bot" button when given. */
   onNewBot?: () => void
 }
@@ -39,7 +41,7 @@ function HiddenSection({ bots, row }: { bots: readonly BotView[]; row: (bot: Bot
 }
 
 /** Roster: Needs-you row, the primary bot and the rest. Dimmed with statuses hidden while Hermes is not connected. */
-export function Sidebar({ state, selected, onSelect, crewConnected = true, onNeedsYou, onNewBot }: SidebarProps) {
+export function Sidebar({ state, selected, onSelect, crewConnected = true, onNeedsYou, needsYouActive = false, onNewBot }: SidebarProps) {
   const bots = (state?.bots ?? []).filter(b => !b.hidden)
   const hidden = (state?.bots ?? []).filter(b => b.hidden)
   const stale = state !== null && (state.hermes !== 'connected' || !crewConnected)
@@ -59,7 +61,16 @@ export function Sidebar({ state, selected, onSelect, crewConnected = true, onNee
         )}
       </div>
       {state && <HermesBanner hermes={state.hermes} crewConnected={crewConnected} />}
-      <button type="button" onClick={onNeedsYou} className="flex w-full items-center gap-2.5 rounded-2xl p-2 text-left text-sm font-medium transition-colors hover:bg-muted">
+      <button
+        type="button"
+        onClick={onNeedsYou}
+        data-selected={needsYouActive ? 'true' : undefined}
+        aria-current={needsYouActive ? 'page' : undefined}
+        className={cn(
+          'flex w-full items-center gap-2.5 rounded-2xl p-2 text-left text-sm font-medium transition-colors hover:bg-muted',
+          needsYouActive && 'bg-sky-soft shadow-[inset_3px_0_0_var(--sky)] hover:bg-sky-soft'
+        )}
+      >
         <span>Needs you</span>
         {needsYou > 0 && (
           <Badge data-testid="needs-you-count" className="ml-auto font-semibold">

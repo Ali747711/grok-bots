@@ -137,6 +137,14 @@ describe('Sidebar', () => {
     expectNoStatusShown()
   })
 
+  it('marks the Needs you row like a selected bot when its page is open', () => {
+    render(<Sidebar state={crewState()} selected={null} onSelect={() => undefined} needsYouActive />)
+    const row = screen.getByRole('button', { name: /Needs you/ })
+    expect(row).toHaveClass('bg-sky-soft')
+    expect(row).toHaveAttribute('aria-current', 'page')
+    expect(row).toHaveAttribute('data-selected', 'true')
+  })
+
   it('opens the Needs you view', () => {
     const onNeedsYou = vi.fn()
     render(<Sidebar state={crewState()} selected={null} onSelect={() => undefined} onNeedsYou={onNeedsYou} />)

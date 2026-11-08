@@ -78,6 +78,7 @@ export default function App() {
             crewConnected={connected}
             selected={selected}
             onSelect={name => navigate({ pathname: `/bots/${encodeURIComponent(name)}`, ...(panel ? { search: `?panel=${panel}` } : {}) })}
+            needsYouActive={pathname === '/needs-you'}
             onNeedsYou={() => navigate('/needs-you')}
             onNewBot={() => setNewBotOpen(true)}
           />
@@ -86,7 +87,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<HomeRedirect state={state} />} />
             <Route path="/bots/:name" element={<BotRoute state={state} crewConnected={connected} name={selected ?? ''} panel={panel} onPanel={togglePanel} />} />
-            <Route path="/needs-you" element={state ? <NeedsYouPage state={state} /> : <div className={centered}>Loading…</div>} />
+            <Route path="/needs-you" element={state ? <NeedsYouPage state={state} crewConnected={connected} /> : <div className={centered}>Loading…</div>} />
             <Route path="*" element={<Navigate replace to="/" />} />
           </Routes>
         }

@@ -152,29 +152,36 @@ describe('RequestCard: black card', () => {
     const card = screen.getByTestId('request-card')
     expect(card).toHaveClass('bg-contrast', 'text-contrast-foreground', 'border-contrast-border')
     expect(within(card).getByText('Needs you')).toHaveClass('label-mono', 'text-primary')
-    expect(screen.getByText('Dev wants to run a command')).toBeInTheDocument()
+    expect(screen.getByText('Dev needs your approval')).toBeInTheDocument()
     const block = screen.getByTestId('approval-command')
     expect(block).toHaveClass('overflow-auto', 'bg-contrast-muted', 'whitespace-pre-wrap', 'break-all')
     expect(block.textContent).toBe(command.replace('\u202E', '⟨U+202E⟩'))
-    expect(screen.getByText('⟨U+202E⟩')).toHaveClass('bg-primary', 'text-primary-foreground')
+    expect(screen.getByText('⟨U+202E⟩')).toHaveClass('bg-contrast-danger', 'text-contrast')
+    expect(screen.getByText('This command contains hidden characters.')).toHaveClass('text-contrast-danger')
     expect(screen.getAllByRole('button').map(b => b.textContent)).toEqual(['Allow once', 'Deny'])
   })
 
-  it('makes the first allow choice lime and keeps deny-only when detail is truncated', () => {
+  it('makes only Allow once lime and keeps deny-only when detail is truncated', () => {
     const { rerender } = render(<RequestCard entry={entry({ choices: ['session', 'once', 'deny'] })} onAnswer={noop} />)
-    expect(screen.getByRole('button', { name: 'Allow for this chat' })).toHaveClass('bg-primary')
-    for (const name of ['Allow once', 'Deny']) {
+    expect(screen.getByRole('button', { name: 'Allow once' })).toHaveClass('bg-primary')
+    for (const name of ['Allow for this chat', 'Deny']) {
       const b = screen.getByRole('button', { name })
-      expect(b).toHaveClass('border-contrast-border', 'text-contrast-foreground')
+      expect(b).toHaveClass('border-contrast-line', 'text-contrast-foreground')
       expect(b.className).not.toMatch(/bg-primary|dark:bg-input/)
     }
     rerender(<RequestCard entry={entry({ command: 'x', detailTruncated: true, choices: ['once', 'deny'] })} onAnswer={noop} />)
     expect(screen.getAllByRole('button').map(b => b.textContent)).toEqual(['Deny'])
+    expect(screen.getByText(/too long to show in full/)).toHaveClass('text-contrast-danger')
+    rerender(<RequestCard entry={entry({ choices: ['mystery', 'once', 'deny'] })} onAnswer={noop} />)
+    expect(screen.getByRole('button', { name: 'mystery' })).not.toHaveClass('bg-primary')
+    expect(screen.getByRole('button', { name: 'Allow once' })).toHaveClass('bg-primary')
+    rerender(<RequestCard entry={entry({ state: 'failed', error: 'not_connected' })} onAnswer={noop} />)
+    expect(screen.getByText(/Couldn’t send/)).toHaveClass('text-contrast-danger')
   })
 
   it('puts clarify and secret inputs on the dark muted fill', () => {
     const { rerender } = render(<RequestCard entry={entry({ kind: 'clarify', summary: 'Which?', choices: undefined })} onAnswer={noop} />)
-    expect(screen.getByLabelText('Your answer')).toHaveClass('bg-contrast-muted', 'dark:bg-contrast-muted')
+    expect(screen.getByLabelText('Your answer')).toHaveClass('bg-contrast-muted', 'dark:bg-contrast-muted', 'border-contrast-line')
     rerender(<RequestCard entry={entry({ kind: 'secret', summary: 'Key', choices: undefined })} onAnswer={noop} />)
     expect(screen.getByLabelText('Key')).toHaveClass('bg-contrast-muted')
   })

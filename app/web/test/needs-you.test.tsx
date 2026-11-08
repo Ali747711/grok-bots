@@ -12,7 +12,8 @@ const pending = (id: string, profile: string, kind: PendingView['kind'], summary
   id, kind, profile, sessionId: 's', summary, receivedAt: NOW - ageS * 1000, source: 'event', state: 'open', answerable: true
 })
 
-const renderPage = (state = crewState()) => render(<MemoryRouter><NeedsYouPage state={state} now={() => NOW} /></MemoryRouter>)
+const renderPage = (state = crewState(), crewConnected = true) =>
+  render(<MemoryRouter><NeedsYouPage state={state} crewConnected={crewConnected} now={() => NOW} /></MemoryRouter>)
 
 vi.mock('bot-avatars', async () => {
   const actual = await vi.importActual<typeof import('bot-avatars')>('bot-avatars')
@@ -27,7 +28,16 @@ describe('NeedsYouPage', () => {
     expect(within(link).getByTestId('stub')).toHaveAttribute('data-size', '32')
     expect(link.querySelector('[aria-hidden="true"]')).not.toBeNull()
     expect(within(link).getByText('Open chat')).toHaveClass('text-sky-ink')
-    expect(link.closest('ul')!.parentElement).toHaveClass('bg-card/95', 'rounded-block')
+    expect(link.closest('ul')!.parentElement).not.toHaveClass('rounded-block')
+  })
+
+  it.each([
+    ['Hermes offline', { hermes: 'offline' as const }, true],
+    ['Crew stream down', {}, false]
+  ])('hides live status on the rows while stale (%s)', (_label, over, connected) => {
+    const bots = [bot({ name: 'dev', title: 'Dev', status: 'working' }), bot({ name: 'res', title: 'Res', status: 'needs_you' })]
+    renderPage(crewState({ ...over, bots, pending: [pending('a', 'dev', 'approval', 'x', 5), pending('b', 'res', 'approval', 'y', 6)] }), connected)
+    expect(screen.queryByRole('img', { name: 'Needs you', hidden: true })).toBeNull()
   })
 
   it('lists entries across bots and links to the chat', () => {

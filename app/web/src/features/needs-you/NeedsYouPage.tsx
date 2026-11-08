@@ -15,11 +15,13 @@ export function formatAge(receivedAt: number, now: number): string {
 }
 
 /** Every open request across all bots, oldest first; each row opens that bot's chat. */
-export function NeedsYouPage({ state, now = Date.now }: { state: CrewState; now?: () => number }) {
+export function NeedsYouPage({ state, crewConnected = true, now = Date.now }: { state: CrewState; crewConnected?: boolean; now?: () => number }) {
+  // A stale roster must not show live status, as in the sidebar.
+  const stale = state.hermes !== 'connected' || !crewConnected
   const entries = [...state.pending].sort((a, b) => a.receivedAt - b.receivedAt)
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
-      <div className="mx-auto max-w-[720px] rounded-block bg-card/95 p-5">
+      <div className="mx-auto max-w-[720px]">
         <h2 className="mb-4 text-base font-semibold">Needs you</h2>
         {entries.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nothing needs you right now.</p>
@@ -30,7 +32,7 @@ export function NeedsYouPage({ state, now = Date.now }: { state: CrewState; now?
               return (
                 <li key={entry.id}>
                   <Link to={`/bots/${encodeURIComponent(entry.profile)}`} className="flex items-start gap-3 rounded-2xl p-2.5 hover:bg-muted">
-                    {bot && <CrewAvatar bot={bot} size={32} decorative />}
+                    {bot && <CrewAvatar bot={stale ? { ...bot, status: 'idle' } : bot} size={32} decorative />}
                     <span className="min-w-0 flex-1">
                       <span className="flex items-baseline gap-2 text-xs text-muted-foreground">
                         <span className="text-sm font-semibold text-foreground">{bot?.title ?? entry.profile}</span>

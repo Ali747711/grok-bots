@@ -14,7 +14,7 @@ const light = block(':root {')
 const dark = block(':root[data-theme="dark"] {')
 
 describe('theme tokens', () => {
-  it.each(['--contrast', '--contrast-foreground', '--contrast-border', '--contrast-muted', '--sky', '--sky-ink', '--sky-soft', '--needs', '--radius-block'])('defines %s for light and dark', token => {
+  it.each(['--contrast', '--contrast-foreground', '--contrast-border', '--contrast-muted', '--contrast-danger', '--contrast-line', '--sky', '--sky-ink', '--sky-soft', '--needs', '--radius-block'])('defines %s for light and dark', token => {
     if (token !== '--radius-block') expect(dark).toContain(`${token}:`)
     expect(light).toContain(`${token}:`)
   })
