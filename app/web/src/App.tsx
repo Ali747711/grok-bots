@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { matchPath, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 
+import { NewBotDialog } from '@/features/bots/NewBotDialog'
 import { ChatView } from '@/features/chat/ChatView'
 import { NeedsYouPage } from '@/features/needs-you/NeedsYouPage'
 import { Sidebar } from '@/features/roster/Sidebar'
@@ -26,29 +28,34 @@ export default function App() {
   const { state, connected } = useCrewState()
   const navigate = useNavigate()
   const { pathname } = useLocation()
+  const [newBotOpen, setNewBotOpen] = useState(false)
   const selected = matchPath('/bots/:name', pathname)?.params.name ?? null
 
   return (
-    <Shell
-      sidebar={
-        <Sidebar
-          state={state}
-          crewConnected={connected}
-          selected={selected}
-          onSelect={name => navigate(`/bots/${encodeURIComponent(name)}`)}
-          onNeedsYou={() => navigate('/needs-you')}
-        />
-      }
-      main={
-        <Routes>
-          <Route path="/" element={<HomeRedirect state={state} />} />
-          <Route path="/bots/:name" element={<BotRoute state={state} crewConnected={connected} name={selected ?? ''} />} />
-          <Route path="/needs-you" element={state ? <NeedsYouPage state={state} /> : <div className={centered}>Loading…</div>} />
-          <Route path="*" element={<Navigate replace to="/" />} />
-        </Routes>
-      }
-      panel={null}
-      panelOpen={false}
-    />
+    <>
+      <Shell
+        sidebar={
+          <Sidebar
+            state={state}
+            crewConnected={connected}
+            selected={selected}
+            onSelect={name => navigate(`/bots/${encodeURIComponent(name)}`)}
+            onNeedsYou={() => navigate('/needs-you')}
+            onNewBot={() => setNewBotOpen(true)}
+          />
+        }
+        main={
+          <Routes>
+            <Route path="/" element={<HomeRedirect state={state} />} />
+            <Route path="/bots/:name" element={<BotRoute state={state} crewConnected={connected} name={selected ?? ''} />} />
+            <Route path="/needs-you" element={state ? <NeedsYouPage state={state} /> : <div className={centered}>Loading…</div>} />
+            <Route path="*" element={<Navigate replace to="/" />} />
+          </Routes>
+        }
+        panel={null}
+        panelOpen={false}
+      />
+      <NewBotDialog open={newBotOpen} onOpenChange={setNewBotOpen} onCreated={name => navigate(`/bots/${encodeURIComponent(name)}`)} />
+    </>
   )
 }
