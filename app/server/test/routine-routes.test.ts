@@ -81,6 +81,12 @@ describe('routine routes', () => {
     expect(calls.map(c => c[0])).toEqual(['list', 'create', 'update', 'pause', 'resume', 'remove'])
   })
 
+  it('accepts timezoneChanged on update and passes it through', async () => {
+    expect((await send('PUT', '/crew/routines/abc?bot=scout', { ...body, timezoneChanged: true })).status).toBe(200)
+    expect(calls.at(-1)).toEqual(['update', 'scout', 'abc', { ...body, timezoneChanged: true }])
+    expect((await send('PUT', '/crew/routines/abc?bot=scout', { ...body, timezoneChanged: 'yes' })).status).toBe(400)
+  })
+
   it('rejects bad bodies with 400 bad_body and never calls the service', async () => {
     for (const payload of [
       { ...body, title: '' }, { ...body, title: 'x'.repeat(81) }, { ...body, instruction: '' }, { ...body, instruction: 'x'.repeat(4001) },

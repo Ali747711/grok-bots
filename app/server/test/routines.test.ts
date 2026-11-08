@@ -108,17 +108,48 @@ describe('create and update', () => {
     await expect(svc.create('scout', input)).rejects.toMatchObject({ status: 400, detail: 'Blocked: prompt matches a threat pattern' })
   })
 
+  const putBody = () => (cron.calls.find(c => c.method === 'PUT')?.body as { updates: Record<string, unknown> } | undefined)?.updates
+  const updated = { ...input, title: 'Evening brief', instruction: 'New words', deliverToChat: true, schedule: { kind: 'daily', time: '18:00' } as const, timezone: 'Asia/Seoul' }
+
   it('updates with the {updates} body and encodes the id', async () => {
     cron.handler = () => job()
-    await svc.update('scout', 'a/b', input)
-    expect(cron.last()).toMatchObject({ method: 'PUT', path: '/api/cron/jobs/a%2Fb', query: { profile: 'scout' },
-      body: { updates: { name: '[bot:scout] Morning brief', prompt: 'Summarise the news', schedule: '0 9 * * *', timezone: 'Asia/Seoul', deliver: 'local' } } })
+    await svc.update('scout', 'a/b', { ...updated, timezoneChanged: true })
+    expect(cron.calls.find(c => c.method === 'PUT')).toMatchObject({ path: '/api/cron/jobs/a%2Fb', query: { profile: 'scout' } })
+    expect(putBody()).toEqual({ name: '[bot:scout] Evening brief', prompt: 'New words', schedule: '0 18 * * *', timezone: 'Asia/Seoul', deliver: 'bot-chat' })
+  })
+
+  it('sends only the prompt for a wording-only edit', async () => {
+    cron.handler = () => job()
+    await svc.update('scout', 'abc123', { ...input, instruction: 'Rephrased' })
+    expect(putBody()).toEqual({ prompt: 'Rephrased' })
+  })
+
+  it('includes the schedule (and the zone, since the clock time moved) only for a schedule edit', async () => {
+    cron.handler = () => job({ timezone: null })
+    await svc.update('scout', 'abc123', { ...input, schedule: { kind: 'daily', time: '18:00' }, timezone: 'Asia/Seoul' })
+    expect(putBody()).toEqual({ schedule: '0 18 * * *', timezone: 'Asia/Seoul' })
+  })
+
+  it('never pins a zone on a job that had none unless the user changed it', async () => {
+    cron.handler = () => job({ timezone: null })
+    await svc.update('scout', 'abc123', { ...input, title: 'Renamed', timezone: 'Asia/Seoul', timezoneChanged: false })
+    expect(putBody()).toEqual({ name: '[bot:scout] Renamed' })
+    cron.calls = []
+    await svc.update('scout', 'abc123', { ...input, timezone: 'Asia/Seoul', timezoneChanged: true })
+    expect(putBody()).toEqual({ timezone: 'Asia/Seoul' })
+  })
+
+  it('sends nothing when nothing changed', async () => {
+    cron.handler = () => job()
+    const view = await svc.update('scout', 'abc123', input)
+    expect(cron.calls.map(c => c.method)).toEqual(['GET'])
+    expect(view.id).toBe('abc123')
   })
 
   it('re-reads the job when the update reply is not a job', async () => {
     cron.handler = call => (call.method === 'PUT' ? { ok: true } : job())
-    expect((await svc.update('scout', 'abc123', input)).id).toBe('abc123')
-    expect(cron.calls.map(c => c.method)).toEqual(['PUT', 'GET'])
+    expect((await svc.update('scout', 'abc123', { ...input, instruction: 'x' })).id).toBe('abc123')
+    expect(cron.calls.map(c => c.method)).toEqual(['GET', 'PUT', 'GET'])
   })
 })
 

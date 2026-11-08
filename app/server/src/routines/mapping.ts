@@ -12,6 +12,8 @@ export interface RoutineInput {
   readonly schedule: ScheduleSpec
   readonly timezone: string
   readonly deliverToChat: boolean
+  /** Edit only: the user changed the zone select, so the zone is sent even if the schedule is unchanged. */
+  readonly timezoneChanged?: boolean
 }
 
 export interface RoutineView {
@@ -69,7 +71,7 @@ export const jobSchema = z.object({
   last_delivery_error: str,
   last_fire_error: str
 }).passthrough()
-type Job = z.infer<typeof jobSchema>
+export type Job = z.infer<typeof jobSchema>
 
 export const runSchema = z.object({
   id: z.string().nullish(),
@@ -96,12 +98,17 @@ function toMs(value: unknown): number | null {
 
 export const isFinished = (state: string | null | undefined): boolean => state === 'completed' || state === 'error'
 
+/** The job's schedule as a form-friendly spec; a one-shot is shown in the job's zone (else the server's). */
+export function scheduleOf(job: Job): ScheduleSpec {
+  const sched = job.schedule
+  if (!sched?.kind) return { kind: 'cron', expr: job.schedule_display ?? '' }
+  return fromHermesSchedule({ kind: sched.kind, run_at: sched.run_at, minutes: sched.minutes, expr: sched.expr }, job.timezone || serverZone())
+}
+
 export function viewOf(bot: string, job: Job, running: boolean, repausing: boolean): RoutineView {
   const sched = job.schedule
   const zone = job.timezone || serverZone()
-  const spec: ScheduleSpec = sched?.kind
-    ? fromHermesSchedule({ kind: sched.kind, run_at: sched.run_at, minutes: sched.minutes, expr: sched.expr }, zone)
-    : { kind: 'cron', expr: job.schedule_display ?? '' }
+  const spec = scheduleOf(job)
   const status = LAST_STATUSES.find(s => s === job.last_status) ?? null
   return {
     id: job.id,
@@ -152,3 +159,21 @@ export function routineBody(bot: string, input: RoutineInput): Record<string, un
 
 export const jobKey = (bot: string, id: string): string => `${bot}/${id}`
 export const jobPath = (id: string): string => `/api/cron/jobs/${enc(id)}`
+
+/**
+ * The `updates` of an edit: only the fields whose value differs from the stored job. Sending `schedule`
+ * makes Hermes recompute the next run (an interval re-anchors to now), and a `timezone` would pin a zone
+ * the job never had, so both go only when the schedule moved or the user changed the zone.
+ */
+export function routineUpdates(bot: string, input: RoutineInput, current: Job): Record<string, unknown> {
+  const full = routineBody(bot, input)
+  const scheduleChanged = JSON.stringify(input.schedule) !== JSON.stringify(scheduleOf(current))
+  const sendZone = input.timezoneChanged === true || (scheduleChanged && input.timezone !== (current.timezone ?? null))
+  const changed: Record<string, unknown> = {}
+  if (full.name !== current.name) changed.name = full.name
+  if (full.prompt !== current.prompt) changed.prompt = full.prompt
+  if (input.deliverToChat !== (current.deliver ?? '').startsWith('bot-chat')) changed.deliver = full.deliver
+  if (scheduleChanged) changed.schedule = full.schedule
+  if (sendZone) changed.timezone = full.timezone
+  return changed
+}

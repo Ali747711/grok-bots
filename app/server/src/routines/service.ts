@@ -1,7 +1,7 @@
 import { HermesRestError } from '../hermes/errors.js'
 import type { HermesRest } from '../hermes/rest-client.js'
 import { log } from '../log.js'
-import { jobKey, jobPath, jobSchema, type RoutineInput, type RoutineView, routineBody, runOf, type RunView, runSchema, viewOf } from './mapping.js'
+import { jobKey, jobPath, jobSchema, type RoutineInput, type RoutineView, routineBody, routineUpdates, runOf, type RunView, runSchema, viewOf } from './mapping.js'
 import { runNow, type RunNowContext } from './run-now.js'
 
 export type { RoutineInput, RoutineView, RunView } from './mapping.js'
@@ -66,6 +66,16 @@ async function listRuns(ctx: RunNowContext, bot: string, id: string, limit: numb
   })
 }
 
+/** Edit: read the stored job and send only what changed; with no change, just return it. */
+async function updateRoutine(ctx: RunNowContext, bot: string, id: string, input: RoutineInput): Promise<RoutineView> {
+  const raw = await ctx.rest.request<unknown>('GET', jobPath(id), { query: { profile: bot } })
+  const current = jobSchema.safeParse(raw)
+  if (!current.success) return jobFrom(ctx, bot, id, await ctx.rest.request('PUT', jobPath(id), { query: { profile: bot }, body: { updates: routineBody(bot, input) } }))
+  const updates = routineUpdates(bot, input, current.data)
+  if (Object.keys(updates).length === 0) return jobFrom(ctx, bot, id, raw)
+  return jobFrom(ctx, bot, id, await ctx.rest.request('PUT', jobPath(id), { query: { profile: bot }, body: { updates } }))
+}
+
 /** Routines are Hermes cron jobs in the bot's own store (`?profile=<bot>`), named `[bot:<bot>] <title>`. */
 export function createRoutineService(deps: RoutineDeps): RoutineService {
   const ctx: RunNowContext = { rest: deps.rest, running: new Set(), restorePause: new Set() }
@@ -83,7 +93,7 @@ export function createRoutineService(deps: RoutineDeps): RoutineService {
       if (!view) throw new HermesRestError(502, 'unexpected cron job reply')
       return view
     },
-    update: async (bot, id, input) => jobFrom(ctx, bot, id, await ctx.rest.request('PUT', jobPath(id), { ...query(bot), body: { updates: routineBody(bot, input) } })),
+    update: (bot, id, input) => updateRoutine(ctx, bot, id, input),
     pause: (bot, id) => toggle(bot, id, 'pause'),
     resume: (bot, id) => toggle(bot, id, 'resume'),
     remove: async (bot, id) => {

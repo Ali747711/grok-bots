@@ -19,7 +19,8 @@ const routineBody = z.object({
   instruction: z.string().min(1).max(4000),
   schedule: scheduleSpecSchema,
   timezone,
-  deliverToChat: z.boolean()
+  deliverToChat: z.boolean(),
+  timezoneChanged: z.boolean().optional()
 })
 const previewBody = z.object({ schedule: scheduleSpecSchema, timezone })
 const limitSchema = z.coerce.number().int().min(1).max(100)
