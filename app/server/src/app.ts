@@ -8,6 +8,7 @@ import type { HermesToken } from './hermes/token.js'
 import { hostGuard } from './http/host-guard.js'
 import { originGuard } from './http/origin-guard.js'
 import { type CrewEnv, sessionGuard } from './http/session-guard.js'
+import { spaRoutes } from './http/spa.js'
 import type { Watcher } from './watcher/watcher.js'
 
 export interface AppDeps {
@@ -42,5 +43,7 @@ export function createApp(deps: AppDeps): Hono<CrewEnv> {
   })
   app.route('/', authRoutes(deps))
   app.route('/', restProxy(deps))
+  // Last: the SPA answers every remaining GET, so later-mounted routes would be shadowed.
+  app.route('/', spaRoutes(deps.config.webDist))
   return app
 }

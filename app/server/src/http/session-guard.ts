@@ -1,6 +1,6 @@
 import type { IncomingMessage } from 'node:http'
 
-import type { MiddlewareHandler } from 'hono'
+import type { Context, MiddlewareHandler } from 'hono'
 
 import { SESSION_COOKIE } from '../auth/routes.js'
 import { verifySession } from '../auth/session-cookie.js'
@@ -9,6 +9,12 @@ import { parseCookieHeader } from './cookies.js'
 
 export interface CrewEnv {
   Variables: { sid: string }
+}
+
+/** A page load (not an API call): GET outside /api and /crew that accepts HTML. */
+function isBrowserNavigation(c: Context): boolean {
+  if (c.req.method !== 'GET' || /^\/(api|crew)(\/|$)/.test(c.req.path)) return false
+  return (c.req.header('accept') ?? '').includes('text/html')
 }
 
 /** Require a valid Crew session cookie, except for `"METHOD /path"` entries in `publicPaths`. */
@@ -22,7 +28,7 @@ export function sessionGuard(
     if (open.has(`${c.req.method} ${c.req.path}`)) return next()
     const cookies = parseCookieHeader(c.req.header('cookie'))
     const session = verifySession(key, cookies[SESSION_COOKIE], now())
-    if (!session) return c.json({ error: 'login_required' }, 401)
+    if (!session) return isBrowserNavigation(c) ? c.redirect('/login', 302) : c.json({ error: 'login_required' }, 401)
     c.set('sid', session.sid)
     await next()
   }
