@@ -5,7 +5,7 @@ import type { BotView, CrewState } from '@/state/types'
 
 import { ChatHeader } from './ChatHeader'
 import { Composer } from './Composer'
-import { composerDisabledReason } from './disabled-reason'
+import { composerDisabledReason, DEFAULT_MAX_WORKING_BOTS } from './disabled-reason'
 import { MessageList } from './MessageList'
 
 interface ChatViewProps {
@@ -22,7 +22,10 @@ export function ChatView({ bot, state, crewConnected }: ChatViewProps) {
   const othersWorking = state.bots.filter(b => b.name !== bot.name && b.status === 'working').length
   // Oldest first; they leave when Hermes settles them (they drop out of state.pending).
   const requests = state.pending.filter(p => p.profile === bot.name).sort((a, b) => a.receivedAt - b.receivedAt)
-  const reason = composerDisabledReason({ hermes: state.hermes, crewConnected, canSend, othersWorking })
+  const reason = composerDisabledReason({ hermes: state.hermes, crewConnected, canSend,
+    othersWorking,
+    maxWorkingBots: state.settings ? state.settings.maxWorkingBots : DEFAULT_MAX_WORKING_BOTS
+  })
 
   return (
     <>

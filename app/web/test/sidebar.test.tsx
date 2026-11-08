@@ -104,4 +104,45 @@ describe('Sidebar', () => {
     fireEvent.click(screen.getByRole('button', { name: /Needs you/ }))
     expect(onNeedsYou).toHaveBeenCalled()
   })
+
+  it('lists hidden bots only under Hidden', () => {
+    renderSidebar(crewState({
+      bots: [bot({ name: 'default', title: 'Hermes', isPrimary: true }), bot({ name: 'dev', title: 'Dev' }), bot({ name: 'old', title: 'Old', hidden: true })]
+    }))
+    expect(screen.queryByText('Old')).toBeNull()
+    expect(within(screen.getByRole('group', { name: 'Bots' })).queryByText('Old')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Hidden (1)' }))
+    expect(screen.getByText('Old')).toBeInTheDocument()
+  })
+
+  it('has no Hidden section when nothing is hidden', () => {
+    renderSidebar()
+    expect(screen.queryByRole('button', { name: /Hidden/ })).toBeNull()
+  })
+
+  it('marks a bot whose setup is unfinished and still opens it', () => {
+    const onSelect = vi.fn()
+    renderSidebar(crewState({ bots: [bot({ name: 'half', title: 'Half', setupIncomplete: true })] }), null, onSelect)
+    expect(screen.getByText('Finish setup')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Half/ }))
+    expect(onSelect).toHaveBeenCalledWith('half')
+  })
+
+  it('shows + New bot only when a handler is given', () => {
+    const onNewBot = vi.fn()
+    const { unmount } = renderSidebar()
+    expect(screen.queryByRole('button', { name: '+ New bot' })).toBeNull()
+    unmount()
+    render(<Sidebar state={crewState()} selected={null} onSelect={() => undefined} onNewBot={onNewBot} />)
+    fireEvent.click(screen.getByRole('button', { name: '+ New bot' }))
+    expect(onNewBot).toHaveBeenCalled()
+  })
+
+  it('opens the settings dialog from the gear button', () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response('{}'))))
+    renderSidebar()
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    expect(screen.getByText('Bots working at the same time')).toBeInTheDocument()
+    vi.unstubAllGlobals()
+  })
 })

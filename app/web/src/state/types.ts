@@ -16,6 +16,10 @@ export interface BotView {
   readonly preview: string | null
   readonly lastActive: number | null
   readonly status: BotStatus
+  readonly hidden: boolean
+  /** Created but its look was never written; the Profile panel finishes it. */
+  readonly setupIncomplete: boolean
+  readonly created: number | null
 }
 
 export type PendingKind = 'approval' | 'clarify' | 'secret' | 'sudo'
@@ -41,8 +45,15 @@ export interface PendingView {
   readonly error?: string
 }
 
+export interface CrewSettings {
+  /** Integer 1-20, or null for no limit. */
+  readonly maxWorkingBots: number | null
+}
+
 export interface CrewState {
   readonly hermes: HermesConnection
   readonly bots: readonly BotView[]
   readonly pending: readonly PendingView[]
+  /** Missing when talking to an older server. */
+  readonly settings?: CrewSettings
 }

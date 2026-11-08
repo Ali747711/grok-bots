@@ -1,3 +1,10 @@
+import { useState } from 'react'
+
+import { Settings } from 'lucide-react'
+
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { DEFAULT_MAX_WORKING_BOTS } from '@/features/chat/disabled-reason'
+import { SettingsDialog } from '@/features/settings/SettingsDialog'
 import { CreditPill } from '@/features/usage/CreditPill'
 import { cn } from '@/lib/utils'
 import type { BotStatus, BotView, CrewState } from '@/state/types'
@@ -12,6 +19,8 @@ interface SidebarProps {
   /** Browser-to-Crew stream is up; false makes the roster stale like an offline Hermes. */
   crewConnected?: boolean
   onNeedsYou?: () => void
+  /** Shows the "+ New bot" button when given. */
+  onNewBot?: () => void
 }
 
 const DOT: Record<BotStatus, string> = { idle: '#a8a29e', working: '#2563eb', needs_you: '#d97706' }
@@ -40,7 +49,10 @@ function BotRow({ bot, active, showStatus, onSelect }: { bot: BotView; active: b
         )}
       </BotAvatar>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-semibold">{bot.title}</span>
+        <span className="flex items-center gap-1.5">
+          <span className="truncate text-sm font-semibold">{bot.title}</span>
+          {bot.setupIncomplete && <span className="shrink-0 rounded-full bg-secondary px-1.5 text-[10px] font-medium text-muted-foreground">Finish setup</span>}
+        </span>
         <span className="block truncate text-xs text-muted-foreground">{bot.preview ?? ' '}</span>
       </span>
     </button>
@@ -48,8 +60,10 @@ function BotRow({ bot, active, showStatus, onSelect }: { bot: BotView; active: b
 }
 
 /** Roster: Needs-you row, the primary bot and the rest. Dimmed with statuses hidden while Hermes is not connected. */
-export function Sidebar({ state, selected, onSelect, crewConnected = true, onNeedsYou }: SidebarProps) {
-  const bots = state?.bots ?? []
+export function Sidebar({ state, selected, onSelect, crewConnected = true, onNeedsYou, onNewBot }: SidebarProps) {
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const bots = (state?.bots ?? []).filter(b => !b.hidden)
+  const hidden = (state?.bots ?? []).filter(b => b.hidden)
   const stale = state !== null && (state.hermes !== 'connected' || !crewConnected)
   const primary = bots.filter(b => b.isPrimary)
   const others = bots.filter(b => !b.isPrimary)
@@ -81,10 +95,36 @@ export function Sidebar({ state, selected, onSelect, crewConnected = true, onNee
             {others.map(row)}
           </section>
         )}
+        {hidden.length > 0 && (
+          <Collapsible>
+            <CollapsibleTrigger className="w-full px-2 pt-3.5 pb-1 text-left text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+              {`Hidden (${hidden.length})`}
+            </CollapsibleTrigger>
+            <CollapsibleContent className="flex flex-col gap-1">{hidden.map(row)}</CollapsibleContent>
+          </Collapsible>
+        )}
       </div>
-      <div className="pt-2">
+      {onNewBot && (
+        <button type="button" onClick={onNewBot} className="mt-2 rounded-[10px] p-2 text-left text-sm font-medium hover:bg-secondary">
+          + New bot
+        </button>
+      )}
+      <div className="flex items-center gap-2 pt-2">
         <CreditPill />
+        <button
+          type="button"
+          aria-label="Settings"
+          onClick={() => setSettingsOpen(true)}
+          className="ml-auto rounded-md p-1.5 text-muted-foreground hover:bg-secondary"
+        >
+          <Settings className="size-4" />
+        </button>
       </div>
+      <SettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        maxWorkingBots={state?.settings ? state.settings.maxWorkingBots : DEFAULT_MAX_WORKING_BOTS}
+      />
     </>
   )
 }

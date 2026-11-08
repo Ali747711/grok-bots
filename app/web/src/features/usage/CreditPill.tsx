@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { crewFetch } from '@/lib/crew-api'
 
-interface Usage {
+export interface Usage {
   state: 'ok' | 'stale' | 'unavailable'
   remaining: number | null
 }
@@ -20,8 +20,8 @@ async function loadUsage(): Promise<Usage | null> {
   }
 }
 
-/** OpenRouter credit left, refreshed every minute; "credit unknown" when the server has no good value. */
-export function CreditPill() {
+/** OpenRouter credit, refreshed every minute; null until the first answer or when the call fails. */
+export function useUsage(): Usage | null {
   const [usage, setUsage] = useState<Usage | null>(null)
 
   useEffect(() => {
@@ -38,7 +38,18 @@ export function CreditPill() {
       clearInterval(timer)
     }
   }, [])
+  return usage
+}
 
+/** The credit left as short text: "$1.82 credit left" or "credit unknown". */
+export function creditText(usage: Usage | null): string {
+  const remaining = usage !== null && usage.state !== 'unavailable' ? usage.remaining : null
+  return remaining !== null ? `$${remaining.toFixed(2)} credit left` : 'credit unknown'
+}
+
+/** OpenRouter credit left; "credit unknown" when the server has no good value. */
+export function CreditPill() {
+  const usage = useUsage()
   const remaining = usage !== null && usage.state !== 'unavailable' ? usage.remaining : null
   return (
     <div data-testid="credit-pill" className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
