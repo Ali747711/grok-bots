@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
 import { createApp } from '../src/app.js'
-import { loadConfig } from '../src/config.js'
+import { makeDeps } from './helpers.js'
 
-const app = createApp({ config: loadConfig({ HOME: '/home/ali' }) })
+const app = createApp(makeDeps())
 
 describe('host guard', () => {
   it('rejects a foreign Host with 400', async () => {
