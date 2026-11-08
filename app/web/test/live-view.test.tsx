@@ -588,4 +588,15 @@ describe('live view recovery', () => {
     await waitFor(() => expect(screen.getByTestId('link')).toHaveTextContent('live'))
     expect(screen.getByTestId('notice')).toHaveTextContent('acquire refused')
   })
+  it('still caps a 4000 ping-pong at three dials', async () => {
+    budget = createDialBudget({ max: 3, windowMs: 10_000, mountDelayMs: 0 })
+    render(<Owner />)
+    for (let n = 1; n <= 3; n++) {
+      await connect(n)
+      act(() => FakeSocket.instances[n - 1]!.serverClose(4000))
+    }
+    await waitFor(() => expect(screen.getByTestId('link')).toHaveTextContent('failed'))
+    expect(calls('display.observe')).toHaveLength(3)
+    expect(rfbs.list).toHaveLength(3)
+  })
 })

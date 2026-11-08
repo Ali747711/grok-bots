@@ -21,7 +21,11 @@ export function UseScreenSwitch({ name, title }: UseScreenSwitchProps) {
   useEffect(() => {
     let current = true
     setOn(null)
-    getScreenConfig(name).then(config => current && setOn(config.useScreen), () => current && setOn(false))
+    setError(null)
+    getScreenConfig(name).then(
+      config => current && setOn(config.useScreen),
+      (e: unknown) => current && setError(e instanceof Error ? e.message : 'Could not read the setting')
+    )
     return () => {
       current = false
     }
@@ -42,7 +46,7 @@ export function UseScreenSwitch({ name, title }: UseScreenSwitchProps) {
       <div className="flex flex-col gap-0.5 text-sm">
         <span id={labelId} className="font-medium">Let {title} use its screen</span>
         <span className="text-xs text-muted-foreground">Takes effect the next time {title} opens its browser.</span>
-        {error && <span role="alert" className="text-xs text-contrast-danger">{error}</span>}
+        {error && <span role="alert" className="text-xs text-destructive">{error}</span>}
       </div>
     </div>
   )

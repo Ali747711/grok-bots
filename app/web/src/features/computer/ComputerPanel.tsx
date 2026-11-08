@@ -20,11 +20,12 @@ interface LiveBodyProps {
 
 function StopButton({ bot, screen }: Pick<LiveBodyProps, 'bot' | 'screen'>) {
   const [confirming, setConfirming] = useState(false)
-  const held = screen.view.control !== 'bot'
+  const { control } = screen.view
   return (
     <div className="flex items-center gap-2">
-      <Button size="sm" variant="outline" disabled={held} onClick={() => setConfirming(true)}>Stop screen</Button>
-      {held && <span className="text-xs text-muted-foreground">Hand back first</span>}
+      <Button size="sm" variant="outline" disabled={control !== 'bot'} onClick={() => setConfirming(true)}>Stop screen</Button>
+      {control === 'you' && <span className="text-xs text-muted-foreground">Hand back first</span>}
+      {control === 'someone' && <span className="text-xs text-muted-foreground">Someone is in control</span>}
       <AlertDialog open={confirming} onOpenChange={setConfirming}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -51,7 +52,7 @@ function LiveBody({ bot, screen, live }: LiveBodyProps) {
       {!expanded && <LiveView live={live} inControl={inControl} onExpand={() => setExpanded(true)} />}
       <ExpandDialog open={expanded} title={bot.title} live={live} inControl={inControl} onClose={() => setExpanded(false)} />
       <ControlBar connected={live.link === 'live'} control={view.control} botTitle={bot.title} onTake={() => void live.takeControl()} onHandBack={() => void live.handBack()} onForce={() => void live.forceHandBack()} />
-      {view.notice && <p role="status" className="text-xs text-contrast-danger">{view.notice}</p>}
+      {view.notice && <p role="status" className="text-xs text-destructive">{view.notice}</p>}
       <StopButton bot={bot} screen={screen} />
       <p className="text-xs text-muted-foreground">Taking control pauses the bot's screen tools. It doesn't lock the rest of its computer.</p>
     </>
@@ -60,20 +61,22 @@ function LiveBody({ bot, screen, live }: LiveBodyProps) {
 
 function Body({ bot, screen, live }: LiveBodyProps) {
   const { view } = screen
-  const tryAgain = () => void (view.status?.running ? screen.refresh() : screen.start())
+  // No status yet: re-read it. A running screen: re-read. Only a stopped one starts.
+  const tryAgain = () => void (!view.status || view.status.running ? screen.refresh() : screen.start())
+  const unsupported = view.status !== null && !view.status.supported
   switch (view.kind) {
     case 'loading':
       return <ScreenLoading />
     case 'starting':
       return <ScreenLoading label="Starting the screen" />
     case 'missing':
-      return <ScreenMissing />
+      return <ScreenMissing command={view.status?.install_command ?? null} />
     case 'off':
       return <ScreenOff onStart={() => void screen.start()} />
     case 'low_memory':
-      return <ScreenOff onStart={() => void screen.start()} message={view.message} />
+      return <ScreenOff onStart={() => void screen.start()} blocker={view.message} onCheck={() => void screen.refresh()} />
     case 'error':
-      return <ScreenError message={view.message ?? 'Something went wrong.'} onRetry={tryAgain} />
+      return <ScreenError message={view.message ?? 'Something went wrong.'} onRetry={unsupported ? undefined : tryAgain} />
     case 'live':
       return <LiveBody bot={bot} screen={screen} live={live} />
   }
@@ -90,7 +93,7 @@ export function ComputerPanel({ bot }: { bot: BotView }) {
   return (
     <div className="flex flex-col gap-3 p-4">
       <Body bot={bot} screen={screen} live={live} />
-      {!primary && screen.view.kind !== 'loading' && <UseScreenSwitch name={bot.name} title={bot.title} />}
+      {!primary && screen.view.kind !== 'loading' && screen.view.kind !== 'missing' && <UseScreenSwitch name={bot.name} title={bot.title} />}
     </div>
   )
 }

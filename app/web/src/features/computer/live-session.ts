@@ -34,6 +34,8 @@ export class LiveSession {
   private everLive = false
   private suspended = false
   private securityStrikes = 0
+  /** The current stream reached RFB `connect`: detaching it on purpose gives its dial back. */
+  private reachedConnect = false
   private pasteOff: (() => void) | null = null
   private redialTimer: ReturnType<typeof setTimeout> | null = null
   private securityTimer: ReturnType<typeof setTimeout> | null = null
@@ -51,6 +53,8 @@ export class LiveSession {
   /** Mount the canvas host: dial through the shared budget (the first dial waits out the mount delay). */
   attach(el: HTMLElement): void {
     this.flushDetach()
+    // A host swap (panel to Expand) is a plain detach of the old stream, so it cannot outlive a refused dial.
+    if (this.host && this.host !== el) this.stopLive()
     this.host = el
     this.disposed = false
     this.suspended = false
@@ -76,9 +80,21 @@ export class LiveSession {
   private flushDetach(): void {
     if (!this.pendingDetach) return
     this.pendingDetach = false
+    this.refundIfConnected()
     this.stopAll()
     this.host = null
     this.ui.setLink('idle')
+  }
+
+  /** A deliberate plain detach: give the dial back if the stream had connected (C1, R5). */
+  private refundIfConnected(): void {
+    if (this.reachedConnect) this.options.budget.refund(this.profile)
+    this.reachedConnect = false
+  }
+
+  private stopLive(): void {
+    this.refundIfConnected()
+    this.stopStreams()
   }
 
   /** The owner is leaving (tab switch, panel close, bot switch): hand back if the lease is ours, then close 1000. */
@@ -227,6 +243,7 @@ export class LiveSession {
 
   private async connect(): Promise<void> {
     const generation = ++this.generation
+    this.reachedConnect = false
     this.teardown()
     this.ui.setLink(this.everLive ? 'reconnecting' : 'connecting')
     this.ui.setError(null)
@@ -291,6 +308,7 @@ export class LiveSession {
     rfb.addEventListener('connect', () => {
       if (generation !== this.generation) return
       this.everLive = true
+      this.reachedConnect = true
       this.securityStrikes = 0
       this.ui.setLink('live')
     })
@@ -307,6 +325,7 @@ export class LiveSession {
   private onClosed(generation: number, code: number): void {
     if (generation !== this.generation) return
     this.generation += 1
+    this.reachedConnect = false // server-initiated: the dial stays spent (R4)
     this.teardown()
     if (code === 1000 || code === 4001) {
       void this.afterCleanClose(this.generation)
@@ -329,6 +348,7 @@ export class LiveSession {
   private onSecurityFailure(generation: number): void {
     if (generation !== this.generation) return
     this.generation += 1
+    this.reachedConnect = false
     this.teardown()
     this.securityStrikes += 1
     if (this.securityStrikes >= MAX_SECURITY_STRIKES) return this.fail(SECURITY_REFUSED)
@@ -360,7 +380,7 @@ export class LiveSession {
   private suspend(): void {
     this.hiddenTimer = null
     this.suspended = true
-    this.stopStreams()
+    this.stopLive()
     this.ui.setLink('idle')
   }
 

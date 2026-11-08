@@ -18,7 +18,7 @@ interface ExpandDialogProps {
 export function ExpandDialog({ open, title, live, inControl, onClose }: ExpandDialogProps) {
   return (
     <Dialog open={open} onOpenChange={next => !next && onClose()}>
-      <DialogContent className="max-w-[min(96vw,1400px)] sm:max-w-[min(96vw,1400px)]">
+      <DialogContent className="w-[min(96vw,1400px,calc(88vh*16/9))] max-w-none sm:max-w-none">
         <DialogTitle className="sr-only">{title}'s screen</DialogTitle>
         <DialogDescription className="sr-only">The enlarged view of {title}'s screen.</DialogDescription>
         <LiveView live={live} inControl={inControl} expanded onCollapse={onClose} />

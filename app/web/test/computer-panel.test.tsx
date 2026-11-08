@@ -87,6 +87,7 @@ describe('ComputerPanel', () => {
     overrides = { installed: false }
     const { unmount } = render(<ComputerPanel bot={scout} />)
     expect(await screen.findByText(/hermes computer-use screen install/)).toBeInTheDocument()
+    expect(screen.queryByRole('switch')).toBeNull()
     expect(screen.queryByRole('button', { name: /install/i })).toBeNull()
     unmount()
 
@@ -100,6 +101,10 @@ describe('ComputerPanel', () => {
     overrides = { blocker: 'Not enough free memory for a desktop: 900 MB available' }
     const low = render(<ComputerPanel bot={scout} />)
     expect(await screen.findByText('Not enough free memory for a desktop: 900 MB available')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Start screen' })).toBeDisabled()
+    const reads = calls('display.status').length
+    fireEvent.click(screen.getByRole('button', { name: 'Check again' }))
+    await waitFor(() => expect(calls('display.status').length).toBeGreaterThan(reads))
     low.unmount()
 
     client.handlers['display.status'] = () => new Promise(() => undefined)
@@ -107,6 +112,7 @@ describe('ComputerPanel', () => {
     expect(await screen.findByRole('status', { name: 'Loading the screen' })).toBeInTheDocument()
     loading.unmount()
 
+    overrides = {}
     client.handlers['display.status'] = () => status()
     fetchMock.mockImplementation(async (url: string) => url.endsWith('/screen/start')
       ? new Response(JSON.stringify({ error: 'hermes_error', message: 'launcher exited' }), { status: 502 })
@@ -140,10 +146,59 @@ describe('ComputerPanel', () => {
     expect(calls('display.stop')[0]!.params).toEqual({ profile: 'scout' })
   })
 
-  it('keeps Stop disabled with "Hand back first" while someone holds control', async () => {
+  it('keeps Stop disabled and says who holds control while someone else does', async () => {
     lease = { holder: 'human', viewer_hash: 'someoneelse1', since: 2, epoch: 4 }
     await live()
     await waitFor(() => expect(screen.getByRole('button', { name: 'Stop screen' })).toBeDisabled())
+    expect(screen.getAllByText('Someone is in control')).toHaveLength(2) // the chip and Stop's helper
+  })
+
+  it('shows the install command Hermes reports', async () => {
+    overrides = { installed: false, install_command: 'sudo apt install xvnc-thing' }
+    render(<ComputerPanel bot={scout} />)
+    expect(await screen.findByText('sudo apt install xvnc-thing')).toBeInTheDocument()
+  })
+
+  it('re-reads instead of starting when no status loaded, and offers no retry when unsupported', async () => {
+    client.handlers['display.status'] = () => { throw new Error('gateway down') }
+    const first = render(<ComputerPanel bot={scout} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Try again' }))
+    await waitFor(() => expect(calls('display.status').length).toBeGreaterThan(1))
+    expect(fetchMock.mock.calls.some(c => c[0] === '/crew/bots/scout/screen/start')).toBe(false)
+    first.unmount()
+
+    client.handlers['display.status'] = () => ({ ...status(), supported: false })
+    render(<ComputerPanel bot={scout} />)
+    await screen.findByText(/can't run a bot screen/)
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
+  })
+
+  it('shows the read error when the use-screen setting cannot be loaded', async () => {
+    fetchMock.mockImplementation(async (url: string) => url.endsWith('/screen/config') ? new Response(JSON.stringify({ error: 'hermes_error', message: 'config unreadable' }), { status: 502 }) : new Response('{}', { status: 404 }))
+    render(<ComputerPanel bot={scout} />)
+    expect(await screen.findByText('config unreadable')).toBeInTheDocument()
+  })
+
+  it('never hits Reconnect over three panel and Expand round trips', async () => {
+    await live()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Take control' })).toBeEnabled())
+    for (let i = 0; i < 3; i++) {
+      fireEvent.click(screen.getByRole('button', { name: 'Expand the screen' }))
+      const dialog = await screen.findByRole('dialog')
+      await waitFor(() => expect(within(dialog).getByTestId('live-view')).toBeInTheDocument())
+      await waitFor(() => expect(rfbs.list).toHaveLength(1 + 2 * i + 1))
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Close expanded view' }))
+      await waitFor(() => expect(rfbs.list).toHaveLength(1 + 2 * i + 2))
+    }
+    expect(screen.queryByRole('button', { name: 'Reconnect' })).toBeNull()
+  })
+
+  it('keeps Stop disabled while you hold control', async () => {
+    await live()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Take control' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: 'Take control' }))
+    await screen.findByText("You're in control")
+    expect(screen.getByRole('button', { name: 'Stop screen' })).toBeDisabled()
     expect(screen.getByText('Hand back first')).toBeInTheDocument()
   })
 
