@@ -32,7 +32,7 @@ function startCrew(hermesUrl: string): void {
   const config = loadConfig({ HOME: '/home/ali', CREW_PORT: String(port), CREW_HERMES_URL: hermesUrl })
   const token = new HermesToken('/unused')
   vi.spyOn(token, 'get').mockResolvedValue('tok-SECRET')
-  attachWsProxy(crew, { config, token, cookieKey, now })
+  attachWsProxy(crew, { config, token, cookieKey, now, knownBots: () => new Set() })
 }
 
 beforeEach(async () => {

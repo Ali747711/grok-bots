@@ -43,7 +43,7 @@ beforeEach(async () => {
   vi.spyOn(token, 'get').mockResolvedValue('tok-1')
   vi.spyOn(token, 'refresh').mockResolvedValue('tok-2')
   const config = loadConfig({ HOME: '/home/ali', CREW_PORT: String(port), CREW_HERMES_URL: `http://127.0.0.1:${upPort}` })
-  attachWsProxy(crew, { config, token, cookieKey, now })
+  attachWsProxy(crew, { config, token, cookieKey, now, knownBots: () => new Set() })
 })
 
 afterEach(async () => {

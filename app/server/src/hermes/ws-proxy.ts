@@ -7,6 +7,7 @@ import type { CrewConfig } from '../config.js'
 import { isAllowedUpgrade } from '../http/session-guard.js'
 import { log } from '../log.js'
 import { forwardableCode } from './close-codes.js'
+import { checkBrowserFrame } from './display-guard.js'
 import { DISPLAY_CLIENT_MAX_PAYLOAD, attachDisplayBridge } from './display-proxy.js'
 import type { HermesToken } from './token.js'
 
@@ -15,6 +16,8 @@ export interface WsProxyDeps {
   readonly token: HermesToken
   readonly cookieKey: Buffer
   readonly now: () => number
+  /** Names of the bots Crew knows (the roster, including `default`); `display.*` frames must name one. */
+  readonly knownBots: () => ReadonlySet<string>
 }
 
 const PROXIED_PATH = '/api/ws'
@@ -52,6 +55,11 @@ async function bridge(client: WebSocket, deps: WsProxyDeps): Promise<void> {
   }
 
   client.on('message', (data, isBinary) => {
+    const verdict = checkBrowserFrame(data, isBinary, deps.knownBots)
+    if (!verdict.forward) {
+      if (verdict.reply && client.readyState === WebSocket.OPEN) client.send(verdict.reply)
+      return
+    }
     if (upstream.readyState === WebSocket.OPEN) return upstream.send(data, { binary: isBinary })
     if (pending.length >= MAX_PENDING_FRAMES) return client.close(TRY_AGAIN_LATER, 'upstream not ready')
     pending = [...pending, { data, isBinary }]
