@@ -51,7 +51,7 @@ export function creditText(usage: Usage | null): string {
 export function CreditPillView({ usage }: { usage: Usage | null }) {
   const remaining = usage !== null && usage.state !== 'unavailable' ? usage.remaining : null
   return (
-    <div data-testid="credit-pill" className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
+    <div data-testid="credit-pill" className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
       <span>{creditText(usage)}</span>
       {remaining !== null && usage?.state === 'stale' && <span className="ml-1 opacity-70">(stale)</span>}
     </div>

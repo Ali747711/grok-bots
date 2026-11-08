@@ -87,6 +87,15 @@ describe('CrewAvatar', () => {
     expect(screen.getByRole('img')).toBeInTheDocument()
   })
 
+  it('hides a decorative avatar, its photo and its needs-you dot from assistive tech', () => {
+    const { container, rerender } = render(<CrewAvatar bot={bot({ name: 'x', status: 'needs_you' })} size={34} decorative />)
+    expect(container.firstElementChild).toHaveAttribute('aria-hidden', 'true')
+    expect(screen.queryByRole('img', { name: 'Needs you' })).toBeNull()
+    rerender(<CrewAvatar bot={bot({ name: 'x', title: 'Scout Bot', imageKind: 'photo', hasAvatar: true })} size={34} decorative />)
+    expect(document.querySelector('img')).toHaveAttribute('alt', '')
+    expect(screen.queryByAltText('Scout Bot')).toBeNull()
+  })
+
   it('keeps a fixed-size box', () => {
     const { container } = render(<CrewAvatar bot={bot({ name: 'x' })} size={40} />)
     expect(container.firstElementChild).toHaveStyle({ width: '40px', height: '40px' })

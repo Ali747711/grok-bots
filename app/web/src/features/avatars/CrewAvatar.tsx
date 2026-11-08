@@ -12,10 +12,12 @@ interface CrewAvatarProps {
   size: number
   /** Pickers pass false so the avatar does not react to the pointer. */
   interactive?: boolean
+  /** The bot's name sits right beside the avatar (roster rows), so hide the avatar from assistive tech. */
+  decorative?: boolean
 }
 
 /** A bot's face: a plush-fur avatar (or its uploaded photo) with its status shown as motion, a ring or a dot. */
-export function CrewAvatar({ bot, size, interactive = true }: CrewAvatarProps) {
+export function CrewAvatar({ bot, size, interactive = true, decorative = false }: CrewAvatarProps) {
   const now = useNow()
   const state = avatarState(bot, now)
   // Photo load failures are remembered per bot and photo, so a new bot or a new upload retries.
@@ -25,16 +27,16 @@ export function CrewAvatar({ bot, size, interactive = true }: CrewAvatarProps) {
   const look = resolved.kind === 'photo' && brokenKey === photoKey ? resolvedAvatar({ ...bot, imageKind: null }) : resolved
   const dim = state === 'sleeping' && 'opacity-60'
   return (
-    <div className="relative flex-none" style={{ width: size, height: size }}>
+    <div className="relative flex-none" aria-hidden={decorative || undefined} style={{ width: size, height: size }}>
       {look.kind === 'photo' ? (
         <div className={cn('size-full overflow-hidden rounded-[30%]', state === 'working' && 'ring-2 ring-sky', dim)}>
-          <img src={`/crew/avatars/${encodeURIComponent(bot.name)}`} alt={bot.title} onError={() => setBrokenKey(photoKey)} className="size-full object-cover" />
+          <img src={`/crew/avatars/${encodeURIComponent(bot.name)}`} alt={decorative ? '' : bot.title} onError={() => setBrokenKey(photoKey)} className="size-full object-cover" />
         </div>
       ) : (
         <div className={cn('size-full', dim)}>
           <BotAvatar
             shading="fabric"
-            aria-label={bot.title}
+            aria-label={decorative ? undefined : bot.title}
             type={look.type}
             {...(look.color ? { color: look.color } : {})}
             state={state}
