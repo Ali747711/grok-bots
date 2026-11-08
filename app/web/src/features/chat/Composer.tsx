@@ -8,10 +8,12 @@ interface ComposerProps {
   onStop: () => void
   running: boolean
   disabledReason: string | null
+  /** Stop needs a live connection even when sending is blocked for another reason. */
+  stopDisabled?: boolean
 }
 
 /** Message box: Enter sends, Shift+Enter adds a line, Stop replaces Send while the bot is running. */
-export function Composer({ onSend, onStop, running, disabledReason }: ComposerProps) {
+export function Composer({ onSend, onStop, running, disabledReason, stopDisabled = false }: ComposerProps) {
   const [text, setText] = useState('')
   const disabled = disabledReason !== null
 
@@ -43,7 +45,7 @@ export function Composer({ onSend, onStop, running, disabledReason }: ComposerPr
             className="max-h-40 min-h-9 flex-1 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 dark:bg-transparent"
           />
           {running ? (
-            <Button type="button" variant="outline" onClick={onStop}>Stop</Button>
+            <Button type="button" variant="outline" disabled={stopDisabled} onClick={onStop}>Stop</Button>
           ) : (
             <Button type="button" disabled={disabled || !text.trim()} onClick={submit}>Send</Button>
           )}

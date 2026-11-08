@@ -37,13 +37,21 @@ export async function openBotChat(client: RpcClient, bot: BotView): Promise<Open
   }
 }
 
+export interface HistoryResult {
+  items: ChatItem[]
+  /** Stored row ids, to tell whether a live turn is already persisted. */
+  rowIds: ReadonlySet<number>
+}
+
 /** Stored transcript of a session, via Crew's REST proxy. */
-export async function fetchHistory(bot: string, sessionId: string): Promise<ChatItem[]> {
+export async function fetchHistory(bot: string, sessionId: string): Promise<HistoryResult> {
   const query = `profile=${encodeURIComponent(bot)}&limit=120&order=latest&include_compacted=true`
   const res = await crewFetch(`/api/sessions/${encodeURIComponent(sessionId)}/messages?${query}`)
   if (!res.ok) throw new Error(`history request failed (${res.status})`)
   const body: unknown = await res.json()
   const messages = (body as { messages?: unknown } | null)?.messages
   if (!Array.isArray(messages)) throw new Error('history response had no messages')
-  return historyToItems(messages as HistoryRow[])
+  const rows = messages as HistoryRow[]
+  const rowIds = new Set(rows.flatMap(r => (typeof r.id === 'number' ? [r.id] : [])))
+  return { items: historyToItems(rows), rowIds }
 }

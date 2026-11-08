@@ -17,7 +17,7 @@ interface ChatViewProps {
 
 /** One bot's chat: header, transcript, composer. */
 export function ChatView({ bot, state, crewConnected }: ChatViewProps) {
-  const { session, items, canSend, running, notice } = useChatSession(bot)
+  const { session, items, canSend, connected, running, notice } = useChatSession(bot)
   const stale = state.hermes !== 'connected' || !crewConnected
   const othersWorking = state.bots.filter(b => b.name !== bot.name && b.status === 'working').length
   // Oldest first; they leave when Hermes settles them (they drop out of state.pending).
@@ -27,7 +27,7 @@ export function ChatView({ bot, state, crewConnected }: ChatViewProps) {
   return (
     <>
       <ChatHeader bot={bot} stale={stale} />
-      <MessageList items={items} />
+      <MessageList items={items} onRetry={id => void session?.retry(id).catch(() => undefined)} />
       {notice && <p role="status" className="px-6 text-center text-xs text-muted-foreground">{notice}</p>}
       {requests.length > 0 && (
         <div className="max-h-[40vh] flex-none overflow-y-auto px-6 pt-2">
@@ -39,9 +39,10 @@ export function ChatView({ bot, state, crewConnected }: ChatViewProps) {
       <Composer
         disabledReason={reason}
         running={running}
+        stopDisabled={!connected}
         // A rejected send already shows a "Not sent" notice in the transcript.
         onSend={text => void session?.send(text).catch(() => undefined)}
-        onStop={() => void session?.stop().catch(() => undefined)}
+        onStop={() => void session?.stop()}
       />
     </>
   )

@@ -8,6 +8,8 @@ export interface WorkStep {
 }
 
 export type ChatItem =
-  | { kind: 'user' | 'assistant'; id: string; text: string }
+  | { kind: 'assistant'; id: string; text: string }
+  /** `delivery`: 'checking' while a lost receipt is being reconciled, 'not_sent' once Hermes shows no sign of it (Retry resubmits `submissionId`). */
+  | { kind: 'user'; id: string; text: string; submissionId?: string; delivery?: 'checking' | 'not_sent' }
   | { kind: 'work'; id: string; steps: WorkStep[]; durationS?: number }
   | { kind: 'notice'; id: string; text: string }

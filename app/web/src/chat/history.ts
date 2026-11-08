@@ -98,7 +98,8 @@ export function historyToItems(rows: readonly HistoryRow[]): ChatItem[] {
     flush()
     if (row.display_kind === 'failed_turn') items.push({ kind: 'notice', id, text })
     else if (row.display_kind === 'internal_notification') items.push({ kind: 'notice', id, text: relayedNotice(text) })
-    else if (row.role === 'user' || row.role === 'assistant') items.push({ kind: row.role, id, text })
+    else if (row.role === 'user') items.push({ kind: 'user', id, text })
+    else if (row.role === 'assistant') items.push({ kind: 'assistant', id, text })
   }
   flush()
   return items

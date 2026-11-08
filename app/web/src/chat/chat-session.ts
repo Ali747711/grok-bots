@@ -1,16 +1,31 @@
 import type { BotView } from '@/state/types'
 import type { GatewayEvent } from '@/vendor/hermes/gateway-events'
+import { JsonRpcGatewayError } from '@/vendor/hermes/json-rpc-channel'
 
-import { fetchHistory, openBotChat, type OpenedChat, type RpcClient } from './open-bot-chat'
+import { fetchHistory, openBotChat, type HistoryResult, type OpenedChat, type RpcClient } from './open-bot-chat'
 import { applyFrame, initialTurnState, type TurnFrame, type TurnState } from './turn-reducer'
 import type { ChatItem } from './types'
 
-export type AdmissionResult = 'queued' | 'started' | 'duplicate' | 'lost'
+export type AdmissionResult = 'queued' | 'started' | 'duplicate' | 'lost' | 'uncertain'
 
 /** What ChatSession needs from the vendored gateway client. */
 export interface ChatClient extends RpcClient {
   onAny(handler: (event: GatewayEvent) => void): () => void
   onState(handler: (state: string) => void): () => void
+  /** Resolves true once the client's reconnect replay for the session has dispatched; false when the socket was lost. */
+  sessionReplayBarrier?(sessionId: string): Promise<boolean> | undefined
+}
+
+type UserItem = Extract<ChatItem, { kind: 'user' }>
+
+/** A sent message whose receipt was lost or not yet confirmed. */
+interface Submission {
+  text: string
+  /** `message.start` count when it was sent; any later start counts as evidence it was delivered. */
+  startsAtSend: number
+  /** User item ids that existed at send time, to recognise the new stored row. */
+  knownUserIds: ReadonlySet<string>
+  status: 'checking' | 'not_sent'
 }
 
 const SUBMIT_TIMEOUT_MS = 1_800_000
@@ -20,6 +35,13 @@ const RECONNECTING = 'Reconnecting to the chat…'
 const backoff = (attempt: number) => Math.min(RETRY_MAX_MS, RETRY_MIN_MS * 2 ** attempt)
 const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
 const reason = (error: unknown) => (error instanceof Error ? error.message : String(error))
+
+/** A short plain-words reason: codes lose their underscores and raw JSON is never shown. */
+function plainReason(error: unknown): string {
+  const text = reason(error).trim()
+  if (!text || /^[[{]/.test(text)) return 'unexpected error'
+  return text.replace(/_/g, ' ').slice(0, 120)
+}
 
 /** Map the admission status Hermes returns for `prompt.submit` (terminal = already handled, unknown = lost). */
 function toAdmission(status: unknown): AdmissionResult {
@@ -42,11 +64,20 @@ export class ChatSession {
   private _error: string | null = null
   private retryToken = 0
   private _sessionId: string | null = null
+  /** Highest generation seen for the CURRENT session id only. */
   private maxGeneration = 0
   private ready = false
-  private connected = true
+  /** History for `_sessionId` has been loaded into `base`. */
+  private hydrated = false
+  private socketUp = true
   private attached = false
   private openToken = 0
+  /** Live events are parked here while history loads, then reconciled with the stored rows. */
+  private loading = false
+  private buffer: TurnFrame[] = []
+  private startsSeen = 0
+  private noticeCount = 0
+  private readonly submissions = new Map<string, Submission>()
   private readonly listeners = new Set<(items: readonly ChatItem[]) => void>()
   private detach: (() => void)[] = []
 
@@ -57,7 +88,9 @@ export class ChatSession {
   ) {}
 
   get sessionId(): string | null { return this._sessionId }
-  get canSend(): boolean { return this.ready && this.connected }
+  get canSend(): boolean { return this.ready && this.socketUp }
+  /** The gateway socket is up (independent of whether the chat has been re-opened yet). */
+  get connected(): boolean { return this.socketUp }
   get running(): boolean { return this.turn.running }
   get items(): readonly ChatItem[] { return [...this.base, ...this.turn.items, ...this.pending] }
   /** Set while the chat is being re-opened after a reconnect; null otherwise. */
@@ -88,34 +121,105 @@ export class ChatSession {
     const sessionId = this._sessionId
     if (!this.canSend || !sessionId) throw new Error('Not connected to Hermes')
     const submissionId = crypto.randomUUID()
-    const userId = `user-${submissionId}`
-    this.pending = [...this.pending, { kind: 'user', id: userId, text }]
+    const known = new Set(this.items.filter(i => i.kind === 'user').map(i => i.id))
+    this.submissions.set(submissionId, { text, startsAtSend: this.startsSeen, knownUserIds: known, status: 'checking' })
+    this.pending = [...this.pending, { kind: 'user', id: `user-${submissionId}`, text, submissionId }]
     this.emit()
-    try {
-      const result = await this.client.request<{ status?: unknown } | undefined>(
-        'prompt.submit',
-        { profile: this.bot.name, session_id: sessionId, text, submission_id: submissionId },
-        SUBMIT_TIMEOUT_MS
-      )
-      const admission = toAdmission(result?.status)
-      if (admission === 'duplicate') this.replaceItem(userId, null)
-      if (admission === 'lost') this.pending = [...this.pending, { kind: 'notice', id: `lost-${submissionId}`, text: 'This message was lost when Hermes restarted' }]
-      this.emit()
-      return admission
-    } catch (error) {
-      this.replaceItem(userId, { kind: 'notice', id: `notice-${userId}`, text: `Not sent: ${reason(error)}` })
-      this.emit()
-      throw error
-    }
+    return this.submit(submissionId, sessionId, false)
+  }
+
+  /** Resubmit an unsent message with the SAME submission id (Hermes treats it as idempotent). */
+  async retry(submissionId: string): Promise<AdmissionResult> {
+    const sessionId = this._sessionId
+    const record = this.submissions.get(submissionId)
+    if (!record) throw new Error('That message is no longer waiting')
+    if (!this.canSend || !sessionId) throw new Error('Not connected to Hermes')
+    record.status = 'checking'
+    this.setDelivery(submissionId, 'checking')
+    this.emit()
+    return this.submit(submissionId, sessionId, true)
   }
 
   async stop(): Promise<void> {
     if (!this._sessionId) return
-    await this.client.request('session.interrupt', {
-      profile: this.bot.name,
-      session_id: this._sessionId,
-      execution_generation: this.maxGeneration
-    })
+    try {
+      await this.client.request('session.interrupt', {
+        profile: this.bot.name,
+        session_id: this._sessionId,
+        execution_generation: this.maxGeneration
+      })
+    } catch (error) {
+      this.addNotice(`Couldn’t stop — ${plainReason(error)}`)
+    }
+  }
+
+  private async submit(submissionId: string, sessionId: string, retrying: boolean): Promise<AdmissionResult> {
+    const record = this.submissions.get(submissionId)!
+    const userId = `user-${submissionId}`
+    try {
+      const result = await this.client.request<{ status?: unknown } | undefined>(
+        'prompt.submit',
+        { profile: this.bot.name, session_id: sessionId, text: record.text, submission_id: submissionId },
+        SUBMIT_TIMEOUT_MS
+      )
+      this.submissions.delete(submissionId)
+      const admission = toAdmission(result?.status)
+      // On a retry, "duplicate" means the first attempt did land, so the message stays.
+      if (admission === 'duplicate' && !retrying) this.replaceItem(userId, null)
+      else this.setDelivery(submissionId, undefined)
+      if (admission === 'lost') this.pending = [...this.pending, { kind: 'notice', id: `lost-${submissionId}`, text: 'This message was lost when Hermes restarted' }]
+      this.emit()
+      return admission
+    } catch (error) {
+      return this.submitFailed(error, submissionId, record)
+    }
+  }
+
+  private submitFailed(error: unknown, submissionId: string, record: Submission): AdmissionResult {
+    const userId = `user-${submissionId}`
+    if (error instanceof JsonRpcGatewayError) {
+      // Hermes answered with a definite refusal.
+      this.submissions.delete(submissionId)
+      this.replaceItem(userId, { kind: 'notice', id: `notice-${userId}`, text: `Not sent: ${reason(error)}` })
+      this.emit()
+      throw error
+    }
+    // Socket closed or timed out: Hermes may or may not have accepted it.
+    if (this.startsSeen > record.startsAtSend) {
+      this.submissions.delete(submissionId)
+      this.setDelivery(submissionId, undefined)
+      this.emit()
+      return 'started'
+    }
+    record.status = 'checking'
+    this.setDelivery(submissionId, 'checking')
+    this.emit()
+    if (this.canSend) void this.reconcile(false, false)
+    return 'uncertain'
+  }
+
+  /**
+   * Decide the fate of messages whose receipt was lost: delivered when a turn started since, the snapshot
+   * shows one running, or the stored transcript holds a new user row with that text; otherwise "not sent".
+   */
+  private async reconcile(running: boolean, baseHasHistory: boolean): Promise<void> {
+    const waiting = [...this.submissions].filter(([, r]) => r.status === 'checking')
+    const sessionId = this._sessionId
+    if (waiting.length === 0 || !sessionId) return
+    const history: HistoryResult | null = await fetchHistory(this.bot.name, sessionId).catch(() => null)
+    for (const [id, record] of waiting) {
+      const stored = history?.items.some(i => i.kind === 'user' && !record.knownUserIds.has(i.id) && i.text === record.text) ?? false
+      if (running || stored || this.startsSeen > record.startsAtSend) {
+        this.submissions.delete(id)
+        // When history was loaded into `base` it already holds this message; drop the local copy.
+        if (stored && baseHasHistory) this.replaceItem(`user-${id}`, null)
+        else this.setDelivery(id, undefined)
+      } else if (history) {
+        record.status = 'not_sent'
+        this.setDelivery(id, 'not_sent')
+      }
+    }
+    this.emit()
   }
 
   private attach(): void {
@@ -130,8 +234,8 @@ export class ChatSession {
   private onState(state: string): void {
     if (!this.attached) return
     const open = state === 'open'
-    const wasConnected = this.connected
-    this.connected = open
+    const wasConnected = this.socketUp
+    this.socketUp = open
     if (state === 'closed' || state === 'error') this.ready = false
     if (open && !wasConnected) void this.reopenWithRetry()
     this.emit()
@@ -139,12 +243,21 @@ export class ChatSession {
 
   private onEvent(event: TurnFrame): void {
     if (!this.attached || !this._sessionId || event.session_id !== this._sessionId) return
+    if (this.loading) {
+      this.buffer.push(event)
+      return
+    }
+    this.handleEvent(event)
+  }
+
+  private handleEvent(event: TurnFrame): void {
     this.noteGeneration(num(event.execution_generation))
     if (event.type === 'session.info') this.noteGeneration(num((event.payload as { execution_generation?: unknown } | null)?.execution_generation))
     if (event.type === 'session.replay_gap') {
       void this.reopenWithRetry(true)
       return
     }
+    if (event.type === 'message.start') this.startsSeen += 1
     this.foldBeforeNextTurn(event)
     const next = applyFrame(this.turn, event)
     if (next === this.turn) return
@@ -174,48 +287,106 @@ export class ChatSession {
         if (mine === this.retryToken) { this._error = null; this.emit() }
         return
       } catch {
-        if (mine !== this.retryToken || !this.attached || !this.connected) return
+        if (mine !== this.retryToken || !this.attached || !this.socketUp) return
         this._error = RECONNECTING
         this.emit()
         await new Promise(resolve => setTimeout(resolve, (this.options.retryDelayMs ?? backoff)(attempt)))
-        if (mine !== this.retryToken || !this.connected) return
+        if (mine !== this.retryToken || !this.socketUp) return
       }
+    }
+  }
+
+  /** Wait for the client's reconnect replay so older frames land before the snapshot moves the generation on. */
+  private async awaitReplay(...sessionIds: (string | null)[]): Promise<void> {
+    for (const id of new Set(sessionIds.filter((s): s is string => s !== null))) {
+      if ((await this.client.sessionReplayBarrier?.(id)) === false) throw new Error('connection lost before the replay finished')
     }
   }
 
   /**
    * (Re-)resume. The returned session id can differ from the last one (compression).
-   * Same id and not `fresh`: keep the live turn and history (the client's replay plus the reducer's
-   * de-duping already cover the gap, and reloading history would duplicate the live turn); only refresh
-   * running/generation from the snapshot. New id, first open or replay gap: reset the turn and reload history.
+   * Same id with history already loaded (and not `fresh`): keep the live turn and history; the client's
+   * replay plus the reducer's de-duping cover the gap, so only running/generation refresh from the snapshot.
+   * New id, never hydrated, or replay gap: reset the turn and reload history, parking live events meanwhile.
    */
   private async reopen(fresh = false): Promise<void> {
     const token = ++this.openToken
     this.ready = false
     const opened: OpenedChat = await openBotChat(this.client, this.bot)
     if (token !== this.openToken) return
-    const same = !fresh && this._sessionId === opened.sessionId
+    await this.awaitReplay(this._sessionId, opened.sessionId)
+    if (token !== this.openToken) return
+    const sameId = this._sessionId === opened.sessionId
     this._sessionId = opened.sessionId
-    this.maxGeneration = Math.max(this.maxGeneration, opened.generation)
-    if (same) {
+    this.maxGeneration = sameId ? Math.max(this.maxGeneration, opened.generation) : opened.generation
+    if (sameId && this.hydrated && !fresh) {
       this.turn = { ...this.turn, generation: Math.max(this.turn.generation, opened.generation), running: opened.running }
       this.ready = true
       this.emit()
+      void this.reconcile(opened.running, false)
       return
     }
+    await this.hydrate(token, opened)
+  }
+
+  private async hydrate(token: number, opened: OpenedChat): Promise<void> {
+    this.hydrated = false
     this.turn = { ...initialTurnState, generation: opened.generation, running: opened.running }
-    this.pending = []
-    const history = await fetchHistory(this.bot.name, opened.sessionId)
+    this.pending = this.pending.filter(i => i.kind === 'user' && i.delivery !== undefined)
+    this.buffer = []
+    this.loading = true
+    let history: HistoryResult
+    try {
+      history = await fetchHistory(this.bot.name, opened.sessionId)
+    } catch (error) {
+      if (token === this.openToken) this.drainBuffer(null)
+      throw error
+    }
     if (token !== this.openToken) return
-    this.base = history
+    this.base = history.items
+    this.drainBuffer(history.rowIds)
+    this.hydrated = true
     this.ready = true
     this.emit()
+    void this.reconcile(opened.running, true)
+  }
+
+  /** Apply parked live events, skipping turns whose rows the stored transcript already holds. */
+  private drainBuffer(stored: ReadonlySet<number> | null): void {
+    const events = this.buffer
+    this.buffer = []
+    this.loading = false
+    const persisted = new Set<number | undefined>()
+    for (const e of events) {
+      const rows = (e.payload as { persisted_turn?: { row_ids?: unknown } } | null)?.persisted_turn?.row_ids
+      if (e.type === 'message.complete' && stored && Array.isArray(rows) && rows.some(r => typeof r === 'number' && stored.has(r))) persisted.add(e.execution_generation)
+    }
+    for (const e of events) {
+      if (persisted.has(e.execution_generation) || e.type === 'session.replay_gap') continue
+      this.handleEvent(e)
+    }
+  }
+
+  private setDelivery(submissionId: string, delivery: 'checking' | 'not_sent' | undefined): void {
+    const update = (items: readonly ChatItem[]) => items.map((i): ChatItem => {
+      if (i.kind !== 'user' || i.submissionId !== submissionId) return i
+      const { delivery: _old, ...rest } = i
+      return (delivery ? { ...rest, delivery } : rest) as UserItem
+    })
+    this.base = update(this.base)
+    this.pending = update(this.pending)
   }
 
   private replaceItem(id: string, replacement: ChatItem | null): void {
     const swap = (items: readonly ChatItem[]) => items.flatMap(i => (i.id === id ? (replacement ? [replacement] : []) : [i]))
     this.base = swap(this.base)
     this.pending = swap(this.pending)
+  }
+
+  private addNotice(text: string): void {
+    this.noticeCount += 1
+    this.pending = [...this.pending, { kind: 'notice', id: `notice-local-${this.noticeCount}`, text }]
+    this.emit()
   }
 
   private emit(): void {
