@@ -3,6 +3,8 @@ import { Hono } from 'hono'
 import { authRoutes } from './auth/routes.js'
 import type { TicketStore } from './auth/tickets.js'
 import type { CrewConfig } from './config.js'
+import { restProxy } from './hermes/rest-proxy.js'
+import type { HermesToken } from './hermes/token.js'
 import { hostGuard } from './http/host-guard.js'
 import { originGuard } from './http/origin-guard.js'
 import { type CrewEnv, sessionGuard } from './http/session-guard.js'
@@ -12,6 +14,8 @@ export interface AppDeps {
   readonly secrets: { readonly admin: Buffer; readonly cookie: Buffer }
   readonly tickets: TicketStore
   readonly now: () => number
+  readonly token: HermesToken
+  readonly fetchUpstream: typeof fetch
 }
 
 export const PUBLIC_PATHS = [
@@ -30,5 +34,6 @@ export function createApp(deps: AppDeps): Hono<CrewEnv> {
   app.get('/crew/health', c => c.json({ ok: true }))
   app.on(['GET', 'POST'], '/crew/whoami', c => c.json({ sid: c.get('sid') }))
   app.route('/', authRoutes(deps))
+  app.route('/', restProxy(deps))
   return app
 }
