@@ -1,0 +1,10 @@
+{
+  "commit": "2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19",
+  "source": "apps/shared/src",
+  "files": {
+    "gateway-contract.generated.ts": "87671cbb35c360e256cb1d83c9bb3706d0eacce3c71d02b51c0d9ffbd9a06b04",
+    "gateway-events.ts": "0c44bbb5b2c76a5b355654438d0cb7a77bfe85b592b7fb89d17b3f25d271ed00",
+    "json-rpc-channel.ts": "66761ee467d78ab449225407fd9a7056f969e55713189dd0d01700ddb92c3baa",
+    "json-rpc-gateway.ts": "8c05143279be1e807244861289731ce7c84ae6b9ebbd65938d137c51392bd968"
+  }
+}
