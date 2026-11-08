@@ -2,7 +2,7 @@ import type { BotView, CrewState } from '@/state/types'
 
 export function bot(over: Partial<BotView> & { name: string }): BotView {
   return {
-    title: over.name, color: null, shape: null, isPrimary: false, hasAvatar: false, model: null,
+    title: over.name, color: null, shape: null, isPrimary: false, hasAvatar: false, avatar: null, imageKind: null, model: null,
     sessionId: null, preview: null, lastActive: null, status: 'idle',
     hidden: false, setupIncomplete: false, created: null, ...over
   }
