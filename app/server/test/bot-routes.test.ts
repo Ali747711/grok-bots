@@ -5,6 +5,7 @@ import { CSRF_COOKIE } from '../src/auth/routes.js'
 import { signSession } from '../src/auth/session-cookie.js'
 import type { BotDeps } from '../src/bots/create.js'
 import { HermesRpcError, HermesUnavailableError } from '../src/hermes/errors.js'
+import { deriveAvatarType } from '../src/bots/avatar.js'
 import { FakeRpc } from './fake-rpc.js'
 import { HOST, makeDeps, ORIGIN } from './helpers.js'
 
@@ -59,6 +60,7 @@ describe('POST /crew/bots', () => {
       { ...body, avatar: { type: 'dragon' } },
       { ...body, avatar: { type: 'cat', color: 'red' } },
       { ...body, avatar: undefined },
+      { name: 'scout', title: 'x', mission: '' },
       { ...body, title: 'x'.repeat(81) },
       { ...body, mission: 'x'.repeat(2001) },
       { ...body, image: 'data:image/png;base64,' + 'A'.repeat(2_700_000) },
@@ -120,6 +122,18 @@ describe('POST /crew/bots', () => {
     expect((await first).status).toBe(201)
   })
 
+  it('accepts the legacy look when avatar is absent, and avatar wins when both are sent', async () => {
+    const { avatar: _drop, ...legacy } = body
+    const withLook = { ...legacy, look: { shape: 'circle', color: '#112233' } }
+    expect((await post('/crew/bots', withLook)).status).toBe(201)
+    expect((rpc.configures[0]!.ui_meta as Record<string, Record<string, unknown>>)['hermes-bots']).toMatchObject({ crewAvatar: { type: deriveAvatarType('scout'), color: '#112233' } })
+    expect((await post('/crew/bots', { ...withLook, name: 'both' })).status).toBe(201)
+    expect((rpc.configures[1]!.ui_meta as Record<string, Record<string, unknown>>)['hermes-bots']).toMatchObject({ crewAvatar: { type: deriveAvatarType('both') } })
+    for (const look of [{ shape: 'blob', color: '#112233' }, { shape: 'circle', color: 'red' }]) {
+      expect((await post('/crew/bots', { ...legacy, name: 'bad', look })).status).toBe(400)
+    }
+  })
+
   it('requires the CSRF header', async () => {
     const res = await app().request('/crew/bots', { method: 'POST', headers: { ...headers, 'X-Crew-CSRF': '' }, body: JSON.stringify(body) })
     expect(res.status).toBe(403)
@@ -127,6 +141,16 @@ describe('POST /crew/bots', () => {
 })
 
 describe('POST /crew/bots/:name/finish', () => {
+  it('finishes a bot from the legacy look, and avatar wins when both are sent', async () => {
+    rpc.rows.set('scout', {})
+    const res = await post('/crew/bots/scout/finish', { look: { shape: 'circle', color: '#112233' } })
+    expect(res.status).toBe(200)
+    expect((rpc.configures[0]!.ui_meta as Record<string, Record<string, unknown>>)['hermes-bots']).toMatchObject({ crewAvatar: { type: deriveAvatarType('scout'), color: '#112233' } })
+    rpc.rows.set('other', {})
+    await post('/crew/bots/other/finish', { look: { shape: 'circle', color: '#112233' }, avatar: { type: 'cat' } })
+    expect((rpc.configures[1]!.ui_meta as Record<string, Record<string, unknown>>)['hermes-bots']).toMatchObject({ crewAvatar: { type: 'cat' } })
+  })
+
   it('finishes a bot with no look', async () => {
     rpc.rows.set('scout', {})
     const res = await post('/crew/bots/scout/finish', {})
