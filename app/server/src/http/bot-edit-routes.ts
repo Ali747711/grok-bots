@@ -16,7 +16,8 @@ const image = z.string().regex(/^data:image\/(png|jpeg|webp);base64,/).max(IMAGE
 const GUARDED = ['soul', 'description', 'model'] as const
 const patchBody = z.object({
   title: z.string().min(1).max(80),
-  look: z.object({ shape: z.enum(['circle', 'squircle']), color: z.string().regex(/^#[0-9a-fA-F]{6}$/) }),
+  look: z.object({ shape: z.string().min(1).max(64), color: z.string().regex(/^#[0-9a-fA-F]{6}$/) }).partial()
+    .refine(look => look.shape !== undefined || look.color !== undefined, 'look needs a shape or a color'),
   hidden: z.boolean(),
   description: z.string().max(2000),
   soul: z.string().max(100_000),

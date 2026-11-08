@@ -73,7 +73,7 @@ describe('PATCH /crew/bots/:name', () => {
   })
 
   it('rejects empty and invalid patches with 400 bad_body', async () => {
-    for (const payload of [{}, { title: '' }, { title: 'x'.repeat(81) }, { look: { shape: 'blob', color: '#111111' } }, { hidden: 'yes' },
+    for (const payload of [{}, { title: '' }, { title: 'x'.repeat(81) }, { look: {} }, { look: { shape: '' } }, { look: { shape: 'x'.repeat(65) } }, { look: { color: 'red' } }, { hidden: 'yes' },
       { description: 'x'.repeat(2001) }, { soul: 'x'.repeat(100_001) }, { model: { provider: '', model: 'm' } }, '{']) {
       const res = await send('PATCH', '/crew/bots/scout', payload)
       expect(res.status).toBe(400)
@@ -103,6 +103,12 @@ describe('PATCH /crew/bots/:name', () => {
     expect((await send('PATCH', '/crew/bots/scout', { model: { provider: 'p', model: 'm' }, baseline: { model: null } })).status).toBe(200)
     for (const patch of [{ title: 'T' }, { hidden: true }, { look: { shape: 'circle', color: '#222222' } }]) {
       expect((await send('PATCH', '/crew/bots/scout', patch)).status).toBe(200)
+    }
+  })
+
+  it('accepts a partial look with any Hermes shape string', async () => {
+    for (const look of [{ color: '#abcdef' }, { shape: 'blobatar' }, { shape: 'blobatar:seed:round' }, { shape: 'sigil-3', color: '#abcdef' }]) {
+      expect((await send('PATCH', '/crew/bots/scout', { look })).status).toBe(200)
     }
   })
 

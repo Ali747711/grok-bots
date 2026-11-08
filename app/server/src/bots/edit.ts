@@ -1,5 +1,5 @@
 import { withBotLock } from './bot-lock.js'
-import { type BotDeps, type BotLook, refreshQuietly } from './create.js'
+import { type BotDeps, refreshQuietly } from './create.js'
 import { type BotMeta, BotNotFoundError, BotMetaWriteError, updateBotMeta } from './ui-meta.js'
 
 const PRIMARY = 'default'
@@ -22,9 +22,15 @@ export interface BotDetail {
   readonly metaRevision: number
 }
 
+/** Only the look keys the user changed; the others stay as stored (a Hermes shape Crew can't offer survives). */
+export interface LookPatch {
+  readonly shape?: string
+  readonly color?: string
+}
+
 export interface BotPatch {
   readonly title?: string
-  readonly look?: BotLook
+  readonly look?: LookPatch
   readonly hidden?: boolean
   readonly description?: string
   readonly soul?: string
@@ -126,7 +132,7 @@ function metaPatch(patch: BotPatch): Partial<BotMeta> {
   return {
     ...(patch.title !== undefined ? { title: patch.title } : {}),
     ...(patch.hidden !== undefined ? { hidden: patch.hidden } : {}),
-    ...(patch.look ? { shape: patch.look.shape, color: patch.look.color, custom: true } : {})
+    ...(patch.look ? { ...(patch.look.shape !== undefined ? { shape: patch.look.shape } : {}), ...(patch.look.color !== undefined ? { color: patch.look.color } : {}), custom: true } : {})
   }
 }
 

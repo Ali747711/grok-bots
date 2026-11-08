@@ -93,6 +93,14 @@ describe('updateBot', () => {
     expect(metaOf(rpc.configures[0]!)).toMatchObject({ title: 'T', hidden: true, shape: 'squircle', color: '#222222', custom: true, groups: ['ops'] })
   })
 
+  it('overlays only the given look keys, keeping a shape Crew does not offer', async () => {
+    rpc.meta('scout', { title: 'Scout', shape: 'blobatar:seed1:round', color: '#111111', groups: ['ops'] }, 2)
+    await updateBot(deps, 'scout', { look: { color: '#222222' } })
+    expect(metaOf(rpc.configures[0]!)).toEqual({ title: 'Scout', shape: 'blobatar:seed1:round', color: '#222222', custom: true, groups: ['ops'] })
+    await updateBot(deps, 'scout', { look: { shape: 'sigil-3' } })
+    expect(metaOf(rpc.configures[1]!)).toMatchObject({ shape: 'sigil-3', color: '#222222', custom: true })
+  })
+
   it('does not mark custom for a hide-only change', async () => {
     await updateBot(deps, 'scout', { hidden: true })
     expect(metaOf(rpc.configures[0]!)).not.toHaveProperty('custom')
