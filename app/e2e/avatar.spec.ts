@@ -26,9 +26,9 @@ async function webappBots(browser: Browser): Promise<Page> {
 
 test('an avatar picked in Crew survives a reload and keeps the webapp in sync', async ({ page, browser }) => {
   await page.goto(CREW)
-  await page.getByRole('button', { name: '+ New bot' }).click()
+  await page.getByRole('button', { name: '+ New bot', exact: true }).click()
   await page.getByLabel('Name', { exact: true }).fill(title)
-  await page.getByRole('button', { name: 'Change handle' }).click()
+  await page.getByRole('button', { name: 'Change handle', exact: true }).click()
   await page.getByLabel('Handle').fill(handle)
   await page.getByRole('button', { name: 'Create', exact: true }).click()
   await expect(page).toHaveURL(new RegExp(`/bots/${handle}$`), { timeout: 120_000 })
@@ -36,14 +36,14 @@ test('an avatar picked in Crew survives a reload and keeps the webapp in sync', 
   await page.goto(`${CREW}/bots/${handle}?panel=profile`)
   await page.getByRole('button', { name: 'cat', exact: true }).click()
   await expect(page.getByRole('button', { name: 'cat', exact: true })).toHaveAttribute('aria-pressed', 'true')
-  await page.getByRole('button', { name: 'Pink' }).click()
-  await expect(page.getByRole('button', { name: 'Pink' })).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('button', { name: 'Pink', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Pink', exact: true })).toHaveAttribute('aria-pressed', 'true')
   // Both picks are saved straight away; wait until Hermes holds the last one.
   await expect.poll(async () => (await profileRow(handle))?.ui_meta?.[NAMESPACE]?.crewAvatar, { timeout: 30_000 }).toEqual({ type: 'cat', color: '#ff6fae' })
 
   await page.reload()
   await expect(page.getByRole('button', { name: 'cat', exact: true })).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.getByRole('button', { name: 'Pink' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('button', { name: 'Pink', exact: true })).toHaveAttribute('aria-pressed', 'true')
 
   const row = await profileRow(handle)
   expect(row?.ui_meta?.[NAMESPACE]).toMatchObject({ crewAvatar: { type: 'cat', color: '#ff6fae' }, shape: 'blob', color: '#ff6fae' })
@@ -52,7 +52,7 @@ test('an avatar picked in Crew survives a reload and keeps the webapp in sync', 
   await expect(webapp.getByRole('button', { name: new RegExp(`^${title} · @${handle}`) })).toBeVisible({ timeout: 30_000 })
   await webapp.context().close()
 
-  await page.getByRole('button', { name: 'Delete bot' }).click()
+  await page.getByRole('button', { name: 'Delete bot', exact: true }).click()
   await page.getByLabel(`Type ${handle} to confirm`).fill(handle)
   await page.getByRole('button', { name: 'Delete', exact: true }).click()
   await expect(page).toHaveURL(/\/bots\/default$/, { timeout: 60_000 })

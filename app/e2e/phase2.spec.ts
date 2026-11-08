@@ -38,9 +38,9 @@ test.afterAll(async () => {
 
 async function createBotInDialog(page: Page, name: string, botHandle: string, job: string): Promise<void> {
   await page.goto(CREW)
-  await page.getByRole('button', { name: '+ New bot' }).click()
+  await page.getByRole('button', { name: '+ New bot', exact: true }).click()
   await page.getByLabel('Name', { exact: true }).fill(name)
-  await page.getByRole('button', { name: 'Change handle' }).click()
+  await page.getByRole('button', { name: 'Change handle', exact: true }).click()
   await page.getByLabel('Handle').fill(botHandle)
   await page.getByLabel('Job & personality').fill(job)
 }
@@ -56,7 +56,7 @@ async function webappBots(browser: Browser): Promise<Page> {
 test('a bot created in Crew appears identically in the official Webapp', async ({ page, browser }) => {
   await createBotInDialog(page, title, handle, 'Find papers')
   await page.getByRole('button', { name: 'square', exact: true }).click()
-  await page.getByRole('button', { name: 'Violet' }).click()
+  await page.getByRole('button', { name: 'Violet', exact: true }).click()
   await page.getByRole('button', { name: 'Create', exact: true }).click()
   await expect(page).toHaveURL(new RegExp(`/bots/${handle}$`), { timeout: 120_000 })
   await expect(page.getByRole('complementary').getByText(title, { exact: true })).toBeVisible()
@@ -104,7 +104,7 @@ test('concurrent edits keep both changes', async ({ page }) => {
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.getByText(/Changed in another app: Persona/)).toBeVisible({ timeout: 30_000 })
   expect(await soulOf(handle)).toBe(theirs)
-  await page.getByRole('button', { name: 'Save anyway' }).click()
+  await page.getByRole('button', { name: 'Save anyway', exact: true }).click()
   await expect.poll(() => soulOf(handle), { timeout: 30_000 }).toBe(ours)
 })
 
@@ -126,7 +126,7 @@ test('a failed creation step can be finished', async ({ page }) => {
   await expect(page.getByText(new RegExp(`Created @${handle2}, but avatar failed`))).toBeVisible({ timeout: 120_000 })
   expect((await profileRow(handle2))?.has_avatar).toBeFalsy()
 
-  await page.getByRole('button', { name: 'Finish setup' }).click()
+  await page.getByRole('button', { name: 'Finish setup', exact: true }).click()
   await expect(page).toHaveURL(new RegExp(`/bots/${handle2}$`), { timeout: 120_000 })
   await expect.poll(async () => (await profileRow(handle2))?.has_avatar, { timeout: 30_000 }).toBe(true)
 })
@@ -134,7 +134,7 @@ test('a failed creation step can be finished', async ({ page }) => {
 const routineRow = (page: Page, routineTitle: string) => page.getByRole('listitem').filter({ hasText: routineTitle })
 
 async function addRoutine(page: Page, routineTitle: string, instruction: string): Promise<void> {
-  await page.getByRole('button', { name: 'New routine' }).click()
+  await page.getByRole('button', { name: 'New routine', exact: true }).click()
   await page.getByLabel('Title').fill(routineTitle)
   await page.getByLabel('What should it do?').fill(instruction)
 }
@@ -185,7 +185,7 @@ test('deleting the bot removes it everywhere', async ({ page }) => {
   // Sanity first: the all-profiles list does show this bot's routines, so the check after delete can fail.
   expect((await cronAll()).some(n => n.startsWith(`[bot:${handle}]`))).toBe(true)
   await page.goto(`${CREW}/bots/${handle}?panel=profile`)
-  await page.getByRole('button', { name: 'Delete bot' }).click()
+  await page.getByRole('button', { name: 'Delete bot', exact: true }).click()
   await page.getByLabel(`Type ${handle} to confirm`).fill(handle)
   await page.getByRole('button', { name: 'Delete', exact: true }).click()
   await expect(page).toHaveURL(/\/bots\/default$/, { timeout: 60_000 })
