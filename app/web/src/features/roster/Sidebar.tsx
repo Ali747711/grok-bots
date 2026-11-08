@@ -8,6 +8,9 @@ interface SidebarProps {
   state: CrewState | null
   selected: string | null
   onSelect: (name: string) => void
+  /** Browser-to-Crew stream is up; false makes the roster stale like an offline Hermes. */
+  crewConnected?: boolean
+  onNeedsYou?: () => void
 }
 
 const DOT: Record<BotStatus, string> = { idle: '#a8a29e', working: '#2563eb', needs_you: '#d97706' }
@@ -44,9 +47,9 @@ function BotRow({ bot, active, showStatus, onSelect }: { bot: BotView; active: b
 }
 
 /** Roster: Needs-you row, the primary bot and the rest. Dimmed with statuses hidden while Hermes is not connected. */
-export function Sidebar({ state, selected, onSelect }: SidebarProps) {
+export function Sidebar({ state, selected, onSelect, crewConnected = true, onNeedsYou }: SidebarProps) {
   const bots = state?.bots ?? []
-  const stale = state !== null && state.hermes !== 'connected'
+  const stale = state !== null && (state.hermes !== 'connected' || !crewConnected)
   const primary = bots.filter(b => b.isPrimary)
   const others = bots.filter(b => !b.isPrimary)
   const needsYou = state?.pending.length ?? 0
@@ -55,15 +58,15 @@ export function Sidebar({ state, selected, onSelect }: SidebarProps) {
   return (
     <>
       <div className="px-2 pt-1 pb-3 text-base font-bold tracking-tight">Crew</div>
-      {state && <HermesBanner hermes={state.hermes} />}
-      <div className="flex items-center gap-2.5 rounded-[10px] p-2 text-sm">
+      {state && <HermesBanner hermes={state.hermes} crewConnected={crewConnected} />}
+      <button type="button" onClick={onNeedsYou} className="flex w-full items-center gap-2.5 rounded-[10px] p-2 text-left text-sm hover:bg-secondary">
         <span>Needs you</span>
         {needsYou > 0 && (
           <span data-testid="needs-you-count" className="ml-auto rounded-full bg-[#d97706] px-[7px] text-[11px] font-semibold text-white">
             {needsYou}
           </span>
         )}
-      </div>
+      </button>
       <div data-testid="roster" data-stale={stale} className={cn('flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto', stale && 'opacity-50')}>
         {primary.length > 0 && (
           <section role="group" aria-label="Primary" className="flex flex-col gap-1">
