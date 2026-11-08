@@ -1,5 +1,6 @@
 import { HermesRpcError, type Rpc } from '../hermes/errors.js'
 import type { HermesRest } from '../hermes/rest-client.js'
+import { log } from '../log.js'
 import { composeSoul } from './soul.js'
 import { type BotMeta, readBotMeta, updateBotMeta } from './ui-meta.js'
 
@@ -92,13 +93,17 @@ const ensureChat = (deps: BotDeps, name: string) => async (): Promise<void> => {
 async function runtimeNeedsModel(deps: BotDeps, name: string): Promise<boolean> {
   try {
     return (await deps.rpc<{ ok?: boolean }>('setup.runtime_check', { profile: name })).ok === false
-  } catch {
+  } catch (error) {
+    // Falling back to "has a model" is intended, but a check that keeps failing must leave a trace.
+    log.warn('runtime check failed', { name, error: messageOf(error).slice(0, 200) })
     return false
   }
 }
 
 async function refreshQuietly(deps: BotDeps): Promise<void> {
-  await deps.refresh().catch(() => undefined)
+  await deps.refresh().catch((error: unknown) => {
+    log.warn('roster refresh failed', { error: messageOf(error).slice(0, 200) })
+  })
 }
 
 async function createProfile(deps: BotDeps, draft: BotDraft): Promise<void> {

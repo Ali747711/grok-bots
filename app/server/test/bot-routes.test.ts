@@ -125,6 +125,13 @@ describe('POST /crew/bots/:name/finish', () => {
     expect(await res.json()).toMatchObject({ name: 'scout', complete: true, steps: { look: 'ok', chat: 'ok' } })
   })
 
+  it('refuses to finish the primary bot before any hermes call', async () => {
+    const res = await post('/crew/bots/default/finish', {})
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'cannot_finish_primary' })
+    expect(rpc.calls).toEqual([])
+  })
+
   it('answers 404 for an unknown or malformed name', async () => {
     expect((await post('/crew/bots/ghost/finish', {})).status).toBe(404)
     expect((await post('/crew/bots/Bad%20Name/finish', {})).status).toBe(404)

@@ -4,6 +4,7 @@ import { composeSoul } from '../src/bots/soul.js'
 import { type BotDraft, type BotDeps, createBot, CreateBotError, finishBot } from '../src/bots/create.js'
 import { BotNotFoundError } from '../src/bots/ui-meta.js'
 import { HermesRpcError } from '../src/hermes/errors.js'
+import { setLogSink } from '../src/log.js'
 import { FakeRpc } from './fake-rpc.js'
 
 const draft: BotDraft = { name: 'scout', title: 'Researcher', mission: 'Find papers', look: { shape: 'squircle', color: '#7c3aed' } }
@@ -85,6 +86,29 @@ describe('createBot', () => {
     await expect(createBot(deps, draft)).rejects.toEqual(new CreateBotError('bad_name', 'Invalid profile name'))
     rpc.fail('profiles.create', new HermesRpcError(5062, 'internal'))
     await expect(createBot(deps, draft)).rejects.toBeInstanceOf(HermesRpcError)
+  })
+})
+
+describe('quiet failures are logged', () => {
+  const warnings = async (run: () => Promise<unknown>): Promise<Record<string, unknown>[]> => {
+    const lines: string[] = []
+    const restore = setLogSink(l => lines.push(l))
+    try { await run() } finally { restore() }
+    return lines.map(l => JSON.parse(l) as Record<string, unknown>).filter(l => l.level === 'warn')
+  }
+
+  it('logs one warning when the runtime check fails', async () => {
+    rpc.fail('setup.runtime_check', new Error('x'.repeat(300)))
+    const logged = await warnings(() => createBot(deps, draft))
+    expect(logged).toHaveLength(1)
+    expect(logged[0]).toMatchObject({ msg: 'runtime check failed', name: 'scout' })
+    expect((logged[0]!.error as string).length).toBe(200)
+  })
+
+  it('logs one warning when the roster refresh fails', async () => {
+    deps = { ...deps, refresh: async () => { throw new Error('sync down') } }
+    const logged = await warnings(() => createBot(deps, draft))
+    expect(logged).toEqual([expect.objectContaining({ msg: 'roster refresh failed', error: 'sync down' })])
   })
 })
 

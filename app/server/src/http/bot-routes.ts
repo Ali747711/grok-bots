@@ -68,6 +68,8 @@ export function botRoutes(bots: BotDeps | undefined): Hono<CrewEnv> {
     if (!bots) return c.json({ error: 'hermes_offline' }, 503)
     const name = c.req.param('name')
     if (!PROFILE_NAME_RE.test(name)) return c.json({ error: 'not_found' }, 404)
+    // Finishing would write a look and title over the primary bot ("Hermes" would become "Default").
+    if (name === 'default') return c.json({ error: 'cannot_finish_primary' }, 400)
     const parsed = finishBody.safeParse(await c.req.json().catch(() => null))
     if (!parsed.success) return c.json({ error: 'bad_body', message: parsed.error.issues[0]?.message ?? 'invalid body' }, 400)
     if (inFlight.has(name)) return c.json({ error: 'in_progress' }, 409)
