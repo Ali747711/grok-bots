@@ -30,7 +30,7 @@ describe('App routes', () => {
 
   it('shows the chat for /bots/:name', async () => {
     renderAt('/bots/dev')
-    expect(await screen.findByRole('heading', { name: 'dev' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Dev' })).toBeInTheDocument()
   })
 
   it('says so for an unknown bot', async () => {

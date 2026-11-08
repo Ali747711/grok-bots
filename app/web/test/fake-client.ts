@@ -11,6 +11,10 @@ export class FakeClient implements ChatClient {
   private anyHandlers = new Set<(event: GatewayEvent) => void>()
   private stateHandlers = new Set<(state: string) => void>()
 
+  get connectionState(): string {
+    return this.state
+  }
+
   request<T>(method: string, params: Record<string, unknown> = {}, timeoutMs?: number): Promise<T> {
     this.calls.push({ method, params, ...(timeoutMs !== undefined ? { timeoutMs } : {}) })
     try {
