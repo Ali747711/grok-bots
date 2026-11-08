@@ -1,3 +1,4 @@
+import { CreditPill } from '@/features/usage/CreditPill'
 import { cn } from '@/lib/utils'
 import type { BotStatus, BotView, CrewState } from '@/state/types'
 
@@ -80,6 +81,9 @@ export function Sidebar({ state, selected, onSelect, crewConnected = true, onNee
             {others.map(row)}
           </section>
         )}
+      </div>
+      <div className="pt-2">
+        <CreditPill />
       </div>
     </>
   )

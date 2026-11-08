@@ -11,6 +11,7 @@ import { connectGateway, createGatewayClient } from './hermes/gateway-client.js'
 import { HermesToken } from './hermes/token.js'
 import { attachWsProxy } from './hermes/ws-proxy.js'
 import { log } from './log.js'
+import { createUsageSource } from './usage/openrouter.js'
 import { startWatcher } from './watcher/watcher.js'
 
 /** Start the Crew server on loopback and return the Node server (WebSocket upgrades attach to it). */
@@ -46,7 +47,7 @@ export async function start(): Promise<Server> {
     now: Date.now,
     reconnectDelayMs: attempt => Math.min(30_000, 1000 * 2 ** attempt)
   })
-  const app = createApp({ config, secrets, tickets: new TicketStore(), now: Date.now, token, fetchUpstream: fetch, watcher })
+  const app = createApp({ config, secrets, tickets: new TicketStore(), now: Date.now, token, fetchUpstream: fetch, watcher, usage: createUsageSource({ envFile: config.hermesEnvFile, fetch, now: Date.now }) })
   const server = serve({ fetch: app.fetch, hostname: config.host, port: config.port }, info => {
     log.info('crew listening', { host: config.host, port: info.port })
   }) as Server

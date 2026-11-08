@@ -10,6 +10,8 @@ export interface CrewConfig {
   readonly hermesUrl: string
   readonly hermesTokenFile: string
   readonly stateDir: string
+  /** Hermes dotenv file; only the OpenRouter key is read from it (credit pill). */
+  readonly hermesEnvFile: string
   /** Directory with the built web app (`index.html`, `assets/`). */
   readonly webDist: string
   readonly allowedHosts: readonly string[]
@@ -26,6 +28,7 @@ const envSchema = z.object({
   CREW_HERMES_URL: z.url().optional(),
   CREW_STATE_DIR: z.string().min(1).optional(),
   CREW_HERMES_TOKEN_FILE: z.string().min(1).optional(),
+  CREW_HERMES_ENV_FILE: z.string().min(1).optional(),
   CREW_WEB_DIST: z.string().min(1).optional()
 })
 
@@ -48,6 +51,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): CrewConfig {
     port,
     hermesUrl: parsed.CREW_HERMES_URL ?? DEFAULT_HERMES_URL,
     hermesTokenFile: expandHome(parsed.CREW_HERMES_TOKEN_FILE ?? '~/.hermes/webapp/session-token', home),
+    hermesEnvFile: expandHome(parsed.CREW_HERMES_ENV_FILE ?? '~/.hermes/.env', home),
     stateDir: expandHome(parsed.CREW_STATE_DIR ?? '~/.config/crew', home),
     webDist: expandHome(parsed.CREW_WEB_DIST ?? DEFAULT_WEB_DIST, home),
     allowedHosts: hosts,
