@@ -69,6 +69,17 @@ export default function App() {
     return next
   })
 
+  const selectPanel = (tab: PanelTab) => setParams(prev => {
+    const next = new URLSearchParams(prev)
+    next.set('panel', tab)
+    return next
+  })
+  const closePanel = () => setParams(prev => {
+    const next = new URLSearchParams(prev)
+    next.delete('panel')
+    return next
+  })
+
   return (
     <>
       <Shell
@@ -91,7 +102,7 @@ export default function App() {
             <Route path="*" element={<Navigate replace to="/" />} />
           </Routes>
         }
-        panel={panelBot && panel ? <PanelBoundary key={`${panelBot.name}-${panel}`}><BotPanel bot={panelBot} tab={panel} /></PanelBoundary> : null}
+        panel={panelBot && panel ? <PanelBoundary key={`${panelBot.name}-${panel}`}><BotPanel bot={panelBot} tab={panel} onTab={selectPanel} onClose={closePanel} /></PanelBoundary> : null}
         panelOpen={panelBot !== undefined}
       />
       <NewBotDialog open={newBotOpen} onOpenChange={setNewBotOpen} onCreated={name => navigate(`/bots/${encodeURIComponent(name)}`)} />

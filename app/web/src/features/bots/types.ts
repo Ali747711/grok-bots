@@ -2,12 +2,6 @@ import type { AvatarType } from '@/features/avatars/avatar-model'
 
 // Copies of the server shapes (bots/create.ts, bots/edit.ts); the web never imports server code.
 
-export interface BotLook {
-  readonly shape: 'circle' | 'squircle'
-  /** `#rrggbb` */
-  readonly color: string
-}
-
 export interface ModelChoice {
   readonly provider: string
   readonly model: string
@@ -49,6 +43,8 @@ export interface BotDetail {
   readonly isPrimary: boolean
   readonly title: string
   readonly look: { readonly shape: string | null; readonly color: string | null; readonly imageKind: 'photo' | 'shape' | null }
+  /** The chosen avatar; null when never set. */
+  readonly avatar: AvatarChoice | null
   readonly hidden: boolean
   readonly description: string
   readonly soul: string
@@ -58,8 +54,8 @@ export interface BotDetail {
 
 export interface BotPatch {
   readonly title?: string
-  /** Only the keys that changed; any non-empty shape Hermes uses is accepted. */
-  readonly look?: { readonly shape?: string; readonly color?: string }
+  /** Saved at once when the user picks one; not a guarded field. */
+  readonly avatar?: AvatarChoice
   readonly hidden?: boolean
   readonly description?: string
   readonly soul?: string

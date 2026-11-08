@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { crewFetch } from '@/lib/crew-api'
 
 import type { ModelChoice } from './types'
@@ -38,9 +39,10 @@ async function loadOptions(): Promise<ModelOptions | null> {
   }
 }
 
-const DEFAULT = ''
+/** Stands for "no model chosen": Base UI treats an empty string as no selection. */
+const DEFAULT = '__default__'
 
-/** Models of the current provider (read from Hermes), plus the default. */
+/** Models of the current provider (read from Hermes), plus the default. The label is the element with id `${id}-label`. */
 export function ModelSelect({ value, onChange, allowDefault = true, id = 'bot-model' }: ModelSelectProps) {
   const [options, setOptions] = useState<ModelOptions | null>(null)
   const [failed, setFailed] = useState(false)
@@ -60,18 +62,21 @@ export function ModelSelect({ value, onChange, allowDefault = true, id = 'bot-mo
   const models = options?.models ?? []
   const chosen = value && models.includes(value.model) ? value.model : DEFAULT
   const pick = (model: string) => onChange(model === DEFAULT || !options ? null : { provider: options.provider, model })
+  const items = [
+    ...(allowDefault ? [{ value: DEFAULT, label: options?.model ? `Default (${options.model})` : 'Default' }] : []),
+    ...models.map(m => ({ value: m, label: m }))
+  ]
 
   return (
     <div className="flex flex-col gap-1">
-      <select
-        id={id}
-        value={chosen}
-        onChange={e => pick(e.target.value)}
-        className="h-8 rounded-lg border border-input bg-background px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-      >
-        {allowDefault && <option value={DEFAULT}>{options?.model ? `Default (${options.model})` : 'Default'}</option>}
-        {models.map(m => <option key={m} value={m}>{m}</option>)}
-      </select>
+      <Select value={chosen} onValueChange={v => v !== null && pick(v)} items={items}>
+        <SelectTrigger id={id} aria-labelledby={`${id}-label`} className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {items.map(item => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}
+        </SelectContent>
+      </Select>
       {failed && <p className="text-xs text-muted-foreground">Couldn't load models</p>}
     </div>
   )

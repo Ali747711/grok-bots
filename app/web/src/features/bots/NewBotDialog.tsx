@@ -88,7 +88,7 @@ function BotFields(f: FieldsProps) {
         <AvatarPicker value={f.avatar} onChange={f.onAvatar} onBusyChange={f.onPhotoBusy} onTypePick={f.onTypePick} />
       </div>
       <div className={FIELD}>
-        <label htmlFor="bot-model" className={LABEL}>Model</label>
+        <span id="bot-model-label" className={LABEL}>Model</span>
         <ModelSelect value={f.model} onChange={f.onModel} allowDefault />
       </div>
     </>

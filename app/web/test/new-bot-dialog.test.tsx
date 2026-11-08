@@ -29,6 +29,13 @@ function stub(create: () => Promise<Response>, finish: () => Promise<Response> =
 }
 const call = (fn: ReturnType<typeof stub>, url: string) => fn.mock.calls.find(([u]) => u === url)
 const type = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } })
+/** Base UI only commits an option click that started with a pointer-down on it. */
+const pickModel = (option: string) => {
+  fireEvent.click(screen.getByRole('combobox', { name: 'Model' }))
+  const item = screen.getByRole('option', { name: option })
+  fireEvent.pointerDown(item)
+  fireEvent.click(item)
+}
 const setup = (onCreated = vi.fn(), onOpenChange = vi.fn()) => {
   render(<NewBotDialog open onOpenChange={onOpenChange} onCreated={onCreated} />)
   return { onCreated, onOpenChange }
@@ -136,8 +143,8 @@ describe('NewBotDialog', () => {
     const fn = stub(() => json(complete, 201))
     setup()
     type('Name', 'Scout')
-    await screen.findByRole('option', { name: 'b/two' })
-    type('Model', 'b/two')
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Model' })).toBeEnabled())
+    pickModel('b/two')
     fireEvent.click(screen.getByRole('button', { name: 'Create' }))
     await waitFor(() => expect(call(fn, '/crew/bots')).toBeDefined())
     expect(JSON.parse(String(call(fn, '/crew/bots')?.[1]?.body)).model).toEqual({ provider: 'openrouter', model: 'b/two' })
