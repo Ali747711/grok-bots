@@ -12,7 +12,8 @@
     "test:coverage": "vitest run --coverage",
     "vendor": "node ../scripts/vendor-hermes.mjs",
     "vendor:check": "node ../scripts/vendor-hermes.mjs --check",
-    "probe": "node dist/tools/probe.js"
+    "probe": "node dist/tools/probe.js",
+    "capture": "node dist/tools/capture.js"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.6",
