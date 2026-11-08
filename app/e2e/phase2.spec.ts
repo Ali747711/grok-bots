@@ -55,6 +55,7 @@ async function webappBots(browser: Browser): Promise<Page> {
 
 test('a bot created in Crew appears identically in the official Webapp', async ({ page, browser }) => {
   await createBotInDialog(page, title, handle, 'Find papers')
+  await page.getByRole('button', { name: 'square', exact: true }).click()
   await page.getByRole('button', { name: 'Violet' }).click()
   await page.getByRole('button', { name: 'Create' }).click()
   await expect(page).toHaveURL(new RegExp(`/bots/${handle}$`), { timeout: 120_000 })
@@ -66,7 +67,9 @@ test('a bot created in Crew appears identically in the official Webapp', async (
 
   const row = await profileRow(handle)
   expect(row).toBeDefined()
-  expect(row?.ui_meta?.[NAMESPACE]).toMatchObject({ title, shape: 'squircle', color: '#7c3aed', imageKind: 'shape' })
+  expect(row?.ui_meta?.[NAMESPACE]).toMatchObject({
+    title, crewAvatar: { type: 'square', color: '#7c5cff' }, shape: 'squircle', color: '#7c5cff', custom: true, imageKind: 'shape'
+  })
   expect(typeof row?.ui_meta?.[NAMESPACE]?.created).toBe('number')
   // The description is the job text itself; the persona has a title header and no Role line.
   expect(row?.description).toBe('Find papers')
@@ -227,6 +230,8 @@ test('the working-bot limit setting persists', async ({ page }) => {
   }
   // The select shows the option text: the number, or "No limit" for the stored value 'none'.
   const optionText = (value: string) => (value === 'none' ? 'No limit' : value)
+  // The trigger's own text is the option text plus the chevron glyph Base UI adds; anchor so "1" never matches "12".
+  const shows = (value: string) => new RegExp(`^${optionText(value)}\\s*▼?$`)
   // Save and wait for the dialog to close (it closes only after the PUT succeeded) before anything reloads the page.
   const saveLimit = async (value: string) => {
     const select = await openSettings()
@@ -240,7 +245,7 @@ test('the working-bot limit setting persists', async ({ page }) => {
   try {
     await saveLimit('none')
     await page.reload()
-    await expect((await openSettings()).locator('[data-slot=select-value]')).toHaveText('No limit')
+    await expect(await openSettings()).toHaveText(shows('none'))
     expect(await liveLimit(page)).toBeNull()
   } finally {
     try {
@@ -254,5 +259,5 @@ test('the working-bot limit setting persists', async ({ page }) => {
   }
   expect(await liveLimit(page)).toBe(original)
   await page.reload()
-  await expect((await openSettings()).locator('[data-slot=select-value]')).toHaveText(optionText(original === null ? 'none' : String(original)))
+  await expect(await openSettings()).toHaveText(shows(original === null ? 'none' : String(original)))
 })

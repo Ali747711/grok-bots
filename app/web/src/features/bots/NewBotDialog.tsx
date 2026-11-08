@@ -196,7 +196,7 @@ export function NewBotDialog({ open, onOpenChange, onCreated }: NewBotDialogProp
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>New bot</DialogTitle>
-          <DialogDescription>Give it a name, a job and a look.</DialogDescription>
+          <DialogDescription>Give it a name, a job and an avatar.</DialogDescription>
         </DialogHeader>
         <NewBotForm onOpenChange={onOpenChange} onCreated={onCreated} />
       </DialogContent>

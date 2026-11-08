@@ -1,3 +1,5 @@
+import type { AvatarType } from '@/features/avatars/avatar-model'
+
 // Copies of the server shapes (bots/create.ts, bots/edit.ts); the web never imports server code.
 
 export interface BotLook {
@@ -13,7 +15,7 @@ export interface ModelChoice {
 
 /** The avatar as the create and finish routes take it; no colour means the type's own. */
 export interface AvatarChoice {
-  readonly type: string
+  readonly type: AvatarType
   readonly color?: string
 }
 

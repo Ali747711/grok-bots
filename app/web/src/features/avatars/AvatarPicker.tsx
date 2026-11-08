@@ -69,7 +69,7 @@ function Swatches({ value, onChange }: Pick<AvatarPickerProps, 'value' | 'onChan
           aria-label={s.name}
           aria-pressed={color === s.hex}
           onClick={() => onChange({ ...value, color: s.hex })}
-          className={cn('size-6 rounded-full', color === s.hex && RING)}
+          className={cn('size-6 rounded-full', color === s.hex ? RING : 'ring-1 ring-border')}
           style={{ backgroundColor: s.hex }}
         />
       ))}

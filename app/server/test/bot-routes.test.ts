@@ -134,6 +134,21 @@ describe('POST /crew/bots/:name/finish', () => {
     expect(await res.json()).toMatchObject({ name: 'scout', complete: true, steps: { look: 'ok', chat: 'ok' } })
   })
 
+  it('passes a valid avatar to the meta patch as crewAvatar', async () => {
+    rpc.rows.set('scout', {})
+    const res = await post('/crew/bots/scout/finish', { avatar: { type: 'cat', color: '#112233' } })
+    expect(res.status).toBe(200)
+    expect((rpc.configures[0]!.ui_meta as Record<string, Record<string, unknown>>)['hermes-bots']).toMatchObject({ crewAvatar: { type: 'cat', color: '#112233' } })
+  })
+
+  it('rejects an unknown avatar type or a bad hex with 400', async () => {
+    rpc.rows.set('scout', {})
+    expect((await post('/crew/bots/scout/finish', { avatar: { type: 'dragon' } })).status).toBe(400)
+    expect((await post('/crew/bots/scout/finish', { avatar: { type: 'cat', color: 'red' } })).status).toBe(400)
+    expect((await post('/crew/bots/scout/finish', { avatar: { type: 'cat', color: '#12345' } })).status).toBe(400)
+    expect(rpc.configures).toHaveLength(0)
+  })
+
   it('refuses to finish the primary bot before any hermes call', async () => {
     const res = await post('/crew/bots/default/finish', {})
     expect(res.status).toBe(400)
