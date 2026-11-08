@@ -88,7 +88,8 @@ describe('ChatView', () => {
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'ping' } })
     fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' })
     await flush()
-    expect(client.calls.find(c => c.method === 'prompt.submit')?.params).toMatchObject({ profile: 'dev', text: 'ping', surface: 'hud' })
+    expect(client.calls.find(c => c.method === 'prompt.submit')?.params).toMatchObject({ profile: 'dev', text: 'ping' })
+    expect(client.calls.find(c => c.method === 'prompt.submit')?.params).not.toHaveProperty('surface')
     expect(screen.getByText('ping')).toBeInTheDocument()
   })
 

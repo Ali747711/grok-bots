@@ -63,12 +63,13 @@ describe('ChatSession', () => {
     expect(session.running).toBe(true)
   })
 
-  it('sends with profile, a uuid submission id, surface hud and the long timeout', async () => {
+  it('sends with profile, a uuid submission id, no surface (plain app window) and the long timeout', async () => {
     const { client, session } = setup()
     await session.open()
     expect(await session.send('hello')).toBe('started')
     const call = client.callsOf('prompt.submit')[0]!
-    expect(call.params).toMatchObject({ profile: 'default', session_id: SID, text: 'hello', surface: 'hud' })
+    expect(call.params).toMatchObject({ profile: 'default', session_id: SID, text: 'hello' })
+    expect(call.params).not.toHaveProperty('surface')
     expect(call.params.submission_id).toMatch(/^[0-9a-f-]{36}$/)
     expect(call.timeoutMs).toBe(1_800_000)
     const last = session.items.at(-1)!

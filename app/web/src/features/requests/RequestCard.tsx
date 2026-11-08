@@ -143,7 +143,7 @@ export function RequestCard({ entry, onAnswer }: RequestCardProps) {
   return (
     <div data-testid="request-card" className="rounded-xl border border-amber-300 bg-amber-50 p-3.5 text-sm dark:border-amber-800 dark:bg-amber-950">
       {entry.kind === 'approval' && <ApprovalDetail entry={entry} />}
-      {entry.kind === 'clarify' && <p className="mb-2 font-medium break-words">{entry.summary}</p>}
+      {(entry.kind === 'clarify' || (secret && !entry.answerable)) && <p className="mb-2 font-medium break-words">{entry.summary}</p>}
       {!entry.answerable ? (
         <p className="text-xs text-muted-foreground">Answer this in the app that asked</p>
       ) : (
