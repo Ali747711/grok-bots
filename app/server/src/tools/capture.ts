@@ -64,7 +64,7 @@ async function main(): Promise<void> {
     if (event.type === 'message.complete') complete = true
   })
 
-  await step('prompt.submit', () => client.request('prompt.submit', { session_id: sessionId, text: prompt, submission_id: crypto.randomUUID(), surface: 'hud' }, RPC_TIMEOUT_MS))
+  await step('prompt.submit', () => client.request('prompt.submit', { session_id: sessionId, profile, text: prompt, submission_id: crypto.randomUUID(), surface: 'hud' }, RPC_TIMEOUT_MS))
   const deadline = Date.now() + COMPLETE_CAP_MS
   while (!complete && Date.now() < deadline) await wait(250)
   await wait(TRAILING_MS)
