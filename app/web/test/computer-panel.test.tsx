@@ -210,6 +210,7 @@ describe('ComputerPanel', () => {
 
     render(<ComputerPanel bot={scout} />)
     const toggle = await screen.findByRole('switch', { name: 'Let Scout use its screen' })
+    await waitFor(() => expect(toggle).toBeEnabled()) // disabled until the setting has loaded
     expect(toggle).not.toBeChecked()
     expect(screen.getByText(/next time Scout opens its browser/)).toBeInTheDocument()
     fireEvent.click(toggle)

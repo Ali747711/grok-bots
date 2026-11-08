@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { CrewAvatar } from '@/features/avatars/CrewAvatar'
+import { ScreenThumbnail } from '@/features/computer/ScreenThumbnail'
 import type { PanelTab } from '@/features/panel/BotPanel'
 import { cn } from '@/lib/utils'
 import type { BotStatus, BotView } from '@/state/types'
@@ -33,6 +34,7 @@ export function ChatHeader({ bot, stale, panel = null, onPanel }: ChatHeaderProp
         )}
       </div>
       {cost !== null && <span className="min-w-0 truncate text-xs text-muted-foreground">≈ ${cost.toFixed(2)} (estimate)</span>}
+      {onPanel && <ScreenThumbnail bot={bot} hidden={panel === 'computer'} onOpen={() => onPanel('computer')} />}
       {onPanel && (['computer', 'routines', 'profile'] as const).map(tab => (
         <Button
           key={tab}
