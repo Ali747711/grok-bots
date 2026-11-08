@@ -8,12 +8,14 @@ import { restProxy } from './hermes/rest-proxy.js'
 import type { HermesToken } from './hermes/token.js'
 import { botEditRoutes } from './http/bot-edit-routes.js'
 import { botRoutes } from './http/bot-routes.js'
+import { routineRoutes } from './http/routine-routes.js'
 import { hostGuard } from './http/host-guard.js'
 import { originGuard } from './http/origin-guard.js'
 import { type CrewEnv, sessionGuard } from './http/session-guard.js'
 import { settingsRoutes } from './http/settings-routes.js'
 import { stateRoutes } from './http/state-routes.js'
 import { spaRoutes } from './http/spa.js'
+import type { RoutineService } from './routines/service.js'
 import type { SettingsStore } from './settings/settings-store.js'
 import type { UsageSource } from './usage/openrouter.js'
 import type { Watcher } from './watcher/watcher.js'
@@ -32,6 +34,8 @@ export interface AppDeps {
   readonly settings?: Pick<SettingsStore, 'get' | 'update'>
   /** Absent in tests that don't need it; /crew/bots then answers 503 hermes_offline. */
   readonly bots?: BotDeps
+  /** Absent in tests that don't need it; /crew/routines then answers 503 hermes_offline. */
+  readonly routines?: RoutineService
   readonly watcher?: Pick<Watcher, 'store' | 'debug' | 'state' | 'onChange' | 'answer' | 'getAvatar'>
 }
 
@@ -59,6 +63,7 @@ export function createApp(deps: AppDeps): Hono<CrewEnv> {
   app.route('/', settingsRoutes(deps.settings))
   app.route('/', botRoutes(deps.bots))
   app.route('/', botEditRoutes(deps.bots))
+  app.route('/', routineRoutes(deps.routines, deps.now))
   app.route('/', authRoutes(deps))
   app.route('/', restProxy(deps))
   // Last: the SPA answers every remaining GET, so later-mounted routes would be shadowed.

@@ -12,6 +12,7 @@ import { createHermesRest } from './hermes/rest-client.js'
 import { HermesToken } from './hermes/token.js'
 import { attachWsProxy } from './hermes/ws-proxy.js'
 import { log } from './log.js'
+import { createRoutineService } from './routines/service.js'
 import { SettingsStore } from './settings/settings-store.js'
 import { createUsageSource } from './usage/openrouter.js'
 import { startWatcher } from './watcher/watcher.js'
@@ -51,7 +52,8 @@ export async function start(): Promise<Server> {
     now: Date.now,
     reconnectDelayMs: attempt => Math.min(30_000, 1000 * 2 ** attempt)
   })
-  const app = createApp({ config, secrets, tickets: new TicketStore(), now: Date.now, token, fetchUpstream: fetch, watcher, settings, bots: { rpc: watcher.request, rest: createHermesRest({ hermesUrl: config.hermesUrl, token }), refresh: watcher.refresh, now: Date.now }, usage: createUsageSource({ envFile: config.hermesEnvFile, fetch, now: Date.now }) })
+  const rest = createHermesRest({ hermesUrl: config.hermesUrl, token })
+  const app = createApp({ config, secrets, tickets: new TicketStore(), now: Date.now, token, fetchUpstream: fetch, watcher, settings, bots: { rpc: watcher.request, rest, refresh: watcher.refresh, now: Date.now }, routines: createRoutineService({ rest, now: Date.now }), usage: createUsageSource({ envFile: config.hermesEnvFile, fetch, now: Date.now }) })
   const server = serve({ fetch: app.fetch, hostname: config.host, port: config.port }, info => {
     log.info('crew listening', { host: config.host, port: info.port })
   }) as Server

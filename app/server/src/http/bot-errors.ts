@@ -2,6 +2,7 @@ import { CreateBotError } from '../bots/create.js'
 import { NotSavedError, PrimaryBotError } from '../bots/edit.js'
 import { BotNotFoundError } from '../bots/ui-meta.js'
 import { HermesRestError, HermesRpcError, HermesUnavailableError } from '../hermes/errors.js'
+import { ScheduleError } from '../routines/schedule.js'
 import { log } from '../log.js'
 
 export interface Failure {
@@ -22,6 +23,9 @@ export function failure(error: unknown, name: string): Failure {
   if (error instanceof HermesUnavailableError) return { status: 503, body: { error: 'hermes_offline' } }
   if (error instanceof BotNotFoundError) return { status: 404, body: { error: 'not_found' } }
   if (error instanceof HermesRestError && error.status === 404) return { status: 404, body: { error: 'not_found' } }
+  // Hermes refused the input (cron prompt scan, bad schedule): show its words verbatim.
+  if (error instanceof HermesRestError && error.status === 400) return { status: 400, body: { error: 'rejected', message: error.detail } }
+  if (error instanceof ScheduleError) return { status: 400, body: { error: error.code, message: error.message } }
   if (error instanceof PrimaryBotError) return { status: 400, body: { error: 'cannot_delete_primary' } }
   if (error instanceof NotSavedError) return { status: 502, body: { error: 'not_saved', section: error.section } }
   if (error instanceof CreateBotError) {
