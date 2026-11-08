@@ -1,18 +1,11 @@
 import type { DisplayLease } from '@/vendor/hermes/gateway-contract.generated'
 
 import * as display from './display-client'
-import { attachPaste } from './paste'
-import type { RfbCtor, RfbLike, SessionOptions, SessionUi, TimerName, Viewer } from './session-types'
-import { classifyConnectError, displayUrl, heldBy, messageOf, viewerHash } from './session-utils'
+import { openStream } from './session-stream'
+import type { RfbCtor, RfbLike, SessionOptions, SessionUi, Viewer } from './session-types'
+import { BUDGET_SPENT, HIDDEN_DETACH_MS, MAX_SECURITY_STRIKES, NO_SECURE_CONTEXT, SECURITY_REFUSED, SECURITY_RETRY_MS, Timers, classifyConnectError, heldBy, messageOf, viewerHash } from './session-utils'
 
 export type { LinkState } from './session-types'
-
-const HIDDEN_DETACH_MS = 5 * 60_000
-const SECURITY_RETRY_MS = 12_000
-const MAX_SECURITY_STRIKES = 2
-const NO_SECURE_CONTEXT = 'The screen needs a secure connection (https or localhost).'
-const BUDGET_SPENT = "Couldn't reconnect to the screen. Try again."
-const SECURITY_REFUSED = 'The screen refused the connection. Try again.'
 
 /**
  * One viewer of one bot's screen: the pixel socket, the RFB client, the viewer id and the redial
@@ -37,9 +30,7 @@ export class LiveSession {
   /** The current stream reached RFB `connect`: detaching it on purpose gives its dial back. */
   private reachedConnect = false
   private pasteOff: (() => void) | null = null
-  private redialTimer: ReturnType<typeof setTimeout> | null = null
-  private securityTimer: ReturnType<typeof setTimeout> | null = null
-  private hiddenTimer: ReturnType<typeof setTimeout> | null = null
+  private readonly timers = new Timers()
   private pendingDetach = false
   /** Set by `dispose` (the owner left), not by a plain detach such as the panel-to-Expand gap. */
   private disposed = false
@@ -54,7 +45,7 @@ export class LiveSession {
   attach(el: HTMLElement): void {
     this.flushDetach()
     // A host swap (panel to Expand) is a plain detach of the old stream, so it cannot outlive a refused dial.
-    if (this.host && this.host !== el) this.stopLive()
+    if (this.host && this.host !== el) this.stopStreams()
     this.host = el
     this.disposed = false
     this.suspended = false
@@ -80,7 +71,6 @@ export class LiveSession {
   private flushDetach(): void {
     if (!this.pendingDetach) return
     this.pendingDetach = false
-    this.refundIfConnected()
     this.stopAll()
     this.host = null
     this.ui.setLink('idle')
@@ -92,17 +82,12 @@ export class LiveSession {
     this.reachedConnect = false
   }
 
-  private stopLive(): void {
-    this.refundIfConnected()
-    this.stopStreams()
-  }
-
   /** The owner is leaving (tab switch, panel close, bot switch): hand back if the lease is ours, then close 1000. */
   dispose(): void {
     this.pendingDetach = false
     this.disposed = true
     const viewer = this.viewer
-    if (viewer && (this.ui.holding() || this.leaseIsOurs(this.lastLease))) void this.releaseQuietly(viewer)
+    if (viewer && (this.ui.holding() || this.leaseIsOurs(this.lastLease))) void this.giveBack(this.releaseTarget(viewer))
     try {
       this.ws?.close(1000)
     } catch {
@@ -188,6 +173,11 @@ export class LiveSession {
 
   private async acquireFor(viewer: Viewer): Promise<void> {
     const { lease } = await display.acquire(this.profile, viewer.id)
+    if (this.disposed) {
+      // The owner left while this acquire was in flight: give back what it just took.
+      if (heldBy(lease, viewer.hash)) await this.giveBack(viewer.epoch === this.gatewayEpoch ? viewer.id : { force: true })
+      return
+    }
     this.emitLease(lease)
     this.ui.setNotice(null)
     this.setHolding(heldBy(lease, viewer.hash))
@@ -208,16 +198,13 @@ export class LiveSession {
     return viewer.epoch !== this.gatewayEpoch || onEarlierHash ? { force: true } : viewer.id
   }
 
-  private async releaseQuietly(viewer: Viewer): Promise<void> {
+  /** Release the lease and swallow a refusal: the bridge hands back on the 1000 close as well. */
+  private async giveBack(target: string | { force: true }): Promise<void> {
     try {
-      await display.release(this.profile, this.releaseTarget(viewer))
+      await display.release(this.profile, target)
     } catch {
-      // Closing 1000 makes the bridge hand back as well.
+      // Nothing more to do while leaving.
     }
-  }
-
-  private releaseForced(): Promise<void> {
-    return display.release(this.profile, { force: true }).then(() => undefined, () => undefined)
   }
 
   private async guarded(action: () => Promise<void>): Promise<void> {
@@ -229,7 +216,7 @@ export class LiveSession {
   }
 
   private scheduleDial(): void {
-    this.clearTimer('redialTimer')
+    this.timers.clear('redial')
     if (!this.host) return
     const decision = this.options.budget.request(this.profile)
     if (decision.allowed) {
@@ -238,7 +225,7 @@ export class LiveSession {
     }
     if (decision.reason === 'mounting') {
       this.ui.setLink(this.everLive ? 'reconnecting' : 'connecting')
-      this.redialTimer = setTimeout(() => this.scheduleDial(), decision.retryInMs)
+      this.timers.set('redial', () => this.scheduleDial(), decision.retryInMs)
       return
     }
     this.fail(BUDGET_SPENT)
@@ -262,7 +249,7 @@ export class LiveSession {
       this.setOurs(new Set([...this.ours, hash]))
       const lease = await this.reclaim(prior, viewer, observed.lease)
       // The owner left while the reclaim acquire was in flight: give back what it just took.
-      if (this.disposed) return void (heldBy(lease, hash) && this.releaseForced())
+      if (this.disposed) return void (heldBy(lease, hash) && this.giveBack({ force: true }))
       if (generation !== this.generation || !this.host) return
       this.emitLease(lease)
       this.open(Rfb, observed.ticket, generation, heldBy(lease, hash))
@@ -298,30 +285,21 @@ export class LiveSession {
   }
 
   private open(Rfb: RfbCtor, ticket: string, generation: number, controlling: boolean): void {
-    const ws = new WebSocket(displayUrl(ticket))
-    ws.binaryType = 'arraybuffer'
-    this.ws = ws
-    let closeCode = -1
-    ws.addEventListener('close', event => {
-      closeCode = (event as CloseEvent).code
-      this.onClosed(generation, closeCode)
+    const stream = openStream(Rfb, this.host!, ticket, controlling, {
+      onConnect: () => {
+        if (generation !== this.generation) return
+        this.everLive = true
+        this.reachedConnect = true
+        this.securityStrikes = 0
+        this.ui.setLink('live')
+      },
+      onSecurityFailure: () => this.onSecurityFailure(generation),
+      onClosed: code => this.onClosed(generation, code),
+      onNotice: message => this.ui.setNotice(message)
     })
-    const rfb = new Rfb(this.host!, ws, { shared: true })
-    Object.assign(rfb, { scaleViewport: true, resizeSession: false, focusOnClick: controlling, background: 'transparent', qualityLevel: 7, viewOnly: !controlling })
-    rfb.addEventListener('connect', () => {
-      if (generation !== this.generation) return
-      this.everLive = true
-      this.reachedConnect = true
-      this.securityStrikes = 0
-      this.ui.setLink('live')
-    })
-    rfb.addEventListener('securityfailure', () => this.onSecurityFailure(generation))
-    rfb.addEventListener('disconnect', event => {
-      const clean = (event as CustomEvent<{ clean?: boolean }>).detail?.clean === true
-      this.onClosed(generation, closeCode >= 0 ? closeCode : clean ? 1000 : 1006)
-    })
-    this.rfb = rfb
-    this.pasteOff = attachPaste(this.host!, rfb, message => this.ui.setNotice(message))
+    this.ws = stream.ws
+    this.rfb = stream.rfb
+    this.pasteOff = stream.pasteOff
   }
 
   /** §11 R3: what each pixel-socket close means. */
@@ -343,7 +321,8 @@ export class LiveSession {
   /** The screen ended (or the bridge closed us cleanly): re-read it, and dial once more if it is still running. */
   private async afterCleanClose(generation: number): Promise<void> {
     this.ui.setLink('idle')
-    const status = await this.ui.refresh()
+    // A null read (failed or overtaken) is unknown, not stopped: read once more before giving up.
+    const status = (await this.ui.refresh()) ?? (await this.ui.refresh())
     if (generation === this.generation && status?.running && this.host) this.scheduleDial()
   }
 
@@ -356,8 +335,7 @@ export class LiveSession {
     this.securityStrikes += 1
     if (this.securityStrikes >= MAX_SECURITY_STRIKES) return this.fail(SECURITY_REFUSED)
     this.ui.setLink('reconnecting')
-    this.clearTimer('securityTimer')
-    this.securityTimer = setTimeout(() => this.scheduleDial(), this.options.securityRetryMs ?? SECURITY_RETRY_MS)
+    this.timers.set('security', () => this.scheduleDial(), this.options.securityRetryMs ?? SECURITY_RETRY_MS)
   }
 
   private fail(message: string): void {
@@ -366,14 +344,14 @@ export class LiveSession {
   }
 
   private startHiddenTimer(): void {
-    if (this.hiddenTimer || !this.host) return
+    if (this.timers.has('hidden') || !this.host) return
     // A forgotten tab must not defeat the idle stop: detach (lease kept) after five hidden minutes (R5).
-    this.hiddenTimer = setTimeout(() => this.suspend(), this.options.hiddenDetachMs ?? HIDDEN_DETACH_MS)
+    this.timers.set('hidden', () => this.suspend(), this.options.hiddenDetachMs ?? HIDDEN_DETACH_MS)
   }
 
   private readonly onVisibility = (): void => {
     if (document.visibilityState === 'hidden') return this.startHiddenTimer()
-    this.clearTimer('hiddenTimer')
+    this.timers.clear('hidden')
     if (this.suspended) {
       this.suspended = false
       this.scheduleDial()
@@ -381,9 +359,9 @@ export class LiveSession {
   }
 
   private suspend(): void {
-    this.hiddenTimer = null
+    this.timers.clear('hidden')
     this.suspended = true
-    this.stopLive()
+    this.stopStreams()
     this.ui.setLink('idle')
   }
 
@@ -404,21 +382,16 @@ export class LiveSession {
 
   /** Stop the stream and any pending redial; keep listening for visibility. */
   private stopStreams(): void {
+    this.refundIfConnected() // every caller is a deliberate detach, and a connected stream is safe for Xvnc
     this.generation += 1
-    this.clearTimer('redialTimer')
-    this.clearTimer('securityTimer')
+    this.timers.clear('redial')
+    this.timers.clear('security')
     this.teardown()
   }
 
   private stopAll(): void {
     this.stopStreams()
-    this.clearTimer('hiddenTimer')
+    this.timers.clear('hidden')
     document.removeEventListener('visibilitychange', this.onVisibility)
-  }
-
-  private clearTimer(name: TimerName): void {
-    const timer = this[name]
-    if (timer) clearTimeout(timer)
-    this[name] = null
   }
 }

@@ -46,4 +46,3 @@ export interface RfbLike {
   sendKey(keysym: number, code: string | null, down?: boolean): void
 }
 export type RfbCtor = new (el: HTMLElement, ws: WebSocket, o: object) => RfbLike
-export type TimerName = 'redialTimer' | 'securityTimer' | 'hiddenTimer'

@@ -43,6 +43,21 @@ export interface ScreenConfigView {
   readonly idleStopMinutes: number | null
 }
 
+const GENERIC_ERROR = 'Something went wrong. Try again.'
+const ERROR_TEXT: Readonly<Record<string, string>> = {
+  hermes_offline: 'Hermes is offline',
+  not_found: 'That bot no longer exists',
+  primary_not_supported: 'Not available for the primary bot',
+  screen_config_failed: "Couldn't save the screen settings",
+  bad_body: GENERIC_ERROR
+}
+
+/** Hermes's own words (`hermes_error`) pass through; every other code becomes readable text, never the raw code. */
+function screenErrorText(code: string | null, message: unknown): string {
+  if (code === 'hermes_error' && typeof message === 'string' && message) return message
+  return (code && ERROR_TEXT[code]) || GENERIC_ERROR
+}
+
 async function screenJson<T>(path: string, method: string, body?: unknown): Promise<T> {
   const res = await crewFetch(path, method === 'GET' ? {} : {
     method,
@@ -51,7 +66,7 @@ async function screenJson<T>(path: string, method: string, body?: unknown): Prom
   if (!res.ok) {
     const parsed = (await res.json().catch(() => null)) as { error?: unknown; message?: unknown } | null
     const code = typeof parsed?.error === 'string' ? parsed.error : null
-    throw new ScreenApiError(res.status, code, typeof parsed?.message === 'string' ? parsed.message : code ?? `request failed (${res.status})`)
+    throw new ScreenApiError(res.status, code, screenErrorText(code, parsed?.message))
   }
   return (await res.json()) as T
 }

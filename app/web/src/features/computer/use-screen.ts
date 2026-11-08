@@ -24,31 +24,50 @@ interface EventShape {
   readonly payload?: { profile_key?: string; lease?: DisplayLease } & Partial<DisplayStatus>
 }
 
-/**
- * The screen state of one bot: `display.status {profile}` plus the `display.*` events, which Hermes
- * broadcasts for every bot and so are filtered by `profile_key`. A gateway reconnect re-reads the
- * status, since events missed while down are not replayed (facts 1.3).
- */
-export function useScreen(profile: string, ourLeaseHash?: OurHashes): UseScreen {
+interface ScreenData {
+  readonly status: DisplayStatus | null
+  readonly lease: DisplayLease | null
+  readonly starting: boolean
+  readonly error: string | null
+  readonly setStarting: (on: boolean) => void
+  readonly setError: (message: string | null) => void
+  readonly apply: (next: DisplayStatus) => void
+  readonly applyLease: (next: DisplayLease) => void
+  readonly refresh: () => Promise<DisplayStatus | null>
+  /** Forget everything: a new profile starts from nothing. */
+  readonly reset: () => void
+  /** The `profile_key` the events are filtered by; null until the first status. */
+  readonly profileKey: () => string | null
+}
+
+/** The status, the newest lease and the failure of one bot, with tickets so a stale reply is dropped. */
+function useScreenData(profile: string): ScreenData {
   const [status, setStatus] = useState<DisplayStatus | null>(null)
   const [lease, setLease] = useState<DisplayLease | null>(null)
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Each read or event takes a ticket; a reply holding an older ticket is dropped.
   const ticket = useRef(0)
-  const profileKey = useRef<string | null>(null)
+  const key = useRef<string | null>(null)
 
   const apply = useCallback((next: DisplayStatus) => {
     ticket.current += 1
-    profileKey.current = next.profile_key
+    key.current = next.profile_key
     setStatus(next)
     // A status read before a newer lease event must not drop that event's lease.
     setLease(prev => (prev && prev.epoch > next.lease.epoch ? prev : null))
     setError(null)
   }, [])
-
   const applyLease = useCallback((next: DisplayLease) => setLease(prev => (prev && isOlderLease(next, prev) ? prev : next)), [])
-
+  const reset = useCallback(() => {
+    ticket.current += 1
+    key.current = null
+    setStatus(null)
+    setLease(null)
+    setError(null)
+    setStarting(false)
+  }, [])
+  const profileKey = useCallback(() => key.current, [])
   const refresh = useCallback(async () => {
     const mine = ++ticket.current
     try {
@@ -62,18 +81,20 @@ export function useScreen(profile: string, ourLeaseHash?: OurHashes): UseScreen 
     }
   }, [profile, apply])
 
+  return { status, lease, starting, error, setStarting, setError, apply, applyLease, refresh, reset, profileKey }
+}
+
+/** Events are broadcast for every bot, so they are filtered by `profile_key`; every (re)open re-reads the status. */
+function useScreenSubscription(profile: string, data: ScreenData): void {
+  const { apply, applyLease, refresh, reset, profileKey } = data
   useEffect(() => {
-    ticket.current += 1
-    profileKey.current = null
-    setStatus(null)
-    setLease(null)
-    setError(null)
-    setStarting(false)
+    reset()
     const client = connectGateway()
     const offEvents = client.onAny(raw => {
       const event = raw as unknown as EventShape
       const payload = event.payload
-      if (!payload || !profileKey.current || payload.profile_key !== profileKey.current) return
+      const key = profileKey()
+      if (!payload || !key || payload.profile_key !== key) return
       if (event.type === 'display.status') apply(payload as DisplayStatus)
       else if (event.type === 'display.lease' && payload.lease) applyLease(payload.lease)
     })
@@ -86,8 +107,12 @@ export function useScreen(profile: string, ourLeaseHash?: OurHashes): UseScreen 
       offEvents()
       offState()
     }
-  }, [profile, refresh, apply, applyLease])
+  }, [profile, refresh, apply, applyLease, reset, profileKey])
+}
 
+/** Start through the server route (it sets the idle stop first) and stop through the gateway. */
+function useScreenActions(profile: string, data: ScreenData): { start: () => Promise<void>; stop: () => Promise<void> } {
+  const { apply, setError, setStarting } = data
   const start = useCallback(async () => {
     setStarting(true)
     setError(null)
@@ -98,15 +123,25 @@ export function useScreen(profile: string, ourLeaseHash?: OurHashes): UseScreen 
     } finally {
       setStarting(false)
     }
-  }, [profile, apply])
-
+  }, [profile, apply, setError, setStarting])
   const stop = useCallback(async () => {
     try {
       apply(await display.stop(profile))
     } catch (e) {
       setError(messageOf(e))
     }
-  }, [profile, apply])
+  }, [profile, apply, setError])
+  return { start, stop }
+}
 
+/**
+ * The screen state of one bot: `display.status {profile}` plus the `display.*` events, re-read after
+ * a gateway reconnect, since events missed while down are not replayed (facts 1.3).
+ */
+export function useScreen(profile: string, ourLeaseHash?: OurHashes): UseScreen {
+  const data = useScreenData(profile)
+  useScreenSubscription(profile, data)
+  const { start, stop } = useScreenActions(profile, data)
+  const { status, lease, starting, error, refresh, applyLease } = data
   return { view: deriveScreen(status, { lease, starting, error }, ourLeaseHash), refresh, applyLease, start, stop }
 }

@@ -5,7 +5,7 @@ import { type RawData, WebSocket } from 'ws'
 
 import type { CrewConfig } from '../config.js'
 import { log } from '../log.js'
-import { forwardableCode } from './close-codes.js'
+import { closeReason, forwardableCode } from './close-codes.js'
 
 export interface DisplayProxyDeps {
   readonly config: CrewConfig
@@ -21,7 +21,6 @@ const HIGH_WATER = 1024 * 1024
 const LOW_WATER = 256 * 1024
 const POLL_MS = 20
 const HANDSHAKE_TIMEOUT_MS = 10_000
-const REASON_MAX = 120
 const NO_TICKET = 4401
 const SCREEN_REFUSED = 4403
 const TRY_AGAIN_LATER = 1013
@@ -107,7 +106,7 @@ export function attachDisplayBridge(client: WebSocket, req: IncomingMessage, dep
     client.close(res.statusCode === 403 ? SCREEN_REFUSED : TRY_AGAIN_LATER, 'hermes refused the screen')
   })
   upstream.on('close', (code, reason) => {
-    if (client.readyState === WebSocket.OPEN) client.close(forwardableCode(code), reason.toString().slice(0, REASON_MAX))
+    if (client.readyState === WebSocket.OPEN) client.close(forwardableCode(code), closeReason(reason.toString()))
   })
   upstream.on('error', error => {
     // Never log the message: a ws error can echo the URL, which carries the ticket.

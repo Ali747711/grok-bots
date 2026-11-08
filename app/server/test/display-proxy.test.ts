@@ -171,7 +171,17 @@ describe('display proxy', () => {
     await until(() => upstreamSockets.length === cases.length + 1)
     const closed = closeInfo(ws)
     upstreamSockets.at(-1)!.close(4000, 'x'.repeat(123))
-    expect((await closed).reason).toHaveLength(120)
+    expect((await closed).reason).toHaveLength(123)
+  })
+
+  it('forwards a long non-ASCII reason without throwing', async () => {
+    const ws = await connect()
+    await until(() => upstreamSockets.length === 1)
+    const closed = closeInfo(ws)
+    upstreamSockets[0]!.close(4000, '界'.repeat(41)) // 123 bytes, the most a close frame may carry
+    const { code, reason } = await closed
+    expect(code).toBe(4000)
+    expect(Buffer.byteLength(reason)).toBeLessThanOrEqual(123)
   })
 
   it('answers 4403 for an upstream 403 and 1013 for a failed dial', async () => {

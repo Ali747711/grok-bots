@@ -164,4 +164,22 @@ describe('screen routes in crew-api', () => {
     expect(fetchMock.mock.lastCall![1].method).toBe('PUT')
     expect(JSON.parse(fetchMock.mock.lastCall![1].body)).toEqual({ useScreen: true })
   })
+  it('shows readable text for known server codes and never a raw code', async () => {
+    const { getScreenConfig } = await import('@/lib/crew-api')
+    const answer = (body: unknown, status = 502) => fetchMock.mockImplementation(async () => new Response(JSON.stringify(body), { status }))
+    const cases: [unknown, string][] = [
+      [{ error: 'hermes_offline' }, 'Hermes is offline'],
+      [{ error: 'not_found' }, 'That bot no longer exists'],
+      [{ error: 'primary_not_supported' }, 'Not available for the primary bot'],
+      [{ error: 'screen_config_failed' }, "Couldn't save the screen settings"],
+      [{ error: 'bad_body' }, 'Something went wrong. Try again.'],
+      [{ error: 'some_new_code' }, 'Something went wrong. Try again.'],
+      [{}, 'Something went wrong. Try again.'],
+      [{ error: 'hermes_error', message: 'Not enough free memory' }, 'Not enough free memory']
+    ]
+    for (const [body, text] of cases) {
+      answer(body)
+      await expect(getScreenConfig('scout')).rejects.toThrow(text)
+    }
+  })
 })

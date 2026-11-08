@@ -6,7 +6,7 @@ import { type RawData, WebSocket, WebSocketServer } from 'ws'
 import type { CrewConfig } from '../config.js'
 import { isAllowedUpgrade } from '../http/session-guard.js'
 import { log } from '../log.js'
-import { forwardableCode } from './close-codes.js'
+import { closeReason, forwardableCode } from './close-codes.js'
 import { checkBrowserFrame } from './display-guard.js'
 import { DISPLAY_CLIENT_MAX_PAYLOAD, attachDisplayBridge } from './display-proxy.js'
 import type { HermesToken } from './token.js'
@@ -83,7 +83,7 @@ async function bridge(client: WebSocket, deps: WsProxyDeps): Promise<void> {
   })
   upstream.on('close', (code, reason) => {
     if (code === BAD_CREDENTIAL) void deps.token.refresh().catch(() => undefined)
-    if (client.readyState === WebSocket.OPEN) client.close(forwardableCode(code), reason.toString().slice(0, 120))
+    if (client.readyState === WebSocket.OPEN) client.close(forwardableCode(code), closeReason(reason.toString()))
   })
   upstream.on('error', error => {
     log.warn('hermes websocket error', { error: error.name })

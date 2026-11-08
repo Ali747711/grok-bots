@@ -25,3 +25,34 @@ export function classifyConnectError(error: unknown): ConnectFailure {
   if (typeof code !== 'number') return 'transport'
   return code === 5300 && /not running/i.test(messageOf(error)) ? 'not_running' : 'other'
 }
+
+export const HIDDEN_DETACH_MS = 5 * 60_000
+export const SECURITY_RETRY_MS = 12_000
+export const MAX_SECURITY_STRIKES = 2
+export const NO_SECURE_CONTEXT = 'The screen needs a secure connection (https or localhost).'
+export const BUDGET_SPENT = "Couldn't reconnect to the screen. Try again."
+export const SECURITY_REFUSED = 'The screen refused the connection. Try again.'
+
+
+/** Named one-shot timers: setting a name replaces its pending timer. */
+export class Timers {
+  private readonly pending = new Map<string, ReturnType<typeof setTimeout>>()
+
+  set(name: string, fn: () => void, ms: number): void {
+    this.clear(name)
+    this.pending.set(name, setTimeout(() => {
+      this.pending.delete(name)
+      fn()
+    }, ms))
+  }
+
+  has(name: string): boolean {
+    return this.pending.has(name)
+  }
+
+  clear(name: string): void {
+    const timer = this.pending.get(name)
+    if (timer) clearTimeout(timer)
+    this.pending.delete(name)
+  }
+}

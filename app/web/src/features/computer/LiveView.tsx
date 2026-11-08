@@ -1,5 +1,5 @@
 import { Maximize2, Minimize2 } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -22,22 +22,28 @@ interface LiveViewProps {
  */
 export function LiveView({ live, inControl = false, expanded = false, onExpand, onCollapse }: LiveViewProps) {
   const host = useRef<HTMLDivElement>(null)
+  // Idle before the first attach is not "disconnected": only show Reconnect once this host has attached.
+  const [attached, setAttached] = useState(false)
   const { attach, detach } = live
   useEffect(() => {
     const el = host.current
     if (!el) return
     attach(el)
+    setAttached(true)
     return () => detach(el)
   }, [attach, detach])
 
   const waiting = live.link === 'connecting' || live.link === 'reconnecting'
+  const waitingLabel = live.link === 'reconnecting'
+    ? (inControl ? 'Reconnecting, you still have control' : 'Reconnecting to the screen')
+    : 'Connecting to the screen'
   return (
     <div className={cn('relative aspect-video w-full overflow-hidden rounded-lg bg-contrast', inControl && 'ring-2 ring-contrast-danger')} data-testid="live-view">
       <div ref={host} className="size-full" />
-      {waiting && <Skeleton role="status" className="absolute inset-0 rounded-lg" aria-label="Connecting to the screen" />}
-      {live.link === 'failed' && (
+      {waiting && <Skeleton role="status" className="absolute inset-0 rounded-lg" aria-label={waitingLabel} />}
+      {(live.link === 'failed' || (attached && live.link === 'idle')) && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-contrast/80 p-4 text-center text-sm text-contrast-foreground">
-          <p>{live.error ?? 'The screen connection failed.'}</p>
+          <p>{live.link === 'failed' ? (live.error ?? 'The screen connection failed.') : "The screen isn't connected."}</p>
           <Button size="sm" variant="contrast-outline" onClick={live.reconnect}>Reconnect</Button>
         </div>
       )}

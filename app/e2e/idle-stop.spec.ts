@@ -32,6 +32,6 @@ test('idle stop: a 1-minute window stops the screen even while thumbnails keep p
     }
     return null
   })
-  console.log(`idle stop fired after ${stoppedAfterMs === null ? 'never (150 s)' : `${Math.round(stoppedAfterMs / 1000)} s`}`)
+  test.info().annotations.push({ type: 'idle stop fired after', description: stoppedAfterMs === null ? 'never (150 s)' : `${Math.round(stoppedAfterMs / 1000)} s` })
   expect(stoppedAfterMs).not.toBeNull()
 })
