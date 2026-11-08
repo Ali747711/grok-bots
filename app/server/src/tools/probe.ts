@@ -24,6 +24,22 @@ async function attempt(client: JsonRpcGatewayClient, method: string, params: Rec
   }
 }
 
+const FIXTURE_SOUL =
+  "You are Crew's test bot. When the user asks you to run a shell command, run exactly that command with the " +
+  'terminal tool and report the result. Never rephrase commands.'
+
+/** Task 8: make `crew-test` a Bot Mode bot with a fixed persona (profiles.configure, CAS on a new namespace). */
+async function configureFixture(client: JsonRpcGatewayClient): Promise<void> {
+  const meta = { title: 'Fixture', color: '#57534e', imageKind: 'shape', custom: true, created: Date.now() }
+  const result = await client.request<unknown>('profiles.configure', {
+    name: 'crew-test',
+    soul: FIXTURE_SOUL,
+    ui_meta: { 'hermes-bots': meta },
+    ui_meta_expected_revisions: { 'hermes-bots': 0 }
+  })
+  process.stdout.write(`profiles.configure → ${JSON.stringify(result)}\n`)
+}
+
 async function main(): Promise<void> {
   const config = loadConfig(process.env)
   const deps = { config, token: new HermesToken(config.hermesTokenFile) }
@@ -31,6 +47,11 @@ async function main(): Promise<void> {
   const events: GatewayEvent[] = []
   client.onAny(event => events.push(event))
   await connectGateway(client, deps)
+  if (process.argv.includes('--configure-fixture')) {
+    await configureFixture(client)
+    client.close()
+    return
+  }
   await wait(1500)
 
   const methods: Record<string, unknown> = {}
