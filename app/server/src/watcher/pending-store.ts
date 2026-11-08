@@ -18,6 +18,9 @@ export interface PendingRequest {
   readonly executionGeneration?: number
   readonly settled?: SettleReason
   readonly settledAt?: number
+  /** Crew-side delivery state of the user's answer; absent while nothing was sent. */
+  readonly answerState?: 'answering' | 'failed'
+  readonly answerError?: string
 }
 
 /** In-memory record of requests waiting for the user. First sighting of an id wins (no duplicates). */
@@ -49,6 +52,15 @@ export class PendingStore {
     const entry = this.entries.get(id)
     if (!entry || entry.settled) return
     this.entries.set(id, { ...entry, settled: reason, settledAt: this.now() })
+    this.notify()
+  }
+
+  /** Record the delivery state of an answer (never the answer itself). No-op once settled. */
+  markAnswer(id: string, state: 'answering' | 'failed', error?: string): void {
+    const entry = this.entries.get(id)
+    if (!entry || entry.settled) return
+    const { answerError: _drop, ...rest } = entry
+    this.entries.set(id, { ...rest, answerState: state, ...(error ? { answerError: error } : {}) })
     this.notify()
   }
 

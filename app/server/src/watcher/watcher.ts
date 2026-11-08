@@ -1,12 +1,14 @@
+import { log as logger } from '../log.js'
 import type { ServerRequest } from '../vendor/hermes/json-rpc-channel.js'
+import { type AnswerInput, answerRequest } from './answer.js'
 import { BotStateTracker, type CrewState, type ProfileInput } from './bot-state.js'
-import { type PendingKind, PendingStore } from './pending-store.js'
+import { type PendingKind, type PendingRequest, PendingStore } from './pending-store.js'
 import { applyGatewayEvent, routeServerRequest, summarize, type WatcherEvent } from './request-router.js'
 
 /** The slice of the vendored JsonRpcGatewayClient the watcher uses (fakeable in tests). */
 export interface WatcherClient {
   close(): void
-  request<T>(method: string, params?: Record<string, unknown>): Promise<T>
+  request<T>(method: string, params?: Record<string, unknown>, timeoutMs?: number): Promise<T>
   onRequest(handler: (request: ServerRequest) => boolean | void): () => void
   onEvent(handler: (event: WatcherEvent) => void): () => void
   onState(handler: (state: string) => void): () => void
@@ -33,6 +35,8 @@ export interface Watcher {
   state(): CrewState
   /** Fires (debounced 100 ms) when anything in `state()` may have changed. */
   onChange(listener: () => void): () => void
+  /** Send the user's answer to Hermes without waiting for it; progress shows in `state()`. */
+  answer(id: string, input: AnswerInput): 'sent' | 'not_found' | 'already_resolved' | 'answering'
   debug(): readonly DebugEntry[]
   stop(): void
 }
@@ -67,6 +71,8 @@ export function startWatcher(deps: WatcherDeps): Watcher {
   const store = new PendingStore(deps.now)
   const tracker = new BotStateTracker()
   const listeners = new Set<() => void>()
+  /** Live legacy `srq-…` requests, kept only so the user's answer can be routed back to them. */
+  const held = new Map<string, ServerRequest>()
   let hermes: CrewState['hermes'] = 'connecting'
   let authClosed = false
   let changeTimer: NodeJS.Timeout | null = null
@@ -209,10 +215,25 @@ export function startWatcher(deps: WatcherDeps): Watcher {
     }
   }
 
+  async function deliverAnswer(entry: PendingRequest, input: AnswerInput): Promise<void> {
+    const serverRequest = held.get(entry.id)
+    try {
+      const outcome = await answerRequest(entry, input, { client, ...(serverRequest ? { serverRequest } : {}) })
+      if (outcome === 'already_resolved') store.settle(entry.id, 'settled')
+    } catch (error) {
+      // Never include the input: it may be a secret. Hermes' own reason (e.g. stale_generation) is safe.
+      const reason = serverRequest ? 'send_failed' : error instanceof Error ? error.message.slice(0, 200) : 'send_failed'
+      logger.warn('answer failed', { id: entry.id, kind: entry.kind, reason })
+      store.markAnswer(entry.id, 'failed', reason)
+    }
+  }
+
   const unsubscribers = [
     client.onRequest(req => {
       note('server_request', `${req.method} keys=${Object.keys(req.params ?? {}).join(',')}`)
-      return routeServerRequest(req, store, ctx)
+      const handled = routeServerRequest(req, store, ctx)
+      if (store.get(req.id)) held.set(req.id, req)
+      return handled
     }),
     client.onEvent(event => {
       note('event', `${event.type}${event.session_id ? ` ${event.session_id}` : ''}`)
@@ -227,7 +248,10 @@ export function startWatcher(deps: WatcherDeps): Watcher {
         scheduleReconnect()
       }
     }),
-    store.onChange(changed),
+    store.onChange(() => {
+      for (const id of held.keys()) if (!store.list().some(p => p.id === id)) held.delete(id)
+      changed()
+    }),
     deps.onSocketClose?.(code => {
       authClosed = AUTH_CLOSE_CODES.has(code)
     }) ?? noop
@@ -246,8 +270,21 @@ export function startWatcher(deps: WatcherDeps): Watcher {
       return {
         hermes,
         bots: tracker.view(open),
-        pending: open.map(({ settled: _settled, settledAt: _settledAt, ...rest }) => ({ ...rest, state: 'open' as const }))
+        pending: open.map(({ settled: _s, settledAt: _t, answerState, answerError, ...rest }) => ({
+          ...rest,
+          state: answerState ?? ('open' as const),
+          ...(answerState === 'failed' && answerError ? { error: answerError } : {})
+        }))
       }
+    },
+    answer: (id, input) => {
+      const entry = store.get(id)
+      if (!entry) return 'not_found'
+      if (entry.settled) return 'already_resolved'
+      if (entry.answerState === 'answering') return 'answering'
+      store.markAnswer(id, 'answering')
+      void deliverAnswer(entry, input)
+      return 'sent'
     },
     onChange: listener => {
       listeners.add(listener)
