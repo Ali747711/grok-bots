@@ -67,44 +67,65 @@ function EmptyRoster({ onNewBot }: { onNewBot?: () => void }) {
   )
 }
 
-/** Roster: Needs-you row, the primary bot and the rest. Dimmed with statuses hidden while Hermes is not connected. */
-export function Sidebar({ state, selected, onSelect, crewConnected = true, onNeedsYou, needsYouActive = false, onNewBot }: SidebarProps) {
+function SidebarHeader({ onNewBot }: { onNewBot?: () => void }) {
+  return (
+    <div className="flex items-center justify-between px-2 pt-1 pb-3">
+      <span className="text-lg font-semibold tracking-tight">Crew</span>
+      {onNewBot && (
+        <Button type="button" size="sm" onClick={onNewBot} className="rounded-full font-semibold">
+          + New bot
+        </Button>
+      )}
+    </div>
+  )
+}
+
+interface NeedsYouRowProps {
+  count: number
+  active: boolean
+  onClick?: () => void
+}
+
+function NeedsYouRow({ count, active, onClick }: NeedsYouRowProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      data-selected={active ? 'true' : undefined}
+      aria-current={active ? 'page' : undefined}
+      className={cn(
+        'flex w-full items-center gap-2.5 rounded-2xl p-2 text-left text-sm font-medium transition-colors hover:bg-muted',
+        active && 'bg-sky-soft shadow-[inset_3px_0_0_var(--sky)] hover:bg-sky-soft'
+      )}
+    >
+      <span>Needs you</span>
+      {count > 0 && (
+        <Badge data-testid="needs-you-count" className="ml-auto font-semibold">
+          {count}
+        </Badge>
+      )}
+    </button>
+  )
+}
+
+interface RosterListProps {
+  state: CrewState | null
+  stale: boolean
+  selected: string | null
+  onSelect: (name: string) => void
+  onNewBot?: () => void
+}
+
+/** The loading skeleton, then the empty state or the primary / other / hidden groups. */
+function RosterList({ state, stale, selected, onSelect, onNewBot }: RosterListProps) {
   const bots = (state?.bots ?? []).filter(b => !b.hidden)
   const hidden = (state?.bots ?? []).filter(b => b.hidden)
-  const stale = state !== null && (state.hermes !== 'connected' || !crewConnected)
   const primary = bots.filter(b => b.isPrimary)
   const others = bots.filter(b => !b.isPrimary)
-  const needsYou = state?.pending.length ?? 0
   const row = (bot: BotView) => <RosterRow key={bot.name} bot={bot} active={bot.name === selected} showStatus={!stale} onSelect={onSelect} />
 
   return (
     <>
-      <div className="flex items-center justify-between px-2 pt-1 pb-3">
-        <span className="text-lg font-semibold tracking-tight">Crew</span>
-        {onNewBot && (
-          <Button type="button" size="sm" onClick={onNewBot} className="rounded-full font-semibold">
-            + New bot
-          </Button>
-        )}
-      </div>
-      {state && <HermesBanner hermes={state.hermes} crewConnected={crewConnected} />}
-      <button
-        type="button"
-        onClick={onNeedsYou}
-        data-selected={needsYouActive ? 'true' : undefined}
-        aria-current={needsYouActive ? 'page' : undefined}
-        className={cn(
-          'flex w-full items-center gap-2.5 rounded-2xl p-2 text-left text-sm font-medium transition-colors hover:bg-muted',
-          needsYouActive && 'bg-sky-soft shadow-[inset_3px_0_0_var(--sky)] hover:bg-sky-soft'
-        )}
-      >
-        <span>Needs you</span>
-        {needsYou > 0 && (
-          <Badge data-testid="needs-you-count" className="ml-auto font-semibold">
-            {needsYou}
-          </Badge>
-        )}
-      </button>
       {state === null && <RosterSkeleton />}
       <div data-testid="roster" data-stale={stale} className={cn('flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto', stale && 'opacity-50')}>
         {state !== null && !stale && state.bots.length === 0 && <EmptyRoster onNewBot={onNewBot} />}
@@ -122,6 +143,19 @@ export function Sidebar({ state, selected, onSelect, crewConnected = true, onNee
         )}
         <HiddenSection bots={hidden} row={row} />
       </div>
+    </>
+  )
+}
+
+/** Roster: Needs-you row, the primary bot and the rest. Dimmed with statuses hidden while Hermes is not connected. */
+export function Sidebar({ state, selected, onSelect, crewConnected = true, onNeedsYou, needsYouActive = false, onNewBot }: SidebarProps) {
+  const stale = state !== null && (state.hermes !== 'connected' || !crewConnected)
+  return (
+    <>
+      <SidebarHeader onNewBot={onNewBot} />
+      {state && <HermesBanner hermes={state.hermes} crewConnected={crewConnected} />}
+      <NeedsYouRow count={state?.pending.length ?? 0} active={needsYouActive} onClick={onNeedsYou} />
+      <RosterList state={state} stale={stale} selected={selected} onSelect={onSelect} onNewBot={onNewBot} />
       <RosterFooter maxWorkingBots={state?.settings ? state.settings.maxWorkingBots : DEFAULT_MAX_WORKING_BOTS} />
     </>
   )

@@ -69,37 +69,35 @@ function useLeaveDeletedBot(state: CrewState | null, selected: string | null, go
   }, [state, selected, goHome])
 }
 
+/** The open panel tab lives in the `?panel=` search param so a reload keeps it. */
+function usePanelParams(selected: string | null) {
+  const [params, setParams] = useSearchParams()
+  const requested = params.get('panel')
+  const edit = (change: (next: URLSearchParams) => void) => setParams(prev => {
+    const next = new URLSearchParams(prev)
+    change(next)
+    return next
+  })
+  return {
+    panel: selected && isPanelTab(requested) ? requested : null,
+    // Clicking the open tab closes the panel.
+    togglePanel: (tab: PanelTab) => edit(next => (next.get('panel') === tab ? next.delete('panel') : next.set('panel', tab))),
+    selectPanel: (tab: PanelTab) => edit(next => next.set('panel', tab)),
+    closePanel: () => edit(next => next.delete('panel'))
+  }
+}
+
 export default function App() {
   const { state, connected } = useCrewState()
   const navigate = useNavigate()
   const { pathname } = useLocation()
-  const [params, setParams] = useSearchParams()
   const [newBotOpen, setNewBotOpen] = useState(false)
   const goHome = useCallback(() => navigate('/', { replace: true }), [navigate])
   const selected = matchPath('/bots/:name', pathname)?.params.name ?? null
 
   useLeaveDeletedBot(state, selected, goHome)
-  const requested = params.get('panel')
-  const panel = selected && isPanelTab(requested) ? requested : null
+  const { panel, togglePanel, selectPanel, closePanel } = usePanelParams(selected)
   const panelBot = panel ? state?.bots.find(b => b.name === selected) : undefined
-  // Clicking the open tab closes the panel; the choice lives in the URL so a reload keeps it.
-  const togglePanel = (tab: PanelTab) => setParams(prev => {
-    const next = new URLSearchParams(prev)
-    if (prev.get('panel') === tab) next.delete('panel')
-    else next.set('panel', tab)
-    return next
-  })
-
-  const selectPanel = (tab: PanelTab) => setParams(prev => {
-    const next = new URLSearchParams(prev)
-    next.set('panel', tab)
-    return next
-  })
-  const closePanel = () => setParams(prev => {
-    const next = new URLSearchParams(prev)
-    next.delete('panel')
-    return next
-  })
 
   return (
     <>
