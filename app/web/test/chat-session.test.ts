@@ -192,7 +192,8 @@ describe('ChatSession', () => {
       client.emit(frame('message.complete', { text: 'One', status: 'complete' }))
       client.emit(frame('message.start', {}, { execution_generation: 5 }))
       client.emit(frame('message.delta', { text: 'Two', turn_id: 't2', segment: 0, offset: 0 }, { execution_generation: 5 }))
-      expect(texts(session.items).slice(2)).toEqual(['assistant:One', 'user:next', 'assistant:Two'])
+      // The reducer opens an (empty, UI-hidden) work block with every new turn.
+      expect(texts(session.items).slice(2)).toEqual(['assistant:One', 'user:next', 'work:0', 'assistant:Two'])
       expect(new Set(ids(session.items)).size).toBe(session.items.length)
     })
 
@@ -265,7 +266,7 @@ describe('ChatSession', () => {
         return { session_id: SID, execution_generation: 3, running: false }
       }
       client.setState('open')
-      await flush()
+      for (let i = 0; i < 4; i += 1) await flush()
       expect(attempts).toBe(2)
       expect(session.canSend).toBe(true)
       expect(session.error).toBeNull()
