@@ -26,6 +26,11 @@ export interface PendingView {
   readonly profile: string
   readonly sessionId: string
   readonly summary: string
+  /** Approvals only: the full text (each up to 16,384 chars). */
+  readonly command?: string
+  readonly description?: string
+  /** True when command/description were cut by the server; never offer an allow choice then. */
+  readonly detailTruncated?: true
   readonly choices?: readonly string[]
   readonly receivedAt: number
   readonly source: 'server_request' | 'open_request' | 'snapshot_prompt' | 'event'

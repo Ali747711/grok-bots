@@ -78,6 +78,46 @@ describe('RequestCard: approval', () => {
   })
 })
 
+describe('RequestCard: approval detail', () => {
+  const long = (c: string) => c.repeat(400)
+
+  it('shows a long description and the full command, uncut', () => {
+    const description = long('d'), command = `echo ${long('c')} && rm -rf /tmp/x`
+    render(<RequestCard entry={entry({ description, command, summary: 'short' })} onAnswer={noop} />)
+    expect(screen.getByText(description)).toBeInTheDocument()
+    const block = screen.getByTestId('approval-command')
+    expect(block.textContent).toBe(command)
+    expect(block.className).toContain('whitespace-pre-wrap')
+    expect(block.className).toContain('break-all')
+    expect(screen.queryByText('short')).toBeNull()
+  })
+
+  it('puts the command above the choice buttons', () => {
+    render(<RequestCard entry={entry({ command: 'rm -r /tmp/x' })} onAnswer={noop} />)
+    const block = screen.getByTestId('approval-command')
+    const allow = screen.getByRole('button', { name: 'Allow once' })
+    expect(block.compareDocumentPosition(allow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('offers only deny and a warning when the text was truncated', () => {
+    render(<RequestCard entry={entry({ command: 'x'.repeat(100), detailTruncated: true, choices: ['once', 'session', 'always', 'deny'] })} onAnswer={noop} />)
+    expect(screen.getByText('This command is too long to show in full. Review it in the Hermes app.')).toBeInTheDocument()
+    expect(screen.getAllByRole('button').map(b => b.textContent)).toEqual(['Deny'])
+  })
+
+  it('shows the warning and no buttons when truncated and deny is not offered', () => {
+    render(<RequestCard entry={entry({ command: 'x', detailTruncated: true, choices: ['once'] })} onAnswer={noop} />)
+    expect(screen.getByText(/too long to show in full/)).toBeInTheDocument()
+    expect(screen.queryAllByRole('button')).toHaveLength(0)
+  })
+
+  it('falls back to the summary when the server sent no detail fields', () => {
+    render(<RequestCard entry={entry()} onAnswer={noop} />)
+    expect(screen.getByText('Delete files — rm -r /tmp/x')).toBeInTheDocument()
+    expect(screen.queryByTestId('approval-command')).toBeNull()
+  })
+})
+
 describe('RequestCard: clarify', () => {
   const clarify = (over: Partial<PendingView> = {}) => entry({ kind: 'clarify', summary: 'Which branch?', choices: ['main', 'dev'], ...over })
 
