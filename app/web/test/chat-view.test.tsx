@@ -9,6 +9,11 @@ import { JsonRpcGatewayError } from '@/vendor/hermes/json-rpc-channel'
 import { FakeClient } from './fake-client'
 import { bot, crewState } from './fixtures'
 
+vi.mock('bot-avatars', async () => {
+  const actual = await vi.importActual<typeof import('bot-avatars')>('bot-avatars')
+  return { ...actual, BotAvatar: (props: Record<string, unknown>) => <div data-testid="stub" data-size={String(props.size)} data-state={String(props.state)} /> }
+})
+
 const client = new FakeClient()
 vi.mock('@/chat/gateway', () => ({ connectGateway: () => client }))
 
@@ -47,6 +52,21 @@ describe('MessageList', () => {
   })
 })
 
+describe('MessageList: look', () => {
+  it('renders user messages as contrast bubbles and bot replies as prose', () => {
+    const items: ChatItem[] = [
+      { kind: 'user', id: 'u', text: 'hi there' },
+      { kind: 'assistant', id: 'a', text: '[docs](https://example.com) and `code`' }
+    ]
+    render(<MessageList items={items} />)
+    expect(screen.getByText('hi there')).toHaveClass('bg-contrast', 'text-contrast-foreground', 'rounded-[16px_16px_4px_16px]')
+    const reply = screen.getByText('docs').closest('div')!
+    expect(reply.closest('.bg-contrast')).toBeNull()
+    expect(screen.getByText('docs')).toHaveClass('text-sky')
+    expect(screen.getByText('code').closest('code')).toBeInTheDocument()
+  })
+})
+
 describe('MessageList: delivery state', () => {
   it('shows checking, and Not sent with its reason and a working Retry', () => {
     const onRetry = vi.fn()
@@ -71,6 +91,13 @@ describe('ChatView', () => {
     expect(screen.getByRole('heading', { name: 'Dev' })).toBeInTheDocument()
     expect(screen.getByText('Working')).toBeInTheDocument()
     expect(client.calls[0]).toMatchObject({ method: 'session.resume', params: { profile: 'dev', session_id: 'tip-1' } })
+  })
+
+  it('shows the working status in sky in the header, with a 40 px avatar', async () => {
+    render(<ChatView bot={{ ...dev, status: 'working' }} state={crewState()} crewConnected />)
+    await flush()
+    expect(screen.getByText('Working')).toHaveClass('text-sky', 'label-mono')
+    expect(screen.getByTestId('stub')).toHaveAttribute('data-size', '40')
   })
 
   it('keeps header and composer outside the scrolling transcript', async () => {

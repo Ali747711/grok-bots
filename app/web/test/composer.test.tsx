@@ -35,6 +35,14 @@ describe('Composer', () => {
     expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
   })
 
+  it('uses the lime round send button and keeps the disabled reason visible', () => {
+    const { rerender } = render(<Composer {...base} />)
+    expect(screen.getByRole('button', { name: 'Send' })).toHaveClass('bg-primary', 'rounded-full')
+    rerender(<Composer {...base} disabledReason="Hermes is offline" />)
+    expect(screen.getByRole('status')).toHaveTextContent('Hermes is offline')
+    expect(screen.getByRole('status')).toHaveClass('text-muted-foreground')
+  })
+
   it('shows Stop instead of Send while running', () => {
     const onStop = vi.fn()
     render(<Composer {...base} running onStop={onStop} />)

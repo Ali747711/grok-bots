@@ -1,5 +1,7 @@
 import { useState, type KeyboardEvent } from 'react'
 
+import { ArrowUp } from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 
@@ -33,7 +35,7 @@ export function Composer({ onSend, onStop, running, disabledReason, stopDisabled
     <div className="px-6 pt-3 pb-5">
       <div className="mx-auto max-w-[720px]">
         {disabledReason && <p role="status" className="mb-1.5 text-xs text-muted-foreground">{disabledReason}</p>}
-        <div className="flex items-end gap-2.5 rounded-[14px] border border-border bg-card px-3 py-2.5">
+        <div className="flex items-end gap-2.5 rounded-3xl border border-border bg-muted px-3 py-2">
           <Textarea
             value={text}
             disabled={disabled}
@@ -42,12 +44,14 @@ export function Composer({ onSend, onStop, running, disabledReason, stopDisabled
             placeholder="Message"
             rows={1}
             aria-label="Message"
-            className="max-h-40 min-h-9 flex-1 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 dark:bg-transparent"
+            className="max-h-40 min-h-9 flex-1 resize-none field-sizing-content border-0 bg-transparent shadow-none focus-visible:ring-0 dark:bg-transparent"
           />
           {running ? (
-            <Button type="button" variant="outline" disabled={stopDisabled} onClick={onStop}>Stop</Button>
+            <Button type="button" disabled={stopDisabled} onClick={onStop} className="rounded-full bg-contrast text-contrast-foreground hover:bg-contrast/90">Stop</Button>
           ) : (
-            <Button type="button" disabled={disabled || !text.trim()} onClick={submit}>Send</Button>
+            <Button type="button" size="icon" aria-label="Send" disabled={disabled || !text.trim()} onClick={submit} className="rounded-full">
+              <ArrowUp />
+            </Button>
           )}
         </div>
       </div>

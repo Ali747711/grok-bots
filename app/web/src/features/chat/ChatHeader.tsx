@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/button'
+import { CrewAvatar } from '@/features/avatars/CrewAvatar'
 import type { PanelTab } from '@/features/panel/BotPanel'
-import { BotAvatar } from '@/features/roster/BotAvatar'
+import { cn } from '@/lib/utils'
 import type { BotStatus, BotView } from '@/state/types'
 
 import { useSessionCost } from './use-session-cost'
@@ -20,14 +21,27 @@ export function ChatHeader({ bot, stale, panel = null, onPanel }: ChatHeaderProp
   const cost = useSessionCost(bot.sessionId, bot.name, bot.status)
   return (
     <header className="flex items-center gap-3 border-b border-border px-5 py-3">
-      <BotAvatar bot={bot} />
+      <CrewAvatar bot={stale ? { ...bot, status: 'idle' } : bot} size={40} />
       <div className="min-w-0 flex-1">
         <h2 className="truncate text-sm font-semibold">{bot.title}</h2>
-        {!stale && <p className="text-xs text-muted-foreground">{STATUS_TEXT[bot.status]}</p>}
+        {!stale && (
+          <p className={cn('label-mono mt-0.5', bot.status === 'working' && 'text-sky')}>
+            <span aria-hidden="true">● </span>
+            {STATUS_TEXT[bot.status]}
+          </p>
+        )}
       </div>
       {cost !== null && <span className="text-xs text-muted-foreground">≈ ${cost.toFixed(2)} (estimate)</span>}
       {onPanel && (['routines', 'profile'] as const).map(tab => (
-        <Button key={tab} type="button" size="sm" variant={panel === tab ? 'secondary' : 'ghost'} aria-pressed={panel === tab} onClick={() => onPanel(tab)}>
+        <Button
+          key={tab}
+          type="button"
+          size="sm"
+          variant="outline"
+          aria-pressed={panel === tab}
+          onClick={() => onPanel(tab)}
+          className={cn('rounded-full', panel === tab && 'border-contrast bg-contrast text-contrast-foreground hover:bg-contrast/90 hover:text-contrast-foreground')}
+        >
           {tab === 'routines' ? 'Routines' : 'Profile'}
         </Button>
       ))}
