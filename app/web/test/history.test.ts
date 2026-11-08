@@ -32,9 +32,21 @@ describe('historyToItems (captured rows)', () => {
     expect(blocked).toBeDefined()
   })
 
-  it('hides scaffold rows (hidden interrupt marker, internal notifications) and keeps no empty items', () => {
+  it('shows relayed bot messages as muted notices attributed by handle', () => {
+    const notices = items.filter(i => i.kind === 'notice').map(i => (i as { text: string }).text)
+    const relayed = notices.filter(t => t.startsWith('From @hermes: '))
+    expect(relayed).toHaveLength(2)
+    expect(relayed[0]).toContain('Please run this one shell command')
+    expect(relayed.every(t => t.length <= 'From @hermes: '.length + 300)).toBe(true)
+  })
+
+  it('truncates an unattributed internal notification to 300 characters', () => {
+    const row = { ...rows[0]!, role: 'user', display_kind: 'internal_notification', content: 'x'.repeat(500) } as HistoryRow
+    expect(historyToItems([row])).toMatchObject([{ kind: 'notice', text: 'x'.repeat(300) }])
+  })
+
+  it('hides scaffold rows (hidden interrupt marker) and keeps no empty items', () => {
     const texts = items.flatMap(i => ('text' in i ? [i.text] : []))
-    expect(texts.some(t => t.includes('Message from'))).toBe(false)
     expect(texts.some(t => t.includes('interrupt: no assistant output'))).toBe(false)
     expect(texts.every(t => t.trim().length > 0)).toBe(true)
   })
