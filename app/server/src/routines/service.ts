@@ -71,6 +71,7 @@ const jobSchema = z.object({
   profile: str,
   profile_name: str,
   enabled: z.boolean().nullish(),
+  state: str,
   deliver: str,
   timezone: str,
   schedule: z.object({ kind: z.enum(['once', 'interval', 'cron']).nullish(), run_at: str, minutes: z.number().nullish(), expr: str, display: str }).passthrough().nullish(),
@@ -107,7 +108,7 @@ function toMs(value: unknown): number | null {
   return null
 }
 
-function viewOf(bot: string, job: Job, running: boolean): RoutineView {
+function viewOf(bot: string, job: Job, running: boolean, repausing: boolean): RoutineView {
   const sched = job.schedule
   const zone = job.timezone || serverZone()
   const spec: ScheduleSpec = sched?.kind
@@ -120,10 +121,11 @@ function viewOf(bot: string, job: Job, running: boolean): RoutineView {
     title: (job.name ?? '').replace(TAG_RE, ''),
     instruction: job.prompt ?? '',
     schedule: spec,
-    scheduleText: sched?.display ?? job.schedule_display ?? toHermesSchedule(spec),
+    scheduleText: sched?.display ?? job.schedule_display ?? toHermesSchedule(spec, zone),
     timezone: job.timezone ?? null,
     deliverToChat: (job.deliver ?? '').startsWith('bot-chat'),
-    enabled: job.enabled !== false,
+    // Hermes re-enables a paused job when it is triggered; Crew re-pauses it afterwards, so show the user's state.
+    enabled: job.enabled !== false && !repausing,
     nextRunAt: toMs(job.next_run_at),
     lastRunAt: toMs(job.last_run_at),
     lastStatus: status,
@@ -140,18 +142,18 @@ function runOf(row: z.infer<typeof runSchema>): RunView | null {
   const title = row.title ?? ''
   const synthesized = SYNTHESIZED_RE.exec(title)
   const status = synthesized?.[1]?.toLowerCase() as RunView['status'] | undefined
-  if (status && status !== 'completed') {
-    return { id, status, startedAt, endedAt, title, sessionId: null, error: synthesized![2] || null }
-  }
+  // Only `source: 'cron'` rows are real sessions; `cron_output:<job>:exec:<n>` ids have no transcript.
+  const sessionId = row.source === 'cron' ? (row.id ?? null) : null
+  if (status && status !== 'completed') return { id, status, startedAt, endedAt, title, sessionId, error: synthesized![2] || null }
   const active = endedAt === null && row.is_active === true
-  return { id, status: active ? 'running' : 'completed', startedAt, endedAt, title: synthesized ? synthesized[2]! : title, sessionId: row.id ?? null, error: null }
+  return { id, status: active ? 'running' : 'completed', startedAt, endedAt, title: synthesized ? synthesized[2]! : title, sessionId, error: null }
 }
 
 function body(bot: string, input: RoutineInput): Record<string, unknown> {
   return {
     name: `[bot:${bot}] ${input.title}`,
     prompt: input.instruction,
-    schedule: toHermesSchedule(input.schedule),
+    schedule: toHermesSchedule(input.schedule, input.timezone),
     timezone: input.timezone,
     deliver: input.deliverToChat ? 'bot-chat' : 'local'
   }
@@ -162,6 +164,8 @@ export function createRoutineService(deps: RoutineDeps): RoutineService {
   const { rest } = deps
   /** `<bot>/<job id>` of triggers whose request has not settled yet. */
   const running = new Set<string>()
+  /** Paused routines being run now: Hermes un-pauses on trigger, so pause them again when it ends. */
+  const restorePause = new Set<string>()
   const key = (bot: string, id: string): string => `${bot}/${id}`
   const jobPath = (id: string): string => `/api/cron/jobs/${enc(id)}`
 
@@ -171,7 +175,7 @@ export function createRoutineService(deps: RoutineDeps): RoutineService {
       if (warn) log.warn('skipping unparseable cron job', { bot, issue: parsed.error.issues[0]?.message ?? 'invalid' })
       return null
     }
-    return viewOf(bot, parsed.data, running.has(key(bot, parsed.data.id)))
+    return viewOf(bot, parsed.data, running.has(key(bot, parsed.data.id)), restorePause.has(key(bot, parsed.data.id)))
   }
 
   async function oneJob(bot: string, id: string, reply: unknown): Promise<RoutineView> {
@@ -182,22 +186,47 @@ export function createRoutineService(deps: RoutineDeps): RoutineService {
     return fetched
   }
 
-  const post = (bot: string, id: string, action: 'pause' | 'resume') =>
-    rest.request('POST', `${jobPath(id)}/${action}`, { query: { profile: bot } }).then(reply => oneJob(bot, id, reply))
+  const post = (bot: string, id: string, action: 'pause' | 'resume') => {
+    restorePause.delete(key(bot, id))
+    return rest.request('POST', `${jobPath(id)}/${action}`, { query: { profile: bot } }).then(reply => oneJob(bot, id, reply))
+  }
+
+  async function wasPaused(bot: string, id: string): Promise<boolean> {
+    try {
+      const raw = await rest.request<unknown>('GET', jobPath(id), { query: { profile: bot } })
+      const job = jobSchema.safeParse(raw)
+      return job.success && (job.data.enabled === false || job.data.state === 'paused')
+    } catch {
+      return false
+    }
+  }
+
+  async function repause(bot: string, id: string): Promise<void> {
+    if (!restorePause.delete(key(bot, id))) return
+    try {
+      await rest.request('POST', `${jobPath(id)}/pause`, { query: { profile: bot } })
+    } catch (error) {
+      log.warn('re-pause after run now failed', { jobId: id, error: (error instanceof Error ? error.message : String(error)).slice(0, 200) })
+    }
+  }
 
   async function runNow(bot: string, id: string): Promise<'started' | 'already_running'> {
     const k = key(bot, id)
     if (running.has(k)) return 'already_running'
     running.add(k)
+    if (await wasPaused(bot, id)) restorePause.add(k)
     let detached = false
     const settled = rest.request('POST', `${jobPath(id)}/trigger`, { query: { profile: bot }, timeoutMs: 0 }).then(
-      () => { running.delete(k); return null },
+      () => null,
       (error: unknown) => {
-        running.delete(k)
         if (detached) log.info('run-now request ended', { jobId: id, reason: (error instanceof Error ? error.message : String(error)).slice(0, 120) })
         return error
       }
-    )
+    ).then(async outcome => {
+      running.delete(k)
+      await repause(bot, id)
+      return outcome
+    })
     let timer: NodeJS.Timeout | undefined
     const waited = new Promise<'pending'>(resolve => { timer = setTimeout(() => resolve('pending'), RUN_NOW_WAIT_MS) })
     try {
@@ -234,6 +263,7 @@ export function createRoutineService(deps: RoutineDeps): RoutineService {
     pause: (bot, id) => post(bot, id, 'pause'),
     resume: (bot, id) => post(bot, id, 'resume'),
     remove: async (bot, id) => {
+      restorePause.delete(key(bot, id))
       await rest.request('DELETE', jobPath(id), { query: { profile: bot } })
     },
     runNow,

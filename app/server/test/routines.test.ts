@@ -78,6 +78,12 @@ describe('create and update', () => {
     expect(view.id).toBe('abc123')
   })
 
+  it('sends a set-time one-shot as an offset-aware instant in the routine zone', async () => {
+    cron.handler = () => job()
+    await svc.create('scout', { ...input, schedule: { kind: 'once_at', at: '2026-11-09T09:00' }, timezone: 'America/New_York' })
+    expect(cron.last().body).toMatchObject({ schedule: '2026-11-09T09:00:00-05:00', timezone: 'America/New_York' })
+  })
+
   it('sends in <n><unit> for one-shot delays and bot-chat delivery on request', async () => {
     cron.handler = () => job()
     await svc.create('scout', { ...input, schedule: { kind: 'once_in', amount: 30, unit: 'm' }, deliverToChat: true })
@@ -128,7 +134,7 @@ describe('runNow', () => {
     const started = svc.runNow('scout', 'abc123')
     await vi.advanceTimersByTimeAsync(3_000)
     await expect(started).resolves.toBe('started')
-    expect(cron.calls[0]).toMatchObject({ method: 'POST', path: '/api/cron/jobs/abc123/trigger', query: { profile: 'scout' }, timeoutMs: 0 })
+    expect(cron.calls.find(c => c.path.endsWith('/trigger'))).toMatchObject({ method: 'POST', path: '/api/cron/jobs/abc123/trigger', query: { profile: 'scout' }, timeoutMs: 0 })
     expect((await svc.list('scout'))[0]!.running).toBe(true)
     await expect(svc.runNow('scout', 'abc123')).resolves.toBe('already_running')
     settle()
@@ -190,11 +196,94 @@ describe('runs', () => {
     ])
   })
 
+  it('only treats source cron rows as sessions', async () => {
+    cron.handler = () => ({ runs: [
+      { id: 'cron_output:abc123:exec:4', source: 'cron_output', title: 'COMPLETED · Morning brief', started_at: 5, ended_at: 6 },
+      { id: 'sess-9', source: 'cron', title: 'CANCELLED · stopped by user', started_at: 7, ended_at: 8, is_active: false }
+    ] })
+    expect(await svc.runs('scout', 'abc123')).toEqual([
+      { id: 'cron_output:abc123:exec:4', status: 'completed', startedAt: 5000, endedAt: 6000, title: 'Morning brief', sessionId: null, error: null },
+      { id: 'sess-9', status: 'cancelled', startedAt: 7000, endedAt: 8000, title: 'CANCELLED · stopped by user', sessionId: 'sess-9', error: 'stopped by user' }
+    ])
+  })
+
   it('maps cancelled and missed rows', async () => {
     cron.handler = () => ({ runs: [
       { id: 'c', title: 'CANCELLED · stopped by user', started_at: 1 },
       { id: 'm', title: 'MISSED · scheduler down', started_at: 2 }
     ] })
     expect((await svc.runs('scout', 'abc123')).map(r => [r.status, r.error, r.sessionId])).toEqual([['cancelled', 'stopped by user', null], ['missed', 'scheduler down', null]])
+  })
+})
+
+describe('runNow on a paused routine', () => {
+  const paused = (extra: Record<string, unknown> = {}) => job({ enabled: false, state: 'paused', paused_reason: 'vacation', ...extra })
+  const pauseCalls = () => cron.calls.filter(c => c.path.endsWith('/pause'))
+  let settle: () => void
+  const scripted = (current: unknown) => {
+    cron.handler = call => {
+      if (call.path.endsWith('/trigger')) return new Promise<void>(resolve => { settle = resolve }).then(() => job())
+      if (call.path.endsWith('/pause') || call.path.endsWith('/resume')) return job()
+      return call.path === '/api/cron/jobs' ? [current] : current
+    }
+  }
+  afterEach(() => { vi.useRealTimers() })
+
+  it('re-pauses exactly once after the trigger settles, and shows enabled false meanwhile', async () => {
+    vi.useFakeTimers()
+    scripted(paused())
+    const started = svc.runNow('scout', 'abc123')
+    await vi.advanceTimersByTimeAsync(3_000)
+    await expect(started).resolves.toBe('started')
+    expect(pauseCalls()).toHaveLength(0)
+    // Hermes reports it enabled again once triggered; Crew still reports the user's pause.
+    cron.handler = call => (call.path === '/api/cron/jobs' ? [job({ enabled: true, state: 'scheduled' })] : job())
+    expect((await svc.list('scout'))[0]!.enabled).toBe(false)
+    settle()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(pauseCalls()).toHaveLength(1)
+    expect(pauseCalls()[0]).toMatchObject({ method: 'POST', path: '/api/cron/jobs/abc123/pause', query: { profile: 'scout' } })
+    expect((await svc.list('scout'))[0]!.enabled).toBe(true)
+  })
+
+  it('re-pauses before returning when the run is quick, and also after a 409 or an error', async () => {
+    cron.handler = call => (call.path.endsWith('/trigger') ? job() : paused())
+    await svc.runNow('scout', 'abc123')
+    expect(pauseCalls()).toHaveLength(1)
+    cron.handler = call => { if (call.path.endsWith('/trigger')) throw new HermesRestError(409, 'busy'); return paused() }
+    await expect(svc.runNow('scout', 'abc123')).resolves.toBe('already_running')
+    expect(pauseCalls()).toHaveLength(2)
+    cron.handler = call => { if (call.path.endsWith('/trigger')) throw new HermesRestError(500, 'boom'); return paused() }
+    await expect(svc.runNow('scout', 'abc123')).rejects.toMatchObject({ status: 500 })
+    expect(pauseCalls()).toHaveLength(3)
+  })
+
+  it('does not pause a routine that was not paused', async () => {
+    cron.handler = call => (call.path.endsWith('/trigger') ? job() : job())
+    await svc.runNow('scout', 'abc123')
+    expect(pauseCalls()).toHaveLength(0)
+  })
+
+  it('lets a resume or remove during the run win', async () => {
+    vi.useFakeTimers()
+    for (const action of ['resume', 'remove'] as const) {
+      cron.calls = []
+      scripted(paused())
+      const started = svc.runNow('scout', 'abc123')
+      await vi.advanceTimersByTimeAsync(3_000)
+      await started
+      await svc[action]('scout', 'abc123')
+      settle()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(pauseCalls()).toHaveLength(0)
+    }
+  })
+
+  it('warns when the re-pause fails', async () => {
+    const lines: string[] = []
+    const restore = setLogSink(l => lines.push(l))
+    cron.handler = call => { if (call.path.endsWith('/pause')) throw new Error('down'); return call.path.endsWith('/trigger') ? job() : paused() }
+    try { await svc.runNow('scout', 'abc123') } finally { restore() }
+    expect(lines.map(l => JSON.parse(l)).filter(l => l.level === 'warn')).toEqual([expect.objectContaining({ msg: 're-pause after run now failed', jobId: 'abc123' })])
   })
 })

@@ -17,16 +17,22 @@ const specs: ScheduleSpec[] = [
 ]
 
 describe('toHermesSchedule', () => {
+  it('sends a one-shot as an instant with the routine zone offset (Hermes ignores job timezone for one-shots)', () => {
+    expect(toHermesSchedule({ kind: 'once_at', at: '2026-11-09T09:00' }, 'Asia/Seoul')).toBe('2026-11-09T09:00:00+09:00')
+    expect(toHermesSchedule({ kind: 'once_at', at: '2026-11-09T09:00' }, 'America/New_York')).toBe('2026-11-09T09:00:00-05:00')
+    expect(toHermesSchedule({ kind: 'once_at', at: '2026-11-09T09:00' }, 'UTC')).toBe('2026-11-09T09:00:00Z')
+    expect(() => toHermesSchedule({ kind: 'once_at', at: '2026-13-09T09:00' }, 'UTC')).toThrowError(expect.objectContaining({ code: 'invalid' }))
+  })
+
   it.each([
     [{ kind: 'once_in', amount: 30, unit: 'm' }, 'in 30m'],
-    [{ kind: 'once_at', at: '2026-11-09T09:00' }, '2026-11-09T09:00:00'],
     [{ kind: 'every', amount: 2, unit: 'h' }, 'every 2h'],
     [{ kind: 'daily', time: '09:30' }, '30 9 * * *'],
     [{ kind: 'weekdays', time: '09:30' }, '30 9 * * 1-5'],
     [{ kind: 'weekly', day: 1, time: '09:30' }, '30 9 * * 1'],
     [{ kind: 'monthly', day: 15, time: '09:30' }, '30 9 15 * *'],
     [{ kind: 'cron', expr: '  0 9 * * *  ' }, '0 9 * * *']
-  ])('composes %j as %s', (spec, out) => expect(toHermesSchedule(spec as ScheduleSpec)).toBe(out))
+  ])('composes %j as %s', (spec, out) => expect(toHermesSchedule(spec as ScheduleSpec, 'UTC')).toBe(out))
 })
 
 describe('fromHermesSchedule', () => {
@@ -48,7 +54,7 @@ describe('fromHermesSchedule', () => {
 
   it('round-trips every generated cron kind exactly', () => {
     for (const spec of specs.filter(x => ['daily', 'weekdays', 'weekly', 'monthly', 'cron'].includes(x.kind))) {
-      expect(fromHermesSchedule({ kind: 'cron', expr: toHermesSchedule(spec) }, 'UTC')).toEqual(spec)
+      expect(fromHermesSchedule({ kind: 'cron', expr: toHermesSchedule(spec, 'UTC') }, 'UTC')).toEqual(spec)
     }
   })
 
@@ -59,7 +65,7 @@ describe('fromHermesSchedule', () => {
       expect(back.kind === 'every' && back.amount * { m: 1, h: 60, d: 1440 }[back.unit]).toBe(minutes)
     }
     const once = fromHermesSchedule({ kind: 'once', run_at: '2026-11-09T09:00:00' }, 'Asia/Seoul')
-    expect(toHermesSchedule(once)).toBe('2026-11-09T09:00:00')
+    expect(toHermesSchedule(once, 'Asia/Seoul')).toBe('2026-11-09T09:00:00+09:00')
   })
 })
 

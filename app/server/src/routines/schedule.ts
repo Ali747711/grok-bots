@@ -49,11 +49,21 @@ function hourMinute(value: string): { hour: number; minute: number } {
   return { hour: Number(match[1]), minute: Number(match[2]) }
 }
 
+/**
+ * A set-time one-shot as an offset-aware instant: Hermes localises a naive timestamp to ITS zone and
+ * ignores the job `timezone` for one-shots, so the routine's zone must travel in the string itself.
+ */
+function onceAtInstant(at: string, timezone: string): string {
+  const iso = DateTime.fromFormat(at, AT_FORMAT, { zone: timezone }).toISO({ suppressMilliseconds: true })
+  if (!iso) throw invalid(`invalid date and time '${at}'`)
+  return iso
+}
+
 /** The string Hermes parses (F§4.4): one-shots are `in <n><unit>`, never a bare duration. */
-export function toHermesSchedule(spec: ScheduleSpec): string {
+export function toHermesSchedule(spec: ScheduleSpec, timezone: string): string {
   switch (spec.kind) {
     case 'once_in': return `in ${spec.amount}${spec.unit}`
-    case 'once_at': return `${spec.at}:00`
+    case 'once_at': return onceAtInstant(spec.at, timezone)
     case 'every': return `every ${spec.amount}${spec.unit}`
     case 'cron': return spec.expr.trim()
     default: return cronFor(spec)
@@ -113,7 +123,7 @@ export function previewRuns(spec: ScheduleSpec, timezone: string, now: number, c
     case 'once_in': return [now + spec.amount * MINUTES[spec.unit] * MS_PER_MINUTE]
     case 'every': return Array.from({ length: count }, (_, i) => now + (i + 1) * spec.amount * MINUTES[spec.unit] * MS_PER_MINUTE)
     case 'once_at': return [onceAt(spec.at, timezone, now)]
-    default: return cronRuns(toHermesSchedule(spec), timezone, now, count)
+    default: return cronRuns(toHermesSchedule(spec, timezone), timezone, now, count)
   }
 }
 
