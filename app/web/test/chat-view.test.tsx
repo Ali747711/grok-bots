@@ -56,6 +56,14 @@ describe('ChatView', () => {
     expect(client.calls[0]).toMatchObject({ method: 'session.resume', params: { profile: 'dev', session_id: 'tip-1' } })
   })
 
+  it('keeps header and composer outside the scrolling transcript', async () => {
+    render(<ChatView bot={dev} state={crewState()} crewConnected />)
+    await flush()
+    const transcript = screen.getByTestId('transcript')
+    expect(transcript.contains(screen.getByRole('textbox'))).toBe(false)
+    expect(transcript.contains(screen.getByRole('heading', { name: 'Dev' }))).toBe(false)
+  })
+
   it('sends from the composer and shows the message', async () => {
     render(<ChatView bot={dev} state={crewState()} crewConnected />)
     await flush()
