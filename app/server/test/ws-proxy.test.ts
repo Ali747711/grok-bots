@@ -1,4 +1,5 @@
 import { createServer, type Server } from 'node:http'
+import { connect as tcpConnect } from 'node:net'
 import type { AddressInfo } from 'node:net'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -143,4 +144,34 @@ describe('WebSocket proxy', () => {
     ws.close(1000)
     expect(await closed).toBe(1000)
   })
+
+  it('survives clients that reset refused upgrades', async () => {
+    for (let i = 0; i < 100; i++) {
+      await new Promise<void>(resolve => {
+        const sock = tcpConnect(port, '127.0.0.1', () => {
+          sock.write(`GET ${i % 2 ? '/api/pty' : '/api/ws'} HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nUpgrade: websocket\r\n` +
+            'Connection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n')
+          sock.resetAndDestroy()
+          resolve()
+        })
+        sock.on('error', () => resolve())
+      })
+    }
+    await new Promise(r => setTimeout(r, 200))
+    const ws = await connect({ origin: origin(), cookie: valid })
+    expect(ws.readyState).toBe(WebSocket.OPEN)
+    ws.close()
+  })
+
+  it('survives an invalid frame from a logged-in client', async () => {
+    const bad = await connect({ origin: origin(), cookie: valid })
+    const closed = closeCode(bad)
+    // Masked close frame carrying reserved code 1005: a protocol error on the server side.
+    ;(bad as unknown as { _socket: { write(b: Buffer): void } })._socket.write(Buffer.from([0x88, 0x82, 0, 0, 0, 0, 0x03, 0xed]))
+    await closed
+    const ws = await connect({ origin: origin(), cookie: valid })
+    expect(ws.readyState).toBe(WebSocket.OPEN)
+    ws.close()
+  })
 })
+

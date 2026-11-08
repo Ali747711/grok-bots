@@ -83,6 +83,8 @@ describe('applyGatewayEvent', () => {
 })
 
 class FakeClient implements WatcherClient {
+  fixturePrompts: { kind: string; prompt_id: string; execution_generation: number; choices: string[]; command: string }[] =
+    [{ kind: 'approval', prompt_id: 'p-1', execution_generation: 3, choices: ['once', 'deny'], command: 'rm -r /tmp/crew-fixture/victim' }]
   readonly calls: { method: string; params: Record<string, unknown> }[] = []
   private stateHandlers: ((s: string) => void)[] = []
   private eventHandlers: ((e: { type: string; session_id?: string; payload?: unknown }) => void)[] = []
@@ -119,7 +121,7 @@ class FakeClient implements WatcherClient {
       return {
         session_id: fixture ? 'run-fixture' : 'run-default', stored_session_id: params.session_id, subscription_id: 'sub',
         execution_generation: 3, running: fixture,
-        prompts: fixture ? [{ kind: 'approval', prompt_id: 'p-1', execution_generation: 3, choices: ['once', 'deny'], command: 'rm -r /tmp/crew-fixture/victim' }] : []
+        prompts: fixture ? this.fixturePrompts : []
       } as T
     }
     return {} as T
@@ -164,4 +166,22 @@ describe('startWatcher', () => {
     expect(client.calls.filter(c => c.method === 'profiles.list').length).toBe(2)
     watcher.stop()
   })
+
+  it('drops pending prompts that a fresh snapshot no longer lists (missed settled event)', async () => {
+    const client = new FakeClient()
+    let clock = 0
+    const watcher = startWatcher({ client, connect: c => c.connect(), now: () => ++clock, reconnectDelayMs: () => 0 })
+    await flush(); await flush()
+    client.emitEvent({ type: 'approval.request', session_id: 'run-fixture', payload: { prompt_id: 'p-2', command: 'rm -r /tmp/y' } })
+    client.emitEvent({ type: 'approval.request', session_id: 'run-other', payload: { prompt_id: 'p-3', command: 'ls' } })
+    expect(watcher.store.list().map(r => r.id)).toEqual(['p-1', 'p-2', 'p-3'])
+    client.fixturePrompts = []
+    client.emitState('closed')
+    await flush(); await flush(); await flush()
+    expect(watcher.store.list().map(r => r.id)).toEqual(['p-3'])
+    expect(watcher.store.get('p-1')?.settled).toBe('settled')
+    expect(watcher.store.get('p-2')?.settled).toBe('settled')
+    watcher.stop()
+  })
 })
+
