@@ -78,7 +78,7 @@ describe('POST /crew/requests/:id/answer', () => {
     expect(await res.json()).toEqual({ status: 'sent' })
     expect(client.calls.at(-1)).toEqual({
       method: 'approval.respond', timeout: 1_830_000,
-      params: { session_id: 'run-fixture', execution_generation: 3, prompt_id: 'p-1', choice: 'deny' }
+      params: { profile: 'crew-test', session_id: 'run-fixture', execution_generation: 3, prompt_id: 'p-1', choice: 'deny' }
     })
   })
 
@@ -98,7 +98,7 @@ describe('POST /crew/requests/:id/answer', () => {
     expect((await post('q-1', { answer: 'the red one' })).status).toBe(202)
     expect(client.calls.at(-1)).toEqual({
       method: 'clarify.respond', timeout: 1_830_000,
-      params: { session_id: 'run-fixture', execution_generation: 4, prompt_id: 'q-1', answer: 'the red one' }
+      params: { profile: 'crew-test', session_id: 'run-fixture', execution_generation: 4, prompt_id: 'q-1', answer: 'the red one' }
     })
   })
 
@@ -237,6 +237,40 @@ describe('POST /crew/requests/:id/answer', () => {
     expect(openRequest.respond).not.toHaveBeenCalled()
     expect(client.calls.some(c => c.method === 'approval.respond')).toBe(false)
     expect(entry('p-1')?.answerable).toBe(true)
+  })
+
+  it('does not answer prompts whose bot is unknown (no profile to route by)', async () => {
+    client.emitEvent({ type: 'approval.request', session_id: 'run-mystery', execution_generation: 1, payload: { prompt_id: 'p-x', command: 'ls', choices: ['once'] } })
+    expect(entry('p-x')).toMatchObject({ profile: 'unknown', answerable: false })
+    expect((await post('p-x', { choice: 'once' })).status).toBe(422)
+  })
+
+  it('maps a Hermes not_found reply to failed with that error', async () => {
+    client.rpcError = new Error('not_found')
+    await post('p-1', { choice: 'deny' })
+    await flush()
+    expect(entry('p-1')).toMatchObject({ state: 'failed', error: 'not_found' })
+  })
+
+  it('refuses answers when the connection closed during the initial sync', async () => {
+    watcher.stop()
+    const c = new Fake()
+    const original = c.request.bind(c)
+    c.request = (async (method: string, params?: Record<string, unknown>) => {
+      const result = await original(method, params)
+      if (method === 'profiles.list') c.emitState('closed')
+      return result
+    }) as typeof c.request
+    client = c
+    watcher = startWatcher({ client: c, connect: async () => undefined, now: () => 1, reconnectDelayMs: () => 60_000 })
+    app = createApp({ ...base, watcher })
+    await flush(); await flush(); await flush()
+    const req = secretRequest()
+    expect(watcher.state().hermes).toBe('offline')
+    const res = await post('srq-1', { value: 'v' })
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({ error: 'hermes_offline' })
+    expect(req.respond).not.toHaveBeenCalled()
   })
 
   it('answers 404 for an unknown id', async () => {

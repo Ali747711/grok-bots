@@ -32,7 +32,10 @@ export async function answerRequest(
     return 'resolved'
   }
   if (!entry.promptId || entry.executionGeneration === undefined) throw new Error('not_answerable')
-  const base = { session_id: entry.sessionId, execution_generation: entry.executionGeneration, prompt_id: entry.promptId }
+  // Hermes routes an RPC by profile: without it the call lands on the default profile's connection,
+  // where this session is not subscribed (not_found).
+  if (entry.profile === 'unknown') throw new Error('not_answerable')
+  const base = { profile: entry.profile, session_id: entry.sessionId, execution_generation: entry.executionGeneration, prompt_id: entry.promptId }
   const [method, params] =
     'choice' in input
       ? ['approval.respond', { ...base, choice: input.choice }]

@@ -77,6 +77,8 @@ export function startWatcher(deps: WatcherDeps): Watcher {
   const held = new Map<string, ServerRequest>()
   let hermes: CrewState['hermes'] = 'connecting'
   let authClosed = false
+  /** Bumped on every close; a connect/sync that started before a close must not report `connected`. */
+  let connectionEpoch = 0
   let changeTimer: NodeJS.Timeout | null = null
   let syncRetryTimer: NodeJS.Timeout | null = null
   let syncFailures = 0
@@ -202,13 +204,14 @@ export function startWatcher(deps: WatcherDeps): Watcher {
   async function connectNow(): Promise<void> {
     attempt += 1
     setHermes('connecting')
+    const epoch = connectionEpoch
     try {
       subscribed = new Set()
       await deps.connect(client)
       attempt = 0
       authClosed = false
       await sync()
-      setHermes('connected')
+      if (epoch === connectionEpoch) setHermes('connected')
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       note('error', `connect: ${message}`)
@@ -219,7 +222,7 @@ export function startWatcher(deps: WatcherDeps): Watcher {
 
   /** What Crew can actually send: prompts need ids, server requests need the live request, batch clarify never. */
   function isAnswerable(e: PendingRequest): boolean {
-    if (e.source === 'event' || e.source === 'snapshot_prompt') return Boolean(e.promptId) && typeof e.executionGeneration === 'number'
+    if (e.source === 'event' || e.source === 'snapshot_prompt') return Boolean(e.promptId) && typeof e.executionGeneration === 'number' && e.profile !== 'unknown'
     return e.kind !== 'clarify' && held.has(e.id)
   }
 
@@ -255,6 +258,7 @@ export function startWatcher(deps: WatcherDeps): Watcher {
     }),
     client.onState(state => {
       if (state === 'closed' || state === 'error') {
+        connectionEpoch += 1
         setHermes(authClosed ? 'signed_out' : 'offline')
         scheduleReconnect()
       }
