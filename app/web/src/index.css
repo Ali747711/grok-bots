@@ -12,6 +12,7 @@
     --color-contrast: var(--contrast);
     --color-contrast-foreground: var(--contrast-foreground);
     --color-contrast-border: var(--contrast-border);
+    --color-contrast-muted: var(--contrast-muted);
     --color-sky: var(--sky);
     --color-sky-ink: var(--sky-ink);
     --color-sky-soft: var(--sky-soft);
@@ -94,6 +95,7 @@
     --contrast: #0d0d0d;
     --contrast-foreground: #ffffff;
     --contrast-border: #0d0d0d;
+    --contrast-muted: rgba(255, 255, 255, 0.1);
     --sky: #1f8ef1;
     --sky-ink: #126bb8;
     --sky-soft: #e3f0fe;
@@ -135,6 +137,7 @@
     --contrast: #000000;
     --contrast-foreground: #f3f4f6;
     --contrast-border: #2c2f34;
+    --contrast-muted: rgba(255, 255, 255, 0.08);
     --sky: #1f8ef1;
     --sky-ink: #1f8ef1;
     --sky-soft: #10263d;

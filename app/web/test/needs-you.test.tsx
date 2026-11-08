@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { NeedsYouPage } from '@/features/needs-you/NeedsYouPage'
 import type { PendingView } from '@/state/types'
@@ -14,7 +14,22 @@ const pending = (id: string, profile: string, kind: PendingView['kind'], summary
 
 const renderPage = (state = crewState()) => render(<MemoryRouter><NeedsYouPage state={state} now={() => NOW} /></MemoryRouter>)
 
+vi.mock('bot-avatars', async () => {
+  const actual = await vi.importActual<typeof import('bot-avatars')>('bot-avatars')
+  return { ...actual, BotAvatar: (props: Record<string, unknown>) => <div data-testid="stub" data-size={String(props.size)} /> }
+})
+
 describe('NeedsYouPage', () => {
+  it('lists needs-you entries with avatars and links', () => {
+    renderPage(crewState({ bots: [bot({ name: 'dev', title: 'Dev' })], pending: [pending('a', 'dev', 'approval', 'run it', 5)] }))
+    const link = screen.getByText('run it').closest('a')!
+    expect(link).toHaveAttribute('href', '/bots/dev')
+    expect(within(link).getByTestId('stub')).toHaveAttribute('data-size', '32')
+    expect(link.querySelector('[aria-hidden="true"]')).not.toBeNull()
+    expect(within(link).getByText('Open chat')).toHaveClass('text-sky-ink')
+    expect(link.closest('ul')!.parentElement).toHaveClass('bg-card/95', 'rounded-block')
+  })
+
   it('lists entries across bots and links to the chat', () => {
     renderPage(crewState({
       bots: [bot({ name: 'researcher', title: 'Researcher' }), bot({ name: 'dev', title: 'Dev' })],

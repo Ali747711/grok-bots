@@ -38,7 +38,7 @@ export function ChatView({ bot, state, crewConnected, panel, onPanel }: ChatView
       {requests.length > 0 && (
         <div className="max-h-[40vh] flex-none overflow-y-auto px-6 pt-2">
           <div className="mx-auto flex max-w-[720px] flex-col gap-2">
-            {requests.map(entry => <RequestCard key={entry.id} entry={entry} onAnswer={(e, body) => submitAnswer(e.id, body)} />)}
+            {requests.map(entry => <RequestCard key={entry.id} entry={entry} botTitle={bot.title} onAnswer={(e, body) => submitAnswer(e.id, body)} />)}
           </div>
         </div>
       )}
