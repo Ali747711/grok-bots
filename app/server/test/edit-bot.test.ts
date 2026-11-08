@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import type { BotDeps } from '../src/bots/create.js'
+import { createBot } from '../src/bots/create.js'
 import { clearAvatar, deleteBot, NotSavedError, PrimaryBotError, readBotDetail, setAvatar, updateBot } from '../src/bots/edit.js'
 import { HermesRestError, HermesRpcError } from '../src/hermes/errors.js'
 import { FakeRest, FakeRpc } from './fake-rpc.js'
@@ -166,5 +167,34 @@ describe('deleteBot', () => {
   it('lets a rest failure through', async () => {
     rest.request = async () => { throw new HermesRestError(404, 'Profile scout does not exist') }
     await expect(deleteBot({ ...deps, rest: { request: rest.request } as BotDeps['rest'] }, 'scout')).rejects.toBeInstanceOf(HermesRestError)
+  })
+})
+
+describe('per-bot write serialization', () => {
+  it('makes a delete during an in-flight create wait for it', async () => {
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    rpc.handlers.set('profiles.create', () => gate.then(() => { rpc.rows.set('fresh', {}); return { ok: true } }))
+    const created = createBot(deps, { name: 'fresh', title: 'F', mission: '', look: { shape: 'circle', color: '#111111' } })
+    const deleted = deleteBot(deps, 'fresh')
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(rest.requests).toEqual([])
+    release()
+    await Promise.all([created, deleted])
+    expect(rpc.methods().at(-1)).toBe('session.create')
+    expect(rest.requests.map(r => r.method)).toEqual(['DELETE'])
+  })
+
+  it('runs a description save and an avatar change on the same bot one after the other', async () => {
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    rpc.otherConfigure = () => gate.then(() => ({ ok: true, applied: { description: true } }))
+    const saved = updateBot(deps, 'scout', { description: 'D' })
+    const avatar = setAvatar(deps, 'scout', 'data:image/png;base64,AAAA')
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(rpc.of('profiles.set_asset')).toHaveLength(0)
+    release()
+    await Promise.all([saved, avatar])
+    expect(rpc.of('profiles.set_asset')).toHaveLength(1)
   })
 })

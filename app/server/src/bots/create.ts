@@ -1,6 +1,7 @@
 import { HermesRpcError, type Rpc } from '../hermes/errors.js'
 import type { HermesRest } from '../hermes/rest-client.js'
 import { log } from '../log.js'
+import { withBotLock } from './bot-lock.js'
 import { composeSoul } from './soul.js'
 import { type BotMeta, readBotMeta, updateBotMeta } from './ui-meta.js'
 
@@ -50,6 +51,12 @@ export class CreateBotError extends Error {
     super(message)
     this.name = 'CreateBotError'
   }
+}
+
+interface FinishBody {
+  readonly look?: BotLook
+  readonly title?: string
+  readonly image?: string
 }
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
@@ -131,7 +138,11 @@ async function createProfile(deps: BotDeps, draft: BotDraft): Promise<void> {
  * is best-effort and independent, so a failure is reported in the result and the rest still run.
  * The name must already pass `validateBotName`. No intro turn is sent (costs a model call).
  */
-export async function createBot(deps: BotDeps, draft: BotDraft): Promise<CreateResult> {
+export function createBot(deps: BotDeps, draft: BotDraft): Promise<CreateResult> {
+  return withBotLock(draft.name, () => runCreate(deps, draft))
+}
+
+async function runCreate(deps: BotDeps, draft: BotDraft): Promise<CreateResult> {
   await createProfile(deps, draft)
   const steps = new Steps()
   await steps.run('look', async () => {
@@ -154,11 +165,11 @@ export async function createBot(deps: BotDeps, draft: BotDraft): Promise<CreateR
  * Complete a half-made bot: write the look only if it never had one (revision 0), upload an avatar when
  * given, and make sure Bot Chat exists. Throws `BotNotFoundError` for an unknown profile.
  */
-export async function finishBot(
-  deps: BotDeps,
-  name: string,
-  body: { look?: BotLook; title?: string; image?: string }
-): Promise<CreateResult> {
+export function finishBot(deps: BotDeps, name: string, body: FinishBody): Promise<CreateResult> {
+  return withBotLock(name, () => runFinish(deps, name, body))
+}
+
+async function runFinish(deps: BotDeps, name: string, body: FinishBody): Promise<CreateResult> {
   const { revision } = await readBotMeta(deps.rpc, name)
   const steps = new Steps()
   if (revision === 0) {

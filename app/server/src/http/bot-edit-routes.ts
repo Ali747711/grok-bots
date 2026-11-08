@@ -13,6 +13,7 @@ const IMAGE_MAX_CHARS = 2_700_000
 
 const model = z.object({ provider: z.string().min(1), model: z.string().min(1) })
 const image = z.string().regex(/^data:image\/(png|jpeg|webp);base64,/).max(IMAGE_MAX_CHARS)
+const GUARDED = ['soul', 'description', 'model'] as const
 const patchBody = z.object({
   title: z.string().min(1).max(80),
   look: z.object({ shape: z.enum(['circle', 'squircle']), color: z.string().regex(/^#[0-9a-fA-F]{6}$/) }),
@@ -22,7 +23,14 @@ const patchBody = z.object({
   model,
   confirmExpensiveModel: z.boolean(),
   baseline: z.object({ description: z.string(), soul: z.string(), model: model.nullable() }).partial()
-}).partial().refine(patch => Object.keys(patch).some(key => key !== 'baseline' && key !== 'confirmExpensiveModel' && patch[key as keyof typeof patch] !== undefined), 'empty patch')
+}).partial().superRefine((patch, ctx) => {
+  const changes = Object.keys(patch).some(key => key !== 'baseline' && key !== 'confirmExpensiveModel' && patch[key as keyof typeof patch] !== undefined)
+  if (!changes) ctx.addIssue({ code: 'custom', message: 'empty patch' })
+  // SOUL, description and model have no revision in Hermes: refuse to write them without the loaded value.
+  for (const field of GUARDED) {
+    if (patch[field] !== undefined && !(patch.baseline && field in patch.baseline)) ctx.addIssue({ code: 'custom', message: `baseline.${field} is required to change ${field}` })
+  }
+})
 
 /** `GET|PATCH|DELETE /crew/bots/:name`, `PUT|DELETE /crew/bots/:name/avatar`. Reserved names are fine here; only delete refuses `default`. */
 export function botEditRoutes(bots: BotDeps | undefined): Hono<CrewEnv> {

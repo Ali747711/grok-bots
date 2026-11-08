@@ -1,3 +1,4 @@
+import { withBotLock } from './bot-lock.js'
 import { type BotDeps, type BotLook, refreshQuietly } from './create.js'
 import { type BotMeta, BotNotFoundError, BotMetaWriteError, updateBotMeta } from './ui-meta.js'
 
@@ -134,7 +135,11 @@ function metaPatch(patch: BotPatch): Partial<BotMeta> {
  * compared with the caller's baseline first and nothing is written if any changed (F§6). Writes are
  * sequential (description races ui_meta in profile.yaml, F Gotcha 16): model, ui_meta, description, soul.
  */
-export async function updateBot(deps: BotDeps, name: string, patch: BotPatch): Promise<UpdateOutcome> {
+export function updateBot(deps: BotDeps, name: string, patch: BotPatch): Promise<UpdateOutcome> {
+  return withBotLock(name, () => runUpdate(deps, name, patch))
+}
+
+async function runUpdate(deps: BotDeps, name: string, patch: BotPatch): Promise<UpdateOutcome> {
   if (patch.baseline) {
     const current = await readBotDetail(deps, name)
     const fields = changedSince(patch, current)
@@ -165,23 +170,29 @@ async function writeMeta(deps: BotDeps, name: string, patch: Partial<BotMeta>): 
 }
 
 /** Upload the avatar image, then mark the look as a custom photo. */
-export async function setAvatar(deps: BotDeps, name: string, image: string): Promise<BotDetail> {
-  await deps.rpc('profiles.set_asset', { name, asset: 'avatar', data: image })
-  await writeMeta(deps, name, { imageKind: 'photo', custom: true })
-  await refreshQuietly(deps)
-  return readBotDetail(deps, name)
+export function setAvatar(deps: BotDeps, name: string, image: string): Promise<BotDetail> {
+  return withBotLock(name, async () => {
+    await deps.rpc('profiles.set_asset', { name, asset: 'avatar', data: image })
+    await writeMeta(deps, name, { imageKind: 'photo', custom: true })
+    await refreshQuietly(deps)
+    return readBotDetail(deps, name)
+  })
 }
 
-export async function clearAvatar(deps: BotDeps, name: string): Promise<BotDetail> {
-  await deps.rpc('profiles.set_asset', { name, asset: 'avatar', clear: true })
-  await writeMeta(deps, name, { imageKind: 'shape' })
-  await refreshQuietly(deps)
-  return readBotDetail(deps, name)
+export function clearAvatar(deps: BotDeps, name: string): Promise<BotDetail> {
+  return withBotLock(name, async () => {
+    await deps.rpc('profiles.set_asset', { name, asset: 'avatar', clear: true })
+    await writeMeta(deps, name, { imageKind: 'shape' })
+    await refreshQuietly(deps)
+    return readBotDetail(deps, name)
+  })
 }
 
 /** Delete via REST. `{ok:true}` with or without `settlement_pending` is success (F Gotcha 14). */
-export async function deleteBot(deps: BotDeps, name: string): Promise<void> {
-  if (name === PRIMARY) throw new PrimaryBotError()
-  await deps.rest.request('DELETE', `/api/profiles/${enc(name)}`, { timeoutMs: DELETE_TIMEOUT_MS })
-  await refreshQuietly(deps)
+export function deleteBot(deps: BotDeps, name: string): Promise<void> {
+  if (name === PRIMARY) return Promise.reject(new PrimaryBotError())
+  return withBotLock(name, async () => {
+    await deps.rest.request('DELETE', `/api/profiles/${enc(name)}`, { timeoutMs: DELETE_TIMEOUT_MS })
+    await refreshQuietly(deps)
+  })
 }

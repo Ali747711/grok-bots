@@ -67,7 +67,7 @@ describe('PATCH /crew/bots/:name', () => {
 
   it('answers 409 confirm_required', async () => {
     rpc.otherConfigure = () => ({ ok: true, applied: {}, confirm_required: true, confirm_message: 'Costly' })
-    const res = await send('PATCH', '/crew/bots/scout', { model: { provider: 'p', model: 'm' } })
+    const res = await send('PATCH', '/crew/bots/scout', { model: { provider: 'p', model: 'm' }, baseline: { model: { provider: 'openrouter', model: 'a/b' } } })
     expect(res.status).toBe(409)
     expect(await res.json()).toEqual({ status: 'confirm_required', message: 'Costly' })
   })
@@ -82,9 +82,33 @@ describe('PATCH /crew/bots/:name', () => {
     expect(rpc.of('profiles.configure')).toHaveLength(0)
   })
 
+  it('requires a baseline for soul, description and model, naming the missing one', async () => {
+    for (const [patch, field] of [
+      [{ soul: 'S' }, 'soul'],
+      [{ description: 'D' }, 'description'],
+      [{ model: { provider: 'p', model: 'm' } }, 'model'],
+      [{ soul: 'S', baseline: { description: 'x' } }, 'soul']
+    ] as const) {
+      const res = await send('PATCH', '/crew/bots/scout', patch)
+      expect(res.status).toBe(400)
+      const body = await res.json() as { error: string; message: string }
+      expect(body.error).toBe('bad_body')
+      expect(body.message).toContain(`baseline.${field}`)
+    }
+    expect(rpc.calls).toEqual([])
+  })
+
+  it('accepts a model with a null baseline and needs no baseline for title, look or hidden', async () => {
+    rest.models.delete('scout')
+    expect((await send('PATCH', '/crew/bots/scout', { model: { provider: 'p', model: 'm' }, baseline: { model: null } })).status).toBe(200)
+    for (const patch of [{ title: 'T' }, { hidden: true }, { look: { shape: 'circle', color: '#222222' } }]) {
+      expect((await send('PATCH', '/crew/bots/scout', patch)).status).toBe(200)
+    }
+  })
+
   it('answers 502 not_saved with the section', async () => {
     rpc.otherConfigure = () => ({ ok: false, applied: { description: false } })
-    const res = await send('PATCH', '/crew/bots/scout', { description: 'D' })
+    const res = await send('PATCH', '/crew/bots/scout', { description: 'D', baseline: { description: '' } })
     expect(res.status).toBe(502)
     expect(await res.json()).toEqual({ error: 'not_saved', section: 'description' })
   })
