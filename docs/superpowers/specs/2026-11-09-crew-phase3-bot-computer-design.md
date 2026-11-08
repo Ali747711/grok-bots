@@ -43,7 +43,7 @@ Screens nobody uses stop after 15 minutes. Original Crew design: §8 phase 3 and
 ## 3. Non-goals
 
 - Installing the screen packages from the web. They're installed on this VM, and a sudo flow in Crew is unnecessary. The Computer tab shows the CLI line if they're ever missing.
-- Sandboxed screens (`terminal.backend: docker`, etc.), screen recording, file transfer, clipboard sync beyond noVNC's default paste, and audio.
+- Sandboxed screens (`terminal.backend: docker`, etc.), screen recording, file transfer, reading the screen's clipboard, and audio. Paste INTO the screen is in scope (§11 R6).
 - Roster-level screen indicators. Group chats are Phase 4.
 - Changing how bots decide to use the screen (prompting, tools). Crew only turns the existing Hermes switches on or off.
 
@@ -69,7 +69,7 @@ Screens nobody uses stop after 15 minutes. Original Crew design: §8 phase 3 and
   - Hermes close codes (1000, 4000, 4001, 4401) and their reasons are forwarded faithfully;
   - an upstream 403 or failed dial becomes a distinct Crew close code (4403 "hermes refused the screen").
 - **Logging:** tickets and the token are never logged.
-- **Code layout:** this is a separate module, `hermes/display-proxy.ts`. The existing `/api/ws` bridge is unchanged apart from routing.
+- **Code layout:** this is a separate module, `hermes/display-proxy.ts`. The `/api/ws` bridge gains the `display.*` guard below (§11 R7).
 
 **JSON-RPC guard for `display.*`.** On the existing `/api/ws` proxy, browser frames calling a `display.*` method are inspected.
 - A `display.*` request without a non-empty `profile`, or with a profile that isn't a known Crew bot, is answered with a JSON-RPC error. It is never forwarded.
@@ -77,7 +77,7 @@ Screens nobody uses stop after 15 minutes. Original Crew design: §8 phase 3 and
 
 This is defence in depth for anti-goal 2. The web client also always sends `profile`.
 
-**Screen config routes.** Crew calls Hermes REST `GET/PUT /api/config?profile=<bot>` with read-modify-write, touching only the named keys. The first implementation task proves on the test bot that PUT doesn't clobber other keys, and reads the file back; facts §5 marks this unverified.
+**Screen config routes.** Crew calls Hermes REST `GET /api/config?profile=<bot>` only to compare, and `PUT /api/config?profile=<bot>` with a SPARSE body that Hermes deep-merges (§11 R1). The first implementation task proves this on the test bot, reading the file back.
 - `POST /crew/bots/:name/screen/start`: ensures `bot_desktop.idle_stop_minutes` is 15 (writes only if different), then calls `display.start {profile}` through the server's own gateway client. It returns the resulting `display.status`.
 - `GET /crew/bots/:name/screen/config` and `PUT /crew/bots/:name/screen/config` with `{ useScreen: boolean }`: read and set `browser.headed` and `bot_desktop.auto_start` together. PUT also ensures the 15-minute idle stop.
 - All three take the same per-bot write lock as the Phase 2 bot edits and validate the name, and the PUT validates its body with Zod.
@@ -94,8 +94,8 @@ This is defence in depth for anti-goal 2. The web client also always sends `prof
   4. take control: `display.lease.acquire {profile, viewer_id}` on the SAME shared `/api/ws` socket (facts §1.4);
   5. hand back: `display.lease.release {profile, viewer_id}`;
   6. force: release with `force: true`;
-  7. unmount: release if held, then close 1000;
-  8. close 4000 or 4401: re-observe with the same viewer id, within the budget.
+  7. Computer-tab unmount: release if held, then close 1000. Moving between the panel and Expand is NOT an unmount hand-back (§11 C1).
+  8. Close codes follow the table in §11 R3.
 - **Thumbnail:** `display.thumbnail {profile}` every 4 s while the header is visible, `document.visibilityState === 'visible'`, and the screen is running. Three misses make it stale. `suppressed: 'human_has_control'` shows the chip, not an error.
 - **UI:** shadcn Tabs (the panel gains **Computer** as the first tab), Button, Switch, Alert, Badge, Dialog for Expand, Skeleton while connecting. Tokens only:
   - the red control frame uses `--contrast-danger` or a new `--control-frame` token;
@@ -107,7 +107,7 @@ This is defence in depth for anti-goal 2. The web client also always sends `prof
 ## 6. Data and limits
 
 - **Memory:** about 320 MB per idle screen measured, plus 0.5–1 GB with a headed browser. Hermes refuses to start below 1536 MB free and shows the reason (facts §1.2). Crew shows that reason verbatim and keeps Hermes's floor. With 15-minute idle stop this VM can hold a few screens.
-- **Viewer ids:** connection-scoped. After a gateway redial, a lease we held shows "Someone else" until it's force-released. The UI explains that.
+- **Viewer ids:** connection-scoped. Ownership is tracked by our viewer's lease hash for the life of the view (§11 R2).
 
 ## 7. Security
 
@@ -155,3 +155,58 @@ This is defence in depth for anti-goal 2. The web client also always sends `prof
 7. A server-side guard on `display.*` frames, as defence in depth.
 8. noVNC 1.7.0 pinned to match Hermes Desktop. No CSP change.
 9. Fresh agents for this phase, within the usual cap: an implementer, a reviewer, and the spare for the final review on the most capable model.
+
+## 11. Builder-check rulings (supersede earlier text where they conflict)
+
+A fresh reviewer checked this design against the Hermes source before planning. Every ruling below is mine; the source references are the reviewer's.
+
+- **C1, Expand vs hand-back.** Moving the live view between the panel and the Expand dialog is a reconnect, not an unmount: plain `rfb.disconnect()` (no 1000), then re-observe with the same viewer id. Control is kept, and closing Expand keeps it. The hand-back on unmount fires only when the Computer tab itself unmounts: a tab switch, closing the panel, switching bot, or page unload. Watch for the paths that unmount silently: Base UI `Tabs.Panel` unmounts inactive panels, and `PanelBoundary` is keyed `${bot}-${panel}` (App.tsx).
+- **R1, config writes.** `PUT /api/config` deep-merges the body over the file under a lock (config_env.py:122-161, config.py `_deep_merge`). Rules:
+  - Always pass `?profile=<bot>`.
+  - Send only sparse bodies, e.g. `{config:{bot_desktop:{idle_stop_minutes:15}}}`.
+  - Use GET only to compare current values. Never PUT a GET result back: it carries defaults, a flattened `model` and expanded secrets.
+  - Never log or return the GET body.
+  - Hold the bot lock for the config write only, not across `display.start`.
+  - If the 15-minute write fails, don't start; answer 502 with the reason.
+- **R2, viewer identity.**
+  - Keep the viewer id and our lease hash for the life of the view. "You" means the lease hash matches ours.
+  - After a `/api/ws` redial (which orphans the id), Hand back uses `force: true` when the hash is ours.
+  - If the pixel socket must redial too, re-observe (this mints a new id). If the lease hash is our old one, re-acquire at once.
+- **R3, browser close-code table.**
+
+  | Close | Action |
+  |---|---|
+  | 1000 | refresh status, no redial |
+  | 4000, 4401 | re-observe, same viewer id, within the budget |
+  | 4001 | refresh status, show Start |
+  | 1003, 4403 | error, no retry |
+  | 1006, 1012, 1013 | redial within the budget |
+  | noVNC `securityfailure` | wait 12 s, then one redial |
+
+  The server sends 4403 only for an upstream HTTP 403; a failed dial is 1013.
+- **R4, Xvnc lock-out hygiene.** Dial only after the view has been mounted for 300 ms. At most 3 dials per bot per 10 s per page, shared with the reconnect budget; then show a manual **Reconnect**.
+- **R5, hidden tabs.** After 5 minutes with `document.hidden`, detach with a plain disconnect. The lease is kept, so Hermes's abandoned-lease rule applies. Re-attach when the page is visible. A forgotten tab must not defeat the idle stop.
+- **R6, paste.** noVNC core has no paste listener. Add a native `paste` listener on the canvas host, active only while holding control. It forwards via `rfb.clipboardPasteFrom` and is capped at 256 KiB (Hermes closes with 1003 above that), as Hermes Desktop does (screen-pane.tsx:303-322).
+- **R7, the `display.*` guard must fail closed.**
+  - Parse every browser text frame. An unparseable frame gets JSON-RPC error -32700 and is not forwarded.
+  - Refuse arrays (Hermes has no batches) and drop binary frames.
+  - Match the method on the parsed string.
+  - `profile` must be a string exactly equal to a roster name, with no trimming. Inject `knownBots()` from the watcher into the proxy.
+  - Refuse `display.start` (Crew's server route starts screens, so the 15-minute setting can't be skipped), `display.install*` and `display.switchSandboxImage` from the browser.
+- **R8, the primary bot.** The primary bot (`default`) gets a Computer tab, but NO use-screen switch. New bots clone the primary's `config.yaml`, so turning it on there would make every later bot headed with auto-start. Validate screen-route names with Hermes's profile-name rule (allows `default`), not `validateBotName`.
+- **Minor rulings.**
+  - **Backpressure:** pause the receiving side while the other side's `bufferedAmount` exceeds 1 MiB. Resume below 256 KiB, polling every 20 ms. Upstream uses `perMessageDeflate: false` and `maxPayload` 1 MiB for browser→Hermes frames.
+  - **Thumbnail:** RPC timeout 5 s.
+  - **Header copy** comes from the lease hash: "You're in control" only when it's ours, otherwise "Someone is in control".
+  - **Switch copy** notes that it takes effect the next time the bot opens its browser.
+- **Answers to the builder's questions.**
+  1. Tab, bot and panel switches hand back; closing Expand does not.
+  2. When someone else holds control, show both **Take control** (most recent wins) and **Give control back to <bot>** (force release).
+  3. **Stop** is disabled while any human holds control ("Hand back first"). It needs a confirm ("Stop <bot>'s screen? Its windows close.") and is a browser `display.stop {profile}` call, which the guard allows.
+  4. The switch shows on only when both keys are true; toggling writes both.
+  5. The header always shows a **Computer** button, with the thumbnail beside it while the screen runs.
+  6. **Try again** re-attaches if the screen is running, otherwise it starts it.
+  7. The lease `reason` isn't shown.
+- **Extra live proofs** (plan Task 8):
+  - *Idle stop is real and thumbnails don't keep a screen alive.* On an e2e bot, set `idle_stop_minutes: 1` through the same config path, start the screen, keep polling thumbnails, and expect `running: false` within about 2 minutes.
+  - *A dropped link keeps control.* Unit tests on the proxy mapping, plus an optional Playwright `routeWebSocket` server-side close, with the lease read via `e2e/hermes-rpc.ts`.
