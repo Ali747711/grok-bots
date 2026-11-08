@@ -58,10 +58,11 @@ describe('login routes', () => {
     app = createApp(deps)
   })
 
-  const login = (ticket: string, origin: string | undefined = ORIGIN) =>
+  // `null` = send no Origin header (an `undefined` argument would fall back to the default).
+  const login = (ticket: string, origin: string | null = ORIGIN) =>
     app.request('/crew/login', {
       method: 'POST',
-      headers: { Host: HOST, 'Content-Type': 'application/json', ...(origin ? { Origin: origin } : {}) },
+      headers: { Host: HOST, 'Content-Type': 'application/json', ...(origin !== null ? { Origin: origin } : {}) },
       body: JSON.stringify({ ticket })
     })
 
@@ -101,7 +102,7 @@ describe('login routes', () => {
     expect((await login('not-a-ticket')).status).toBe(401)
   })
 
-  it.each([['http://evil.example'], ['null'], [undefined]])('rejects login from Origin %s with 403', async (origin) => {
+  it.each([['http://evil.example'], ['null'], [null]])('rejects login from Origin %s with 403', async (origin) => {
     const res = await login(deps.tickets.mint(deps.now()), origin)
     expect(res.status).toBe(403)
   })
