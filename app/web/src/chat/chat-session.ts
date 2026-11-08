@@ -14,6 +14,10 @@ export interface ChatClient extends RpcClient {
 }
 
 const SUBMIT_TIMEOUT_MS = 1_800_000
+const RETRY_MIN_MS = 1000
+const RETRY_MAX_MS = 15_000
+const RECONNECTING = 'Reconnecting to the chat…'
+const backoff = (attempt: number) => Math.min(RETRY_MAX_MS, RETRY_MIN_MS * 2 ** attempt)
 const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
 const reason = (error: unknown) => (error instanceof Error ? error.message : String(error))
 
@@ -29,8 +33,14 @@ function toAdmission(status: unknown): AdmissionResult {
  * folds live events through the turn reducer, sends and stops, and re-subscribes after a reconnect.
  */
 export class ChatSession {
+  /** History plus turns already folded in. */
   private base: readonly ChatItem[] = []
+  /** The live turn. Never reset or frozen while its generation runs. */
   private turn: TurnState = initialTurnState
+  /** Messages and notices added while a turn may still be running; shown below the turn, folded in when the next generation starts. */
+  private pending: readonly ChatItem[] = []
+  private _error: string | null = null
+  private retryToken = 0
   private _sessionId: string | null = null
   private maxGeneration = 0
   private ready = false
@@ -40,12 +50,18 @@ export class ChatSession {
   private readonly listeners = new Set<(items: readonly ChatItem[]) => void>()
   private detach: (() => void)[] = []
 
-  constructor(private readonly client: ChatClient, private readonly bot: BotView) {}
+  constructor(
+    private readonly client: ChatClient,
+    private readonly bot: BotView,
+    private readonly options: { retryDelayMs?: (attempt: number) => number } = {}
+  ) {}
 
   get sessionId(): string | null { return this._sessionId }
   get canSend(): boolean { return this.ready && this.connected }
   get running(): boolean { return this.turn.running }
-  get items(): readonly ChatItem[] { return [...this.base, ...this.turn.items] }
+  get items(): readonly ChatItem[] { return [...this.base, ...this.turn.items, ...this.pending] }
+  /** Set while the chat is being re-opened after a reconnect; null otherwise. */
+  get error(): string | null { return this._error }
 
   subscribe(listener: (items: readonly ChatItem[]) => void): () => void {
     this.listeners.add(listener)
@@ -61,6 +77,7 @@ export class ChatSession {
   /** Stop listening. The Hermes session stays subscribed (no `session.detach`). */
   close(): void {
     this.openToken += 1
+    this.retryToken += 1
     this.ready = false
     this.attached = false
     for (const off of this.detach) off()
@@ -72,9 +89,7 @@ export class ChatSession {
     if (!this.canSend || !sessionId) throw new Error('Not connected to Hermes')
     const submissionId = crypto.randomUUID()
     const userId = `user-${submissionId}`
-    // Earlier turns move into `base` so the new user message lands after them.
-    this.base = [...this.base, ...this.turn.items, { kind: 'user', id: userId, text }]
-    this.turn = { ...initialTurnState, generation: this.turn.generation, running: this.turn.running }
+    this.pending = [...this.pending, { kind: 'user', id: userId, text }]
     this.emit()
     try {
       const result = await this.client.request<{ status?: unknown } | undefined>(
@@ -83,12 +98,12 @@ export class ChatSession {
         SUBMIT_TIMEOUT_MS
       )
       const admission = toAdmission(result?.status)
-      if (admission === 'duplicate') this.replaceUser(userId, null)
-      if (admission === 'lost') this.addNotice(`lost-${submissionId}`, 'This message was lost when Hermes restarted')
+      if (admission === 'duplicate') this.replaceItem(userId, null)
+      if (admission === 'lost') this.pending = [...this.pending, { kind: 'notice', id: `lost-${submissionId}`, text: 'This message was lost when Hermes restarted' }]
       this.emit()
       return admission
     } catch (error) {
-      this.replaceUser(userId, { kind: 'notice', id: `notice-${userId}`, text: `Not sent: ${reason(error)}` })
+      this.replaceItem(userId, { kind: 'notice', id: `notice-${userId}`, text: `Not sent: ${reason(error)}` })
       this.emit()
       throw error
     }
@@ -118,7 +133,7 @@ export class ChatSession {
     const wasConnected = this.connected
     this.connected = open
     if (state === 'closed' || state === 'error') this.ready = false
-    if (open && !wasConnected) void this.reopen().catch(() => undefined)
+    if (open && !wasConnected) void this.reopenWithRetry()
     this.emit()
   }
 
@@ -126,6 +141,11 @@ export class ChatSession {
     if (!this.attached || !this._sessionId || event.session_id !== this._sessionId) return
     this.noteGeneration(num(event.execution_generation))
     if (event.type === 'session.info') this.noteGeneration(num((event.payload as { execution_generation?: unknown } | null)?.execution_generation))
+    if (event.type === 'session.replay_gap') {
+      void this.reopenWithRetry(true)
+      return
+    }
+    this.foldBeforeNextTurn(event)
     const next = applyFrame(this.turn, event)
     if (next === this.turn) return
     this.turn = next
@@ -136,15 +156,55 @@ export class ChatSession {
     if (g !== undefined && g > this.maxGeneration) this.maxGeneration = g
   }
 
-  /** (Re-)resume, then load history. The returned session id can differ from the last one (compression). */
-  private async reopen(): Promise<void> {
+  /** A new generation starts after the previous turn finished: move that turn and the queued items into `base`. */
+  private foldBeforeNextTurn(event: TurnFrame): void {
+    const g = num(event.execution_generation)
+    if (event.type !== 'message.start' || this.turn.running || (g !== undefined && g <= this.turn.generation)) return
+    this.base = [...this.base, ...this.turn.items, ...this.pending]
+    this.pending = []
+    this.turn = { ...initialTurnState, generation: this.turn.generation }
+  }
+
+  /** Re-open, retrying with backoff while the connection is up, so a failed resume never leaves the chat dead. */
+  private async reopenWithRetry(fresh = false): Promise<void> {
+    const mine = ++this.retryToken
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await this.reopen(fresh)
+        if (mine === this.retryToken) { this._error = null; this.emit() }
+        return
+      } catch {
+        if (mine !== this.retryToken || !this.attached || !this.connected) return
+        this._error = RECONNECTING
+        this.emit()
+        await new Promise(resolve => setTimeout(resolve, (this.options.retryDelayMs ?? backoff)(attempt)))
+        if (mine !== this.retryToken || !this.connected) return
+      }
+    }
+  }
+
+  /**
+   * (Re-)resume. The returned session id can differ from the last one (compression).
+   * Same id and not `fresh`: keep the live turn and history (the client's replay plus the reducer's
+   * de-duping already cover the gap, and reloading history would duplicate the live turn); only refresh
+   * running/generation from the snapshot. New id, first open or replay gap: reset the turn and reload history.
+   */
+  private async reopen(fresh = false): Promise<void> {
     const token = ++this.openToken
     this.ready = false
     const opened: OpenedChat = await openBotChat(this.client, this.bot)
     if (token !== this.openToken) return
+    const same = !fresh && this._sessionId === opened.sessionId
     this._sessionId = opened.sessionId
     this.maxGeneration = Math.max(this.maxGeneration, opened.generation)
+    if (same) {
+      this.turn = { ...this.turn, generation: Math.max(this.turn.generation, opened.generation), running: opened.running }
+      this.ready = true
+      this.emit()
+      return
+    }
     this.turn = { ...initialTurnState, generation: opened.generation, running: opened.running }
+    this.pending = []
     const history = await fetchHistory(this.bot.name, opened.sessionId)
     if (token !== this.openToken) return
     this.base = history
@@ -152,13 +212,10 @@ export class ChatSession {
     this.emit()
   }
 
-  private replaceUser(userId: string, replacement: ChatItem | null): void {
-    this.base = this.base.flatMap(i => (i.id === userId ? (replacement ? [replacement] : []) : [i]))
-  }
-
-  private addNotice(id: string, text: string): void {
-    this.base = [...this.base, ...this.turn.items, { kind: 'notice', id, text }]
-    this.turn = { ...this.turn, items: [] }
+  private replaceItem(id: string, replacement: ChatItem | null): void {
+    const swap = (items: readonly ChatItem[]) => items.flatMap(i => (i.id === id ? (replacement ? [replacement] : []) : [i]))
+    this.base = swap(this.base)
+    this.pending = swap(this.pending)
   }
 
   private emit(): void {
