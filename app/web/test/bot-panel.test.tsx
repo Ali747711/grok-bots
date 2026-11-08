@@ -19,8 +19,8 @@ beforeEach(() => {
   hook.value = { state: crewState(), connected: true }
   client.handlers = { 'session.resume': () => ({ session_id: 'live-1', execution_generation: 1, running: false }) }
   vi.stubGlobal('fetch', vi.fn((url: string) =>
-    Promise.resolve(new Response(JSON.stringify(url === '/crew/bots/dev'
-      ? { name: 'dev', isPrimary: false, title: 'Dev', look: { shape: null, color: null, imageKind: null }, hidden: false, description: 'd', soul: 's', model: null, metaRevision: 1 }
+    Promise.resolve(new Response(JSON.stringify(url.startsWith('/crew/bots/') && !url.endsWith('/finish')
+      ? { name: url.slice('/crew/bots/'.length), isPrimary: false, title: url.endsWith('researcher') ? 'Researcher' : 'Dev', look: { shape: null, color: null, imageKind: null }, hidden: false, description: 'd', soul: 's', model: null, metaRevision: 1 }
       : { messages: [] })))))
 })
 afterEach(() => vi.unstubAllGlobals())
@@ -52,6 +52,13 @@ describe('panel in the app', () => {
   it('survives a reload: ?panel=profile opens the panel', async () => {
     renderAt('/bots/dev?panel=profile')
     expect(await screen.findByLabelText('Name')).toBeInTheDocument()
+  })
+
+  it('keeps the panel open when another bot is selected', async () => {
+    renderAt('/bots/dev?panel=profile')
+    await screen.findByDisplayValue('Dev')
+    fireEvent.click(screen.getByRole('button', { name: /Researcher/ }))
+    expect(await screen.findByDisplayValue('Researcher')).toBeInTheDocument()
   })
 
   it('ignores an unknown panel value', async () => {

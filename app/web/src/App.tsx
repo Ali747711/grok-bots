@@ -60,7 +60,7 @@ export default function App() {
             state={state}
             crewConnected={connected}
             selected={selected}
-            onSelect={name => navigate(`/bots/${encodeURIComponent(name)}`)}
+            onSelect={name => navigate({ pathname: `/bots/${encodeURIComponent(name)}`, ...(panel ? { search: `?panel=${panel}` } : {}) })}
             onNeedsYou={() => navigate('/needs-you')}
             onNewBot={() => setNewBotOpen(true)}
           />

@@ -9,6 +9,12 @@ export interface ProfileForm {
   readonly look: BotLook
 }
 
+/** What the user edits (`form`) next to the values it started from (`loaded`); a field is dirty when they differ. */
+export interface FormSync {
+  readonly form: ProfileForm
+  readonly loaded: ProfileForm
+}
+
 const DEFAULT_LOOK: BotLook = { shape: 'squircle', color: '#6366f1' }
 
 export function lookOf(detail: BotDetail): BotLook {
@@ -22,21 +28,54 @@ export const fromDetail = (d: BotDetail): ProfileForm => ({
   name: d.title, description: d.description, soul: d.soul, model: d.model, look: lookOf(d)
 })
 
-const sameModel = (a: ModelChoice | null, b: ModelChoice | null) => a?.provider === b?.provider && a?.model === b?.model
+export const freshSync = (d: BotDetail): FormSync => ({ form: fromDetail(d), loaded: fromDetail(d) })
 
-/** Only what differs from `loaded`, plus `baseline` (taken from `baseline`) for each guarded field it contains. */
-export function buildPatch(form: ProfileForm, loaded: BotDetail, baseline: BotDetail = loaded): BotPatch {
-  const look = lookOf(loaded)
+const sameModel = (a: ModelChoice | null, b: ModelChoice | null) => a?.provider === b?.provider && a?.model === b?.model
+const sameLook = (a: BotLook, b: BotLook) => a.shape === b.shape && a.color === b.color
+
+type Field = keyof ProfileForm
+const same: { [K in Field]: (a: ProfileForm[K], b: ProfileForm[K]) => boolean } = {
+  name: (a, b) => a === b,
+  description: (a, b) => a === b,
+  soul: (a, b) => a === b,
+  model: sameModel,
+  look: sameLook
+}
+const FIELDS = Object.keys(same) as Field[]
+
+function mergeField<K extends Field>(key: K, sync: FormSync, fresh: ProfileForm): [ProfileForm[K], ProfileForm[K]] {
+  const eq = same[key]
+  const untouched = eq(sync.form[key], sync.loaded[key])
+  // A field the user edited keeps its start value, unless Hermes now holds what they typed (our own partial write).
+  if (untouched || eq(sync.form[key], fresh[key])) return [fresh[key], fresh[key]]
+  return [sync.form[key], sync.loaded[key]]
+}
+
+/** Take a freshly read bot into the form without touching edits: a real change elsewhere to an edited field stays a conflict. */
+export function mergeFresh(sync: FormSync, detail: BotDetail): FormSync {
+  const fresh = fromDetail(detail)
+  let form = sync.form
+  let loaded = sync.loaded
+  for (const key of FIELDS) {
+    const [f, l] = mergeField(key, sync, fresh)
+    form = { ...form, [key]: f }
+    loaded = { ...loaded, [key]: l }
+  }
+  return { form, loaded }
+}
+
+/** Only what differs from `loaded`, plus `baseline` (from `loaded`) for each guarded field it contains. */
+export function buildPatch(form: ProfileForm, loaded: ProfileForm): BotPatch {
   const title = form.name.trim()
   const modelChanged = form.model !== null && !sameModel(form.model, loaded.model)
   const guarded = {
-    ...(form.description !== loaded.description ? { description: baseline.description } : {}),
-    ...(form.soul !== loaded.soul ? { soul: baseline.soul } : {}),
-    ...(modelChanged ? { model: baseline.model } : {})
+    ...(form.description !== loaded.description ? { description: loaded.description } : {}),
+    ...(form.soul !== loaded.soul ? { soul: loaded.soul } : {}),
+    ...(modelChanged ? { model: loaded.model } : {})
   }
   return {
-    ...(title !== '' && title !== loaded.title ? { title } : {}),
-    ...(form.look.shape !== look.shape || form.look.color !== look.color ? { look: form.look } : {}),
+    ...(title !== '' && title !== loaded.name ? { title } : {}),
+    ...(sameLook(form.look, loaded.look) ? {} : { look: form.look }),
     ...(form.description !== loaded.description ? { description: form.description } : {}),
     ...(form.soul !== loaded.soul ? { soul: form.soul } : {}),
     ...(modelChanged && form.model ? { model: form.model } : {}),

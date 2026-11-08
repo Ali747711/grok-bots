@@ -190,4 +190,70 @@ describe('ProfilePanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove photo' }))
     await waitFor(() => expect(fn.mock.calls.some(([u, i]) => u === '/crew/bots/dev/avatar' && i?.method === 'DELETE')).toBe(true))
   })
+
+  it('does not revert another app\'s edit after a photo refresh', async () => {
+    const fn = stub({
+      get: () => json(detail({ look: { shape: 'squircle', color: '#6366f1', imageKind: 'photo' } })),
+      other: { 'DELETE /crew/bots/dev/avatar': () => json(detail({ soul: 'Their soul' })) }
+    })
+    open()
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: 'Remove photo' }))
+    await waitFor(() => expect(screen.getByLabelText('Persona (SOUL.md)')).toHaveValue('Their soul'))
+    change('Name', 'Dev Two')
+    save()
+    await waitFor(() => expect(patches(fn)).toHaveLength(1))
+    expect(patches(fn)[0]).toEqual({ title: 'Dev Two' })
+  })
+
+  it('after a failed save keeps only what Hermes did not write as unsaved', async () => {
+    let reads = 0
+    let n = 0
+    const fn = stub({
+      get: () => json(reads++ === 0 ? detail() : detail({ description: 'New job' })),
+      patch: () => (n++ === 0 ? json({ error: 'not_saved' }, 502) : json({ status: 'saved', detail: detail({ description: 'New job', soul: 'Mine' }) }))
+    })
+    open()
+    await loaded()
+    change('Job', 'New job')
+    change('Persona (SOUL.md)', 'Mine')
+    save()
+    await screen.findByRole('alert')
+    await waitFor(() => expect(reads).toBe(2))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled())
+    save()
+    await waitFor(() => expect(patches(fn)).toHaveLength(2))
+    expect(patches(fn)[1]).toEqual({ soul: 'Mine', baseline: { soul: 'Be nice' } })
+  })
+
+  it('keeps the original baseline for a field edited here and changed elsewhere', async () => {
+    const fn = stub({ patch: body => ((body as { hidden?: boolean }).hidden ? json({ status: 'saved', detail: detail({ hidden: true, soul: 'Their soul' }) }) : json({ status: 'saved', detail: detail() })) })
+    open()
+    await loaded()
+    change('Persona (SOUL.md)', 'Mine')
+    fireEvent.click(screen.getByRole('button', { name: 'Hide' }))
+    await screen.findByRole('button', { name: 'Show' })
+    expect(screen.getByLabelText('Persona (SOUL.md)')).toHaveValue('Mine')
+    save()
+    await waitFor(() => expect(patches(fn)).toHaveLength(2))
+    expect(patches(fn)[1]).toEqual({ soul: 'Mine', baseline: { soul: 'Be nice' } })
+  })
+
+  it('shows an error when hiding fails', async () => {
+    stub({ patch: () => json({ error: 'hermes_error' }, 502) })
+    open()
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: 'Hide' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Could not save/)
+    expect(screen.getByRole('button', { name: 'Hide' })).toBeEnabled()
+  })
+
+  it('shows an error when finishing setup fails', async () => {
+    stub({ other: { 'POST /crew/bots/dev/finish': () => json({ error: 'hermes_error' }, 502) } })
+    open(bot({ name: 'dev', title: 'Dev', setupIncomplete: true }))
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: 'Finish setup' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Could not/)
+    expect(screen.getByRole('button', { name: 'Finish setup' })).toBeEnabled()
+  })
 })
