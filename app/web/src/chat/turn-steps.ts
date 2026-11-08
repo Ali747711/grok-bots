@@ -33,7 +33,9 @@ export function applyToolFrame(items: readonly ChatItem[], workId: string, type:
   const id = payload.tool_id ?? payload.tool_call_id
   if (!id) return [...items]
   const name = payload.name ?? payload.tool_name ?? 'tool'
-  return replaceWork(items, workId, work => {
+  // A turn opened mid-way (resume of a running turn) never saw message.start, so create its block on the first tool event.
+  const withBlock = findWork(items, workId) ? items : [...items, { kind: 'work' as const, id: workId, steps: [] }]
+  return replaceWork(withBlock, workId, work => {
     const existing = work.steps.find(s => s.id === id)
     if (type !== 'tool.complete' && existing && !existing.running) return work
     const detail = asText(payload.result_text ?? payload.result)
