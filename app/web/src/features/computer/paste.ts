@@ -1,6 +1,9 @@
 /** Hermes closes the pixel socket with 1003 above this many bytes of cut text (facts 2.4). */
 export const MAX_PASTE_BYTES = 256 * 1024
 const XK_V = 0x0076
+const XK_CONTROL_L = 0xffe3
+/** noVNC maps Cmd (Meta) to Alt_L on the remote, so a Cmd+V would arrive as Alt+v. */
+const XK_ALT_L = 0xffe9
 export const CLIPBOARD_DENIED = 'Allow clipboard access to paste into the screen'
 export const PASTE_TOO_LARGE = 'Too much text to paste (256 KiB limit)'
 
@@ -35,16 +38,24 @@ export function attachPaste(host: HTMLElement, client: PasteTarget, notify: (mes
     if (!tooLarge(text)) event.preventDefault()
     forward(text)
   }
-  const pasteFromClipboard = (text: string): void => {
-    if (client.viewOnly || !text) return
-    if (forward(text)) client.sendKey(XK_V, 'KeyV')
+  // The user may have released Ctrl while the clipboard read (or its permission prompt) was pending, so
+  // the chord is sent explicitly instead of relying on the physical key still being down.
+  const pasteFromClipboard = (text: string, viaMeta: boolean): void => {
+    if (client.viewOnly || !text || !forward(text)) return
+    if (viaMeta) client.sendKey(XK_ALT_L, 'MetaLeft', false)
+    client.sendKey(XK_CONTROL_L, 'ControlLeft', true)
+    client.sendKey(XK_V, 'KeyV')
+    client.sendKey(XK_CONTROL_L, 'ControlLeft', false)
   }
   const onKeyDown = (event: KeyboardEvent): void => {
-    if (client.viewOnly || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'v') return
+    // `code` covers layouts where the V key does not produce a Latin "v".
+    const isV = event.key.toLowerCase() === 'v' || event.code === 'KeyV'
+    if (client.viewOnly || !(event.ctrlKey || event.metaKey) || !isV) return
     event.preventDefault()
     event.stopPropagation()
     if (!navigator.clipboard) return notify(CLIPBOARD_DENIED)
-    navigator.clipboard.readText().then(pasteFromClipboard, () => notify(CLIPBOARD_DENIED))
+    const viaMeta = event.metaKey
+    navigator.clipboard.readText().then(text => pasteFromClipboard(text, viaMeta), () => notify(CLIPBOARD_DENIED))
   }
   host.addEventListener('paste', onPaste)
   host.addEventListener('keydown', onKeyDown, true)

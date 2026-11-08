@@ -39,6 +39,8 @@ export class LiveSession {
   private securityTimer: ReturnType<typeof setTimeout> | null = null
   private hiddenTimer: ReturnType<typeof setTimeout> | null = null
   private pendingDetach = false
+  /** Set by `dispose` (the owner left), not by a plain detach such as the panel-to-Expand gap. */
+  private disposed = false
 
   constructor(
     private readonly profile: string,
@@ -50,6 +52,7 @@ export class LiveSession {
   attach(el: HTMLElement): void {
     this.flushDetach()
     this.host = el
+    this.disposed = false
     this.suspended = false
     this.options.budget.markMounted(this.profile)
     document.addEventListener('visibilitychange', this.onVisibility)
@@ -78,6 +81,7 @@ export class LiveSession {
   /** The owner is leaving (tab switch, panel close, bot switch): hand back if the lease is ours, then close 1000. */
   dispose(): void {
     this.pendingDetach = false
+    this.disposed = true
     const viewer = this.viewer
     if (viewer && (this.ui.holding() || this.leaseIsOurs(this.lastLease))) void this.releaseQuietly(viewer)
     try {
@@ -198,7 +202,7 @@ export class LiveSession {
     try {
       await action()
     } catch (error) {
-      this.ui.setError(messageOf(error))
+      this.ui.setNotice(messageOf(error))
     }
   }
 
@@ -235,13 +239,14 @@ export class LiveSession {
       this.setOurs(new Set([...this.ours, hash]))
       const lease = await this.reclaim(prior, viewer, observed.lease)
       // The owner left while the reclaim acquire was in flight: give back what it just took.
-      if (!this.host) return void (heldBy(lease, hash) && this.releaseForced())
-      if (generation !== this.generation) return
+      if (this.disposed) return void (heldBy(lease, hash) && this.releaseForced())
+      if (generation !== this.generation || !this.host) return
       this.emitLease(lease)
       this.open(Rfb, observed.ticket, generation, heldBy(lease, hash))
       if (this.wantControl) {
         this.wantControl = false
-        await this.acquireFor(viewer)
+        // A refusal is a notice: the socket and RFB are open, so the view must not read as failed.
+        await this.guarded(() => this.acquireFor(viewer))
       }
     } catch (error) {
       if (generation === this.generation) this.onConnectError(error)

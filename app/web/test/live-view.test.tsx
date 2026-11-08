@@ -23,7 +23,7 @@ vi.mock('@novnc/novnc', () => {
     disconnect() { this.disconnects += 1 }
     focus() {}
     clipboardPasteFrom(text: string) { this.pastes.push(text); this.log.push(`paste:${text.length}`) }
-    sendKey(keysym: number, code: string) { this.log.push(`key:${keysym}:${code}`) }
+    sendKey(keysym: number, code: string, down?: boolean) { this.log.push(`key:${keysym}:${code}${down === undefined ? '' : down ? ':down' : ':up'}`) }
   }
   return { default: FakeRfb }
 })
@@ -416,8 +416,26 @@ describe('live view paste keys', () => {
     canvas.dispatchEvent(event)
     expect(event.defaultPrevented).toBe(true)
     expect(reached).not.toHaveBeenCalled() // capture on the host runs first and stops noVNC seeing it
-    await waitFor(() => expect(lastRfb().log).toEqual(['paste:14', 'key:118:KeyV']))
+    await waitFor(() => expect(lastRfb().log).toEqual(['paste:14', 'key:65507:ControlLeft:down', 'key:118:KeyV', 'key:65507:ControlLeft:up']))
     expect(readText).toHaveBeenCalledTimes(1)
+  })
+
+  it('releases the remapped Cmd (Alt_L) first, then sends the Ctrl chord, for Cmd+V', async () => {
+    clipboard(() => Promise.resolve('abc'))
+    render(<Owner />)
+    await connect()
+    await take()
+    lastRfb().target.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', metaKey: true, bubbles: true, cancelable: true }))
+    await waitFor(() => expect(lastRfb().log).toEqual(['paste:3', 'key:65513:MetaLeft:up', 'key:65507:ControlLeft:down', 'key:118:KeyV', 'key:65507:ControlLeft:up']))
+  })
+
+  it('still pastes on a non-Latin layout (key is not "v" but the code is KeyV)', async () => {
+    clipboard(() => Promise.resolve('abc'))
+    render(<Owner />)
+    await connect()
+    await take()
+    lastRfb().target.dispatchEvent(new KeyboardEvent('keydown', { key: 'м', code: 'KeyV', ctrlKey: true, bubbles: true, cancelable: true }))
+    await waitFor(() => expect(lastRfb().log).toContain('key:118:KeyV'))
   })
 
   it('ignores Ctrl+V when not in control', async () => {
@@ -535,5 +553,39 @@ describe('live view recovery', () => {
     expect(calls('display.observe')).toHaveLength(2)
     expect(calls('display.lease.acquire')[0]!.params).toEqual({ profile: 'scout', viewer_id: 'v2' })
     await waitFor(() => expect(screen.getByText("You're in control")).toBeInTheDocument())
+  })
+  it('does not release a reclaim acquire that lands during a detach gap', async () => {
+    const { rerender } = render(<Owner ask />)
+    await connect()
+    await take()
+    forceNewId = true
+    let finish!: () => void
+    client.handlers['display.lease.acquire'] = p => new Promise(resolve => {
+      finish = () => {
+        lease = { holder: 'human', viewer_hash: hashOf(p.viewer_id as string), since: 5, epoch: lease.epoch + 1 }
+        resolve({ lease })
+      }
+    })
+    act(() => FakeSocket.instances[0]!.serverClose(1006))
+    await waitFor(() => expect(calls('display.lease.acquire')).toHaveLength(2))
+    rerender(<Owner ask={false} />) // the Expand portal gap: detached, not disposed
+    await act(async () => { await Promise.resolve() })
+    await act(async () => { finish(); await new Promise(r => setTimeout(r, 20)) })
+    expect(calls('display.lease.release')).toHaveLength(0)
+  })
+
+  it('keeps the link live and shows a notice when the deferred acquire is refused', async () => {
+    render(<Owner />)
+    await connect()
+    act(() => client.setState('closed'))
+    act(() => client.setState('open'))
+    forceNewId = true
+    client.handlers['display.lease.acquire'] = () => { throw Object.assign(new Error('acquire refused'), { code: 5300 }) }
+    fireEvent.click(screen.getByRole('button', { name: 'Take control' }))
+    await waitFor(() => expect(calls('display.lease.acquire')).toHaveLength(1))
+    await waitRfb(2)
+    act(() => lastRfb().emit('connect'))
+    await waitFor(() => expect(screen.getByTestId('link')).toHaveTextContent('live'))
+    expect(screen.getByTestId('notice')).toHaveTextContent('acquire refused')
   })
 })
