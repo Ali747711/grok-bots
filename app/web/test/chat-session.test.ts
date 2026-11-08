@@ -29,7 +29,7 @@ function setup(resume: Record<string, unknown> = {}, name = 'default') {
   const client = new FakeClient()
   client.handlers['session.resume'] = () => ({ session_id: SID, execution_generation: 3, running: false, ...resume })
   client.handlers['prompt.submit'] = () => ({ status: 'started' })
-  const session = new ChatSession(client, bot({ name, sessionId: 'tip-1' }))
+  const session = new ChatSession(client, bot({ name, sessionId: 'tip-1' }), { retryDelayMs: () => 0 })
   return { client, session }
 }
 
@@ -162,5 +162,125 @@ describe('ChatSession', () => {
     session.close()
     client.emit(frame('message.start', {}))
     expect(session.running).toBe(false)
+  })
+
+  describe('while a turn is running', () => {
+    const delta = (text: string, offset: number) => frame('message.delta', { text, turn_id: 't', segment: 0, offset })
+    const tool = frame('tool.start', { tool_id: 'tool-1', name: 'terminal', context: 'ls' })
+    const ids = (items: readonly ChatItem[]) => items.map(i => i.id)
+
+    it('keeps one reply when a message is sent mid-turn and places it after the turn', async () => {
+      const { client, session } = setup()
+      await session.open()
+      client.handlers['prompt.submit'] = () => ({ status: 'queued' })
+      client.emit(frame('message.start', {}))
+      client.emit(delta('Partial', 0))
+      await session.send('next')
+      client.emit(tool)
+      client.emit(delta(' more', 7))
+      client.emit(frame('message.complete', { text: 'Partial more', status: 'complete' }))
+      expect(texts(session.items).slice(2)).toEqual(['work:1', 'assistant:Partial more', 'user:next'])
+      expect(new Set(ids(session.items)).size).toBe(session.items.length)
+    })
+
+    it('puts the next generation after the queued message', async () => {
+      const { client, session } = setup()
+      await session.open()
+      client.handlers['prompt.submit'] = () => ({ status: 'queued' })
+      client.emit(frame('message.start', {}))
+      await session.send('next')
+      client.emit(frame('message.complete', { text: 'One', status: 'complete' }))
+      client.emit(frame('message.start', {}, { execution_generation: 5 }))
+      client.emit(frame('message.delta', { text: 'Two', turn_id: 't2', segment: 0, offset: 0 }, { execution_generation: 5 }))
+      expect(texts(session.items).slice(2)).toEqual(['assistant:One', 'user:next', 'assistant:Two'])
+      expect(new Set(ids(session.items)).size).toBe(session.items.length)
+    })
+
+    it('adds a lost notice below the running turn instead of splitting it', async () => {
+      const { client, session } = setup()
+      await session.open()
+      client.emit(frame('message.start', {}))
+      client.emit(delta('Partial', 0))
+      client.handlers['prompt.submit'] = () => ({ status: 'unknown' })
+      await session.send('maybe')
+      client.emit(delta(' more', 7))
+      client.emit(frame('message.complete', { text: 'Partial more', status: 'complete' }))
+      expect(texts(session.items).slice(2)).toEqual(['assistant:Partial more', 'user:maybe', 'notice:This message was lost when Hermes restarted'])
+    })
+  })
+
+  describe('reconnecting', () => {
+    const delta = (text: string, offset: number, extra: Record<string, unknown> = {}) =>
+      frame('message.delta', { text, turn_id: 't', segment: 0, offset }, extra)
+
+    it('keeps the live turn and does not reload history when the session id is unchanged', async () => {
+      const { client, session } = setup({ running: true })
+      await session.open()
+      const turn = [frame('message.start', {}), delta('Partial', 0), frame('tool.start', { tool_id: 'tool-1', name: 'terminal', context: 'ls' })]
+      for (const f of turn) client.emit(f)
+      client.setState('closed')
+      for (const f of turn) client.emit({ ...f, replayed: true })
+      client.setState('open')
+      await flush()
+      expect(session.canSend).toBe(true)
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      client.emit(delta(' more', 7))
+      client.emit(frame('message.complete', { text: 'Partial more', status: 'complete' }))
+      expect(texts(session.items).slice(2)).toEqual(['work:1', 'assistant:Partial more'])
+    })
+
+    it('resets the turn and reloads history when the session id changed', async () => {
+      const { client, session } = setup()
+      await session.open()
+      client.emit(frame('message.start', {}))
+      client.emit(delta('Old', 0))
+      client.setState('closed')
+      client.handlers['session.resume'] = () => ({ session_id: 'live-2', execution_generation: 6, running: false })
+      client.setState('open')
+      await flush()
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(texts(session.items)).toEqual(['user:earlier question', 'assistant:earlier answer'])
+    })
+
+    it('reloads from history on a replay gap', async () => {
+      const { client, session } = setup()
+      await session.open()
+      client.emit(frame('message.start', {}))
+      client.emit(delta('Stale', 0))
+      client.emit(frame('session.replay_gap', {}, { execution_generation: undefined }))
+      await flush()
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(texts(session.items)).toEqual(['user:earlier question', 'assistant:earlier answer'])
+    })
+
+    it('retries a failed re-open and reports the error until it succeeds', async () => {
+      const { client, session } = setup()
+      await session.open()
+      expect(session.error).toBeNull()
+      client.setState('closed')
+      let attempts = 0
+      client.handlers['session.resume'] = () => {
+        attempts += 1
+        if (attempts === 1) throw new Error('resume failed')
+        return { session_id: SID, execution_generation: 3, running: false }
+      }
+      client.setState('open')
+      await flush()
+      expect(attempts).toBe(2)
+      expect(session.canSend).toBe(true)
+      expect(session.error).toBeNull()
+    })
+
+    it('shows a reconnecting error while the re-open keeps failing', async () => {
+      const { client, session } = setup()
+      await session.open()
+      client.setState('closed')
+      client.handlers['session.resume'] = () => { throw new Error('down') }
+      client.setState('open')
+      await flush()
+      expect(session.canSend).toBe(false)
+      expect(session.error).toBe('Reconnecting to the chat…')
+      session.close()
+    })
   })
 })
