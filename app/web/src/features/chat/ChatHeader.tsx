@@ -6,13 +6,14 @@ import type { BotStatus, BotView } from '@/state/types'
 
 import { useSessionCost } from './use-session-cost'
 
+const TAB_LABEL: Record<PanelTab, string> = { computer: 'Computer', routines: 'Routines', profile: 'Profile' }
 const STATUS_TEXT: Record<BotStatus, string> = { idle: 'Idle', working: 'Working', needs_you: 'Needs you' }
 
 /** Bot avatar, name and live status. `stale` hides the status (it may be out of date). */
 interface ChatHeaderProps {
   bot: BotView
   stale: boolean
-  /** The open panel tab; with `onPanel` the header shows the Routines and Profile buttons. */
+  /** The open panel tab; with `onPanel` the header shows the Computer, Routines and Profile buttons. */
   panel?: PanelTab | null
   onPanel?: (tab: PanelTab) => void
 }
@@ -32,7 +33,7 @@ export function ChatHeader({ bot, stale, panel = null, onPanel }: ChatHeaderProp
         )}
       </div>
       {cost !== null && <span className="min-w-0 truncate text-xs text-muted-foreground">≈ ${cost.toFixed(2)} (estimate)</span>}
-      {onPanel && (['routines', 'profile'] as const).map(tab => (
+      {onPanel && (['computer', 'routines', 'profile'] as const).map(tab => (
         <Button
           key={tab}
           type="button"
@@ -42,7 +43,7 @@ export function ChatHeader({ bot, stale, panel = null, onPanel }: ChatHeaderProp
           onClick={() => onPanel(tab)}
           className={cn('rounded-full', panel === tab && 'border-foreground bg-foreground text-background hover:bg-foreground/90 hover:text-background')}
         >
-          {tab === 'routines' ? 'Routines' : 'Profile'}
+          {TAB_LABEL[tab]}
         </Button>
       ))}
     </header>

@@ -27,7 +27,7 @@ export function LiveView({ live, inControl = false, expanded = false, onExpand, 
     const el = host.current
     if (!el) return
     attach(el)
-    return () => detach()
+    return () => detach(el)
   }, [attach, detach])
 
   const waiting = live.link === 'connecting' || live.link === 'reconnecting'

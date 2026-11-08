@@ -65,7 +65,10 @@ export class LiveSession {
    * control is kept. Deferred one microtask so an owner leaving in the same commit can still
    * `dispose` with a clean 1000 close.
    */
-  detach(): void {
+  detach(el?: HTMLElement): void {
+    // A closing Expand dialog can unmount its host after the panel's host already attached: that late
+    // detach must not tear down the new connection.
+    if (el && this.host !== el) return
     this.pendingDetach = true
     void Promise.resolve().then(() => this.flushDetach())
   }

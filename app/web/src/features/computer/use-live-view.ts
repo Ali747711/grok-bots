@@ -11,7 +11,7 @@ export type { LinkState } from './live-session'
 
 export interface LiveHandle {
   readonly attach: (el: HTMLElement) => void
-  readonly detach: () => void
+  readonly detach: (el?: HTMLElement) => void
   readonly takeControl: () => Promise<void>
   readonly handBack: () => Promise<void>
   readonly forceHandBack: () => Promise<void>
@@ -70,7 +70,7 @@ export function useLiveView(profile: string, screen: UseScreen, setOurs: (hashes
   useEffect(() => session.noteLease(lease), [session, lease])
 
   const attach = useCallback((el: HTMLElement) => session.attach(el), [session])
-  const detach = useCallback(() => session.detach(), [session])
+  const detach = useCallback((el?: HTMLElement) => session.detach(el), [session])
   const takeControl = useCallback(() => session.takeControl(), [session])
   const handBack = useCallback(() => session.handBack(), [session])
   const forceHandBack = useCallback(() => session.forceHandBack(), [session])
