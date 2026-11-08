@@ -19,8 +19,25 @@ const FAILURES: Record<string, string> = {
 }
 const SCOPED = new Set(['session', 'always'])
 
+/** The exact operation being approved, in full. Falls back to the short summary for an older server. */
+function ApprovalDetail({ entry }: { entry: PendingView }) {
+  if (entry.command === undefined && entry.description === undefined) return <p className="mb-2 font-medium break-words">{entry.summary}</p>
+  return (
+    <div className="mb-2 space-y-2">
+      {entry.description && <p className="font-medium break-words whitespace-pre-wrap">{entry.description}</p>}
+      {entry.command && (
+        <pre data-testid="approval-command" className="max-h-[40vh] overflow-auto rounded-md border border-border bg-card p-2 font-mono text-xs break-all whitespace-pre-wrap">
+          {entry.command}
+        </pre>
+      )}
+      {entry.detailTruncated && <p className="text-xs font-medium text-red-600 dark:text-red-400">This command is too long to show in full. Review it in the Hermes app.</p>}
+    </div>
+  )
+}
+
 function ApprovalControls({ entry, disabled, send }: { entry: PendingView; disabled: boolean; send: (b: AnswerBody) => void }) {
-  const choices = entry.choices ?? []
+  // Never offer an allow choice for text the user cannot see in full.
+  const choices = (entry.choices ?? []).filter(c => !entry.detailTruncated || c === 'deny')
   return (
     <>
       <div className="flex flex-wrap gap-2">
@@ -125,7 +142,8 @@ export function RequestCard({ entry, onAnswer }: RequestCardProps) {
 
   return (
     <div data-testid="request-card" className="rounded-xl border border-amber-300 bg-amber-50 p-3.5 text-sm dark:border-amber-800 dark:bg-amber-950">
-      {!secret && <p className="mb-2 font-medium break-words">{entry.summary}</p>}
+      {entry.kind === 'approval' && <ApprovalDetail entry={entry} />}
+      {entry.kind === 'clarify' && <p className="mb-2 font-medium break-words">{entry.summary}</p>}
       {!entry.answerable ? (
         <p className="text-xs text-muted-foreground">Answer this in the app that asked</p>
       ) : (
