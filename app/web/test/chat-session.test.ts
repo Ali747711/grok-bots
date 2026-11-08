@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ChatSession } from '@/chat/chat-session'
+import { ChatSession, type ChatClient } from '@/chat/chat-session'
 import type { ChatItem } from '@/chat/types'
+import type { JsonRpcGatewayClient } from '@/vendor/hermes/json-rpc-gateway'
 
 import { FakeClient } from './fake-client'
 import { bot } from './fixtures'
+
+// Compile-time proof the real vendored client satisfies what ChatSession needs.
+export const realClientFits = (client: JsonRpcGatewayClient): ChatClient => client
 
 const SID = 'live-1'
 const flush = () => new Promise(resolve => setTimeout(resolve, 0))
