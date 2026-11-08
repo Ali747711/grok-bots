@@ -150,10 +150,13 @@
     }
 }
 
-.label-mono {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: .12em;
-  color: var(--muted-foreground);
+/* Layered so utilities (text-needs, text-[9px]) can override it. */
+@layer components {
+  .label-mono {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    color: var(--muted-foreground);
+  }
 }

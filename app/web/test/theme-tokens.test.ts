@@ -39,4 +39,13 @@ describe('theme tokens', () => {
     expect(css).toContain('.label-mono')
     expect(css).toMatch(/letter-spacing:\s*\.12em/)
   })
+
+  it('declares .label-mono in a layer so utilities can override it', () => {
+    const at = css.indexOf('.label-mono')
+    const before = css.slice(0, at)
+    const opened = (before.match(/@layer components\s*\{/g) ?? []).length
+    const utility = /@utility label-mono\s*\{/.test(css)
+    const insideLayer = opened > 0 && before.lastIndexOf('@layer components') > before.lastIndexOf('\n}\n')
+    expect(utility || insideLayer).toBe(true)
+  })
 })
