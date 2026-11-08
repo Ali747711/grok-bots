@@ -11,7 +11,7 @@ const human = (hash: string, epoch = 2) => ({ holder: 'human' as const, viewer_h
 
 describe('deriveScreen', () => {
   it('derives every screen state and who is in control', () => {
-    expect(deriveScreen(null, {}).kind).toBe('starting')
+    expect(deriveScreen(null, {}).kind).toBe('loading')
     expect(deriveScreen(status({ installed: false }), {}).kind).toBe('missing')
     expect(deriveScreen(status(), {}).kind).toBe('off')
     expect(deriveScreen(status({ blocker: 'Not enough free memory' }), {})).toMatchObject({ kind: 'low_memory', message: 'Not enough free memory' })
@@ -27,6 +27,20 @@ describe('deriveScreen', () => {
     expect(deriveScreen(held, {}, 'bbb').control).toBe('someone')
     expect(deriveScreen(held, {}).control).toBe('someone')
     expect(deriveScreen(held, {}, null).control).toBe('someone')
+  })
+
+  it('keeps a running screen live and carries a failure as a notice', () => {
+    const live = status({ running: true })
+    expect(deriveScreen(live, { error: 'refresh failed' })).toMatchObject({ kind: 'live', notice: 'refresh failed' })
+    expect(deriveScreen(live, {})).toMatchObject({ kind: 'live', notice: null })
+    expect(deriveScreen(status(), { error: 'start failed' })).toMatchObject({ kind: 'error', message: 'start failed' })
+  })
+
+  it('exposes the resolved lease', () => {
+    const live = status({ running: true, lease: { holder: 'agent', since: 1, epoch: 5 } })
+    expect(deriveScreen(live, {}).lease).toEqual(live.lease)
+    expect(deriveScreen(live, { lease: human('aaa', 6) }).lease).toMatchObject({ holder: 'human', epoch: 6 })
+    expect(deriveScreen(null, {}).lease).toBeNull()
   })
 
   it('prefers a newer lease from an event and ignores an older one', () => {

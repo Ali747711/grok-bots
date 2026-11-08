@@ -5,11 +5,13 @@ import { startScreen } from '@/lib/crew-api'
 import type { DisplayLease, DisplayStatus } from '@/vendor/hermes/gateway-contract.generated'
 
 import * as display from './display-client'
-import { type ScreenView, deriveScreen } from './screen-state'
+import { type ScreenView, deriveScreen, isOlderLease } from './screen-state'
 
 export interface UseScreen {
   readonly view: ScreenView
   readonly refresh: () => Promise<void>
+  /** Apply a lease returned by acquire/release right away; an older epoch than the one held is ignored. */
+  readonly applyLease: (lease: DisplayLease) => void
   readonly start: () => Promise<void>
   readonly stop: () => Promise<void>
 }
@@ -39,9 +41,12 @@ export function useScreen(profile: string, ourLeaseHash?: string | null): UseScr
     ticket.current += 1
     profileKey.current = next.profile_key
     setStatus(next)
-    setLease(null)
+    // A status read before a newer lease event must not drop that event's lease.
+    setLease(prev => (prev && prev.epoch > next.lease.epoch ? prev : null))
     setError(null)
   }, [])
+
+  const applyLease = useCallback((next: DisplayLease) => setLease(prev => (prev && isOlderLease(next, prev) ? prev : next)), [])
 
   const refresh = useCallback(async () => {
     const mine = ++ticket.current
@@ -60,28 +65,24 @@ export function useScreen(profile: string, ourLeaseHash?: string | null): UseScr
     setLease(null)
     setError(null)
     setStarting(false)
-    void refresh()
     const client = connectGateway()
     const offEvents = client.onAny(raw => {
       const event = raw as unknown as EventShape
       const payload = event.payload
       if (!payload || !profileKey.current || payload.profile_key !== profileKey.current) return
       if (event.type === 'display.status') apply(payload as DisplayStatus)
-      else if (event.type === 'display.lease' && payload.lease) setLease(payload.lease)
+      else if (event.type === 'display.lease' && payload.lease) applyLease(payload.lease)
     })
-    let wasDown = false
+    // onState fires at once with the current state, so this covers the first read and every reconnect;
+    // reading before the socket is open would only flash an error.
     const offState = client.onState(state => {
-      if (state !== 'open') wasDown = true
-      else if (wasDown) {
-        wasDown = false
-        void refresh()
-      }
+      if (state === 'open') void refresh()
     })
     return () => {
       offEvents()
       offState()
     }
-  }, [profile, refresh, apply])
+  }, [profile, refresh, apply, applyLease])
 
   const start = useCallback(async () => {
     setStarting(true)
@@ -103,5 +104,5 @@ export function useScreen(profile: string, ourLeaseHash?: string | null): UseScr
     }
   }, [profile, apply])
 
-  return { view: deriveScreen(status, { lease, starting, error }, ourLeaseHash), refresh, start, stop }
+  return { view: deriveScreen(status, { lease, starting, error }, ourLeaseHash), refresh, applyLease, start, stop }
 }

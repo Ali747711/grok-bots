@@ -81,6 +81,75 @@ describe('useScreen', () => {
   })
 })
 
+const lease = (holder: 'agent' | 'human', epoch: number) => ({ holder, viewer_hash: holder === 'human' ? 'h' : null, since: epoch, epoch })
+const leaseEvent = (epoch: number) => ({ type: 'display.lease', payload: { profile_key: '/h/scout', lease: lease('human', epoch) } })
+
+describe('useScreen lease ordering', () => {
+  beforeEach(() => { client.handlers = { 'display.status': () => status({ running: true }) } })
+
+  it('ignores an older lease event after a newer one', async () => {
+    const { result } = renderHook(() => useScreen('scout', 'h'))
+    await waitFor(() => expect(result.current.view.kind).toBe('live'))
+    act(() => client.emit(leaseEvent(9)))
+    expect(result.current.view.control).toBe('you')
+    act(() => client.emit({ type: 'display.lease', payload: { profile_key: '/h/scout', lease: lease('agent', 4) } }))
+    expect(result.current.view.control).toBe('you')
+    act(() => client.emit({ type: 'display.lease', payload: { profile_key: '/h/scout', lease: lease('agent', 10) } }))
+    expect(result.current.view.control).toBe('bot')
+  })
+
+  it('keeps a newer event lease when an older status reply lands after it', async () => {
+    const { result } = renderHook(() => useScreen('scout', 'h'))
+    await waitFor(() => expect(result.current.view.kind).toBe('live'))
+    let reply!: (v: unknown) => void
+    client.handlers['display.status'] = () => new Promise(r => { reply = r })
+    let pending!: Promise<void>
+    act(() => { pending = result.current.refresh() })
+    act(() => client.emit(leaseEvent(9)))
+    await act(async () => { reply(status({ running: true })); await pending })
+    expect(result.current.view.control).toBe('you')
+    // A status read that is newer than the event wins and clears it.
+    client.handlers['display.status'] = () => status({ running: true, lease: lease('agent', 12) })
+    await act(async () => { await result.current.refresh() })
+    expect(result.current.view.control).toBe('bot')
+  })
+
+  it('applies the lease an acquire returned, by the same epoch rule', async () => {
+    const { result } = renderHook(() => useScreen('scout', 'h'))
+    await waitFor(() => expect(result.current.view.kind).toBe('live'))
+    act(() => result.current.applyLease(lease('human', 7)))
+    expect(result.current.view.control).toBe('you')
+    act(() => result.current.applyLease(lease('agent', 3)))
+    expect(result.current.view.control).toBe('you')
+  })
+})
+
+describe('useScreen failures', () => {
+  it('keeps a running screen live with a notice when a refresh fails or a stop is refused', async () => {
+    client.handlers = { 'display.status': () => status({ running: true }) }
+    const { result } = renderHook(() => useScreen('scout'))
+    await waitFor(() => expect(result.current.view.kind).toBe('live'))
+    client.handlers['display.status'] = () => { throw new Error('gateway down') }
+    await act(async () => { await result.current.refresh() })
+    expect(result.current.view).toMatchObject({ kind: 'live', notice: 'gateway down' })
+    expect(result.current.view.status?.running).toBe(true)
+    client.handlers['display.stop'] = () => { throw new Error('a human holds this screen') }
+    await act(async () => { await result.current.stop() })
+    expect(result.current.view).toMatchObject({ kind: 'live', notice: 'a human holds this screen' })
+  })
+
+  it('does not read the status until the gateway is open, so a page load shows no error', async () => {
+    client.setState('connecting')
+    client.handlers['display.status'] = () => { throw new Error('not connected') }
+    const { result } = renderHook(() => useScreen('scout'))
+    expect(client.callsOf('display.status')).toHaveLength(0)
+    expect(result.current.view.kind).toBe('loading')
+    client.handlers['display.status'] = () => status()
+    act(() => client.setState('open'))
+    await waitFor(() => expect(result.current.view.kind).toBe('off'))
+  })
+})
+
 describe('screen routes in crew-api', () => {
   it('uses the server route to start a screen, and reads and writes the config', async () => {
     document.cookie = 'crew_csrf=tok'

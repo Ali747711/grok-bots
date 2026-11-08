@@ -41,5 +41,8 @@ export function createDialBudget(options: DialBudgetOptions): DialBudget {
   }
 }
 
-/** One budget per page, shared by every bot's view (the reconnect budget and the first dial use the same one). */
+/**
+ * One budget per page, shared by every bot's view. Task 5's live view must use this instance for the
+ * first dial and every redial. `request` before `markMounted` always answers `mounting`.
+ */
 export const pageDialBudget: DialBudget = createDialBudget({ max: 3, windowMs: 10_000, mountDelayMs: 300 })
