@@ -34,13 +34,14 @@ export function LiveView({ live, inControl = false, expanded = false, onExpand, 
   return (
     <div className={cn('relative aspect-video w-full overflow-hidden rounded-lg bg-contrast', inControl && 'ring-2 ring-contrast-danger')} data-testid="live-view">
       <div ref={host} className="size-full" />
-      {waiting && <Skeleton className="absolute inset-0 rounded-lg" aria-label="Connecting to the screen" />}
+      {waiting && <Skeleton role="status" className="absolute inset-0 rounded-lg" aria-label="Connecting to the screen" />}
       {live.link === 'failed' && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-contrast/80 p-4 text-center text-sm text-contrast-foreground">
           <p>{live.error ?? 'The screen connection failed.'}</p>
           <Button size="sm" variant="contrast-outline" onClick={live.reconnect}>Reconnect</Button>
         </div>
       )}
+      {live.notice && <p role="status" className="absolute inset-x-2 bottom-2 rounded bg-contrast/80 px-2 py-1 text-xs text-contrast-foreground">{live.notice}</p>}
       {(onExpand || onCollapse) && (
         <Button size="icon-xs" variant="contrast-outline" className="absolute right-2 top-2" aria-label={expanded ? 'Close expanded view' : 'Expand the screen'} onClick={expanded ? onCollapse : onExpand}>
           {expanded ? <Minimize2 /> : <Maximize2 />}

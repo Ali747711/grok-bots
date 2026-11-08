@@ -1,65 +1,18 @@
 import type { DisplayLease } from '@/vendor/hermes/gateway-contract.generated'
 
-import type { DialBudget } from './dial-budget'
 import * as display from './display-client'
 import { attachPaste } from './paste'
+import type { RfbCtor, RfbLike, SessionOptions, SessionUi, TimerName, Viewer } from './session-types'
+import { classifyConnectError, displayUrl, heldBy, messageOf, viewerHash } from './session-utils'
 
-export type LinkState = 'idle' | 'connecting' | 'live' | 'reconnecting' | 'failed'
-
-/** What the session reports to its React owner. */
-export interface SessionUi {
-  setLink(link: LinkState): void
-  setError(message: string | null): void
-  onHash(hash: string): void
-  onLease(lease: DisplayLease): void
-  refresh(): void
-  /** True while the lease names our viewer. */
-  holding(): boolean
-}
-
-export interface SessionOptions {
-  readonly budget: DialBudget
-  readonly hiddenDetachMs?: number
-  readonly securityRetryMs?: number
-}
-
-interface Viewer {
-  readonly id: string
-  readonly hash: string
-  /** Which gateway connection minted the id; a redial orphans it (facts 1.4). */
-  readonly epoch: number
-}
-
-interface RfbLike {
-  viewOnly: boolean
-  scaleViewport: boolean
-  resizeSession: boolean
-  focusOnClick: boolean
-  background: string
-  qualityLevel: number
-  addEventListener(type: string, fn: (event: Event) => void): void
-  disconnect(): void
-  focus(): void
-  clipboardPasteFrom(text: string): void
-}
+export type { LinkState } from './session-types'
 
 const HIDDEN_DETACH_MS = 5 * 60_000
 const SECURITY_RETRY_MS = 12_000
+const MAX_SECURITY_STRIKES = 2
 const NO_SECURE_CONTEXT = 'The screen needs a secure connection (https or localhost).'
-const BUDGET_SPENT = 'The screen connection kept dropping. Try Reconnect.'
-
-const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
-const heldBy = (lease: DisplayLease | null | undefined, hash: string): boolean => lease?.holder === 'human' && lease.viewer_hash === hash
-
-async function viewerHash(id: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(id))
-  return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('').slice(0, 12)
-}
-
-function displayUrl(ticket: string): string {
-  const scheme = location.protocol === 'https:' ? 'wss' : 'ws'
-  return `${scheme}://${location.host}/api/display/ws?display_ticket=${encodeURIComponent(ticket)}`
-}
+const BUDGET_SPENT = "Couldn't reconnect to the screen. Try again."
+const SECURITY_REFUSED = 'The screen refused the connection. Try again.'
 
 /**
  * One viewer of one bot's screen: the pixel socket, the RFB client, the viewer id and the redial
@@ -71,11 +24,16 @@ export class LiveSession {
   private rfb: RfbLike | null = null
   private ws: WebSocket | null = null
   private viewer: Viewer | null = null
+  private ours: ReadonlySet<string> = new Set()
+  private lastLease: DisplayLease | null = null
   private generation = 0
   private gatewayEpoch = 0
   private gatewayDown = false
+  private awaitingGateway = false
+  private wantControl = false
   private everLive = false
   private suspended = false
+  private securityStrikes = 0
   private pasteOff: (() => void) | null = null
   private redialTimer: ReturnType<typeof setTimeout> | null = null
   private securityTimer: ReturnType<typeof setTimeout> | null = null
@@ -95,6 +53,7 @@ export class LiveSession {
     this.suspended = false
     this.options.budget.markMounted(this.profile)
     document.addEventListener('visibilitychange', this.onVisibility)
+    if (document.visibilityState === 'hidden') this.startHiddenTimer()
     this.scheduleDial()
   }
 
@@ -116,11 +75,11 @@ export class LiveSession {
     this.ui.setLink('idle')
   }
 
-  /** The owner is leaving (tab switch, panel close, bot switch): hand back if held, then close 1000. */
+  /** The owner is leaving (tab switch, panel close, bot switch): hand back if the lease is ours, then close 1000. */
   dispose(): void {
     this.pendingDetach = false
     const viewer = this.viewer
-    if (viewer && this.ui.holding()) void this.releaseQuietly(viewer)
+    if (viewer && (this.ui.holding() || this.leaseIsOurs(this.lastLease))) void this.releaseQuietly(viewer)
     try {
       this.ws?.close(1000)
     } catch {
@@ -129,14 +88,28 @@ export class LiveSession {
     this.stopAll()
     this.host = null
     this.viewer = null
+    this.wantControl = false
   }
 
   noteGateway(state: string): void {
-    if (state !== 'open') this.gatewayDown = true
-    else if (this.gatewayDown) {
-      this.gatewayDown = false
-      this.gatewayEpoch += 1
+    if (state !== 'open') {
+      this.gatewayDown = true
+      return
     }
+    if (!this.gatewayDown) return
+    this.gatewayDown = false
+    this.gatewayEpoch += 1
+    if (this.awaitingGateway) {
+      this.awaitingGateway = false
+      this.scheduleDial()
+    }
+  }
+
+  /** A lease we did not cause moved: forget earlier viewers' hashes once the lease is no longer ours. */
+  noteLease(lease: DisplayLease | null): void {
+    this.lastLease = lease
+    if (this.leaseIsOurs(lease) || this.ours.size <= (this.viewer ? 1 : 0)) return
+    this.setOurs(new Set(this.viewer ? [this.viewer.hash] : []))
   }
 
   setHolding(holding: boolean): void {
@@ -148,11 +121,13 @@ export class LiveSession {
   async takeControl(): Promise<void> {
     const viewer = this.viewer
     if (!viewer) return
-    await this.guarded(async () => {
-      const { lease } = await display.acquire(this.profile, viewer.id)
-      this.ui.onLease(lease)
-      this.setHolding(heldBy(lease, viewer.hash))
-    })
+    if (viewer.epoch !== this.gatewayEpoch) {
+      // The gateway redialed since this id was minted: acquire would be refused, so re-attach first.
+      this.wantControl = true
+      this.scheduleDial()
+      return
+    }
+    await this.guarded(() => this.acquireFor(viewer))
   }
 
   handBack(): Promise<void> {
@@ -166,30 +141,57 @@ export class LiveSession {
   /** Manual Reconnect after the budget ran out. */
   reconnect(): void {
     this.options.budget.reset(this.profile)
+    this.securityStrikes = 0
     this.ui.setError(null)
     this.scheduleDial()
+  }
+
+  private leaseIsOurs(lease: DisplayLease | null | undefined): boolean {
+    return lease?.holder === 'human' && !!lease.viewer_hash && this.ours.has(lease.viewer_hash)
+  }
+
+  private setOurs(next: ReadonlySet<string>): void {
+    this.ours = next
+    this.ui.onOurs(next)
+  }
+
+  private emitLease(lease: DisplayLease): void {
+    this.lastLease = lease
+    this.ui.onLease(lease)
+  }
+
+  private async acquireFor(viewer: Viewer): Promise<void> {
+    const { lease } = await display.acquire(this.profile, viewer.id)
+    this.emitLease(lease)
+    this.ui.setNotice(null)
+    this.setHolding(heldBy(lease, viewer.hash))
   }
 
   private async release(force: boolean): Promise<void> {
     const viewer = this.viewer
     await this.guarded(async () => {
       const { lease } = await display.release(this.profile, force || !viewer ? { force: true } : this.releaseTarget(viewer))
-      this.ui.onLease(lease)
+      this.emitLease(lease)
       this.setHolding(viewer ? heldBy(lease, viewer.hash) : false)
     })
   }
 
-  /** After a gateway redial our id is orphaned, so a release by id would be refused: force it (R2). */
+  /** An orphaned id (older gateway connection, or a lease still on an earlier hash of ours) can only be force-released (R2). */
   private releaseTarget(viewer: Viewer): string | { force: true } {
-    return viewer.epoch === this.gatewayEpoch ? viewer.id : { force: true }
+    const onEarlierHash = this.leaseIsOurs(this.lastLease) && this.lastLease?.viewer_hash !== viewer.hash
+    return viewer.epoch !== this.gatewayEpoch || onEarlierHash ? { force: true } : viewer.id
   }
 
   private async releaseQuietly(viewer: Viewer): Promise<void> {
     try {
       await display.release(this.profile, this.releaseTarget(viewer))
     } catch {
-      // Closing 1000 below makes the bridge hand back as well.
+      // Closing 1000 makes the bridge hand back as well.
     }
+  }
+
+  private releaseForced(): Promise<void> {
+    return display.release(this.profile, { force: true }).then(() => undefined, () => undefined)
   }
 
   private async guarded(action: () => Promise<void>): Promise<void> {
@@ -213,8 +215,7 @@ export class LiveSession {
       this.redialTimer = setTimeout(() => this.scheduleDial(), decision.retryInMs)
       return
     }
-    this.ui.setLink('failed')
-    this.ui.setError(BUDGET_SPENT)
+    this.fail(BUDGET_SPENT)
   }
 
   private async connect(): Promise<void> {
@@ -224,29 +225,51 @@ export class LiveSession {
     this.ui.setError(null)
     if (!globalThis.crypto?.subtle) return this.fail(NO_SECURE_CONTEXT)
     try {
-      const Rfb = await display.loadRfb()
+      const Rfb = (await display.loadRfb()) as unknown as RfbCtor
       const prior = this.viewer
       const observed = await display.observe(this.profile, prior?.id)
       const hash = await viewerHash(observed.viewer_id)
       if (generation !== this.generation || !this.host) return
-      this.viewer = { id: observed.viewer_id, hash, epoch: this.gatewayEpoch }
-      this.ui.onHash(hash)
-      const lease = await this.reclaim(prior, observed.viewer_id, hash, observed.lease)
-      if (generation !== this.generation || !this.host) return
-      this.ui.onLease(lease)
-      this.open(Rfb as unknown as new (el: HTMLElement, ws: WebSocket, o: object) => RfbLike, observed.ticket, generation, heldBy(lease, hash))
+      const viewer = { id: observed.viewer_id, hash, epoch: this.gatewayEpoch }
+      this.viewer = viewer
+      this.setOurs(new Set([...this.ours, hash]))
+      const lease = await this.reclaim(prior, viewer, observed.lease)
+      // The owner left while the reclaim acquire was in flight: give back what it just took.
+      if (!this.host) return void (heldBy(lease, hash) && this.releaseForced())
+      if (generation !== this.generation) return
+      this.emitLease(lease)
+      this.open(Rfb, observed.ticket, generation, heldBy(lease, hash))
+      if (this.wantControl) {
+        this.wantControl = false
+        await this.acquireFor(viewer)
+      }
     } catch (error) {
-      if (generation === this.generation) this.fail(messageOf(error))
+      if (generation === this.generation) this.onConnectError(error)
     }
   }
 
-  /** The pixel socket redialed after the gateway did: the lease still names our OLD hash, so take it back at once (R2). */
-  private async reclaim(prior: Viewer | null, id: string, hash: string, lease: DisplayLease): Promise<DisplayLease> {
-    if (!prior || prior.hash === hash || !heldBy(lease, prior.hash)) return lease
-    return (await display.acquire(this.profile, id)).lease
+  /** The pixel socket redialed after the gateway did: the lease still names an earlier hash of ours, so take it back at once (R2). */
+  private async reclaim(prior: Viewer | null, viewer: Viewer, lease: DisplayLease): Promise<DisplayLease> {
+    if (!prior || prior.hash === viewer.hash || !heldBy(lease, prior.hash)) return lease
+    return (await display.acquire(this.profile, viewer.id)).lease
   }
 
-  private open(Rfb: new (el: HTMLElement, ws: WebSocket, o: object) => RfbLike, ticket: string, generation: number, controlling: boolean): void {
+  /** What a failed connect means: wait out a gateway outage, go idle if the screen went away, else give up. */
+  private onConnectError(error: unknown): void {
+    const kind = classifyConnectError(error)
+    if (kind === 'not_running') {
+      void this.ui.refresh()
+      this.ui.setLink('idle')
+    } else if (kind === 'transport') {
+      this.ui.setLink('reconnecting')
+      if (this.gatewayDown) this.awaitingGateway = true
+      else this.scheduleDial()
+    } else {
+      this.fail(messageOf(error))
+    }
+  }
+
+  private open(Rfb: RfbCtor, ticket: string, generation: number, controlling: boolean): void {
     const ws = new WebSocket(displayUrl(ticket))
     ws.binaryType = 'arraybuffer'
     this.ws = ws
@@ -256,15 +279,11 @@ export class LiveSession {
       this.onClosed(generation, closeCode)
     })
     const rfb = new Rfb(this.host!, ws, { shared: true })
-    rfb.scaleViewport = true
-    rfb.resizeSession = false
-    rfb.focusOnClick = true
-    rfb.background = 'transparent'
-    rfb.qualityLevel = 7
-    rfb.viewOnly = !controlling
+    Object.assign(rfb, { scaleViewport: true, resizeSession: false, focusOnClick: true, background: 'transparent', qualityLevel: 7, viewOnly: !controlling })
     rfb.addEventListener('connect', () => {
       if (generation !== this.generation) return
       this.everLive = true
+      this.securityStrikes = 0
       this.ui.setLink('live')
     })
     rfb.addEventListener('securityfailure', () => this.onSecurityFailure(generation))
@@ -273,7 +292,7 @@ export class LiveSession {
       this.onClosed(generation, closeCode >= 0 ? closeCode : clean ? 1000 : 1006)
     })
     this.rfb = rfb
-    this.pasteOff = attachPaste(this.host!, rfb)
+    this.pasteOff = attachPaste(this.host!, rfb, message => this.ui.setNotice(message))
   }
 
   /** §11 R3: what each pixel-socket close means. */
@@ -282,8 +301,7 @@ export class LiveSession {
     this.generation += 1
     this.teardown()
     if (code === 1000 || code === 4001) {
-      this.ui.refresh()
-      this.ui.setLink('idle')
+      void this.afterCleanClose(this.generation)
     } else if (code === 1003 || code === 4403) {
       this.fail(code === 4403 ? 'Hermes refused the screen.' : 'The screen sent something Crew does not understand.')
     } else {
@@ -292,11 +310,20 @@ export class LiveSession {
     }
   }
 
-  /** Xvnc is locking viewers out: wait for it to clear, then redial once (R3). */
+  /** The screen ended (or the bridge closed us cleanly): re-read it, and dial once more if it is still running. */
+  private async afterCleanClose(generation: number): Promise<void> {
+    this.ui.setLink('idle')
+    const status = await this.ui.refresh()
+    if (generation === this.generation && status?.running && this.host) this.scheduleDial()
+  }
+
+  /** Xvnc is locking viewers out: wait for it to clear and redial; a second strike in a row gives up (R3). */
   private onSecurityFailure(generation: number): void {
     if (generation !== this.generation) return
     this.generation += 1
     this.teardown()
+    this.securityStrikes += 1
+    if (this.securityStrikes >= MAX_SECURITY_STRIKES) return this.fail(SECURITY_REFUSED)
     this.ui.setLink('reconnecting')
     this.clearTimer('securityTimer')
     this.securityTimer = setTimeout(() => this.scheduleDial(), this.options.securityRetryMs ?? SECURITY_RETRY_MS)
@@ -307,13 +334,14 @@ export class LiveSession {
     this.ui.setError(message)
   }
 
+  private startHiddenTimer(): void {
+    if (this.hiddenTimer || !this.host) return
+    // A forgotten tab must not defeat the idle stop: detach (lease kept) after five hidden minutes (R5).
+    this.hiddenTimer = setTimeout(() => this.suspend(), this.options.hiddenDetachMs ?? HIDDEN_DETACH_MS)
+  }
+
   private readonly onVisibility = (): void => {
-    if (document.visibilityState === 'hidden') {
-      if (this.hiddenTimer || !this.host) return
-      // A forgotten tab must not defeat the idle stop: detach (lease kept) after five hidden minutes (R5).
-      this.hiddenTimer = setTimeout(() => this.suspend(), this.options.hiddenDetachMs ?? HIDDEN_DETACH_MS)
-      return
-    }
+    if (document.visibilityState === 'hidden') return this.startHiddenTimer()
     this.clearTimer('hiddenTimer')
     if (this.suspended) {
       this.suspended = false
@@ -357,7 +385,7 @@ export class LiveSession {
     document.removeEventListener('visibilitychange', this.onVisibility)
   }
 
-  private clearTimer(name: 'redialTimer' | 'securityTimer' | 'hiddenTimer'): void {
+  private clearTimer(name: TimerName): void {
     const timer = this[name]
     if (timer) clearTimeout(timer)
     this[name] = null

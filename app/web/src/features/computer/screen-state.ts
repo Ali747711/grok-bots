@@ -25,10 +25,15 @@ export interface ScreenEvents {
 /** A lease event older than the one we already hold is stale (ported from Hermes `isOlderLease`). */
 export const isOlderLease = (candidate: DisplayLease, current: DisplayLease): boolean => candidate.epoch < current.epoch
 
-function controlOf(lease: DisplayLease, ourHash: string | null | undefined): ScreenControl {
+/** Our lease hash, or every hash that is ours (this viewer's and earlier ones of the same view). */
+export type OurHashes = string | ReadonlySet<string> | null | undefined
+
+function controlOf(lease: DisplayLease, ours: OurHashes): ScreenControl {
   if (lease.holder !== 'human') return 'bot'
   // "You" means the lease names a viewer whose hash is ours; any other human is someone else.
-  return ourHash && lease.viewer_hash === ourHash ? 'you' : 'someone'
+  const hash = lease.viewer_hash
+  if (!hash || !ours) return 'someone'
+  return (typeof ours === 'string' ? ours === hash : ours.has(hash)) ? 'you' : 'someone'
 }
 
 /**
@@ -37,7 +42,7 @@ function controlOf(lease: DisplayLease, ourHash: string | null | undefined): Scr
  * `blocker` is set. An error replaces the view only when nothing is running: for a running screen it
  * is a `notice`, because the UI renders by kind and leaving `live` would unmount the viewer.
  */
-export function deriveScreen(status: DisplayStatus | null, events: ScreenEvents, ourLeaseHash?: string | null): ScreenView {
+export function deriveScreen(status: DisplayStatus | null, events: ScreenEvents, ourLeaseHash?: OurHashes): ScreenView {
   const error = events.error ?? null
   const base = { control: 'bot' as const, notice: null, lease: null, status }
   if (!status) return error ? { ...base, kind: 'error', message: error } : { ...base, kind: 'loading' }

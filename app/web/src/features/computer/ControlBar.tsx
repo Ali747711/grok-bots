@@ -6,6 +6,8 @@ import type { ScreenControl } from './screen-state'
 
 interface ControlBarProps {
   readonly control: ScreenControl
+  /** The view is live: Take control needs a stream to control. */
+  readonly connected: boolean
   readonly botTitle: string
   readonly onTake: () => void
   readonly onHandBack: () => void
@@ -19,11 +21,11 @@ const CHIP: Record<ScreenControl, string> = {
 }
 
 /** Who holds the screen, and the one or two actions that change it. */
-export function ControlBar({ control, botTitle, onTake, onHandBack, onForce }: ControlBarProps) {
+export function ControlBar({ control, connected, botTitle, onTake, onHandBack, onForce }: ControlBarProps) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Badge variant="outline" className={cn(control === 'you' && 'border-contrast-danger text-contrast-danger', control === 'bot' && 'border-sky text-sky-ink')}>{CHIP[control]}</Badge>
-      {control !== 'you' && <Button size="sm" onClick={onTake}>Take control</Button>}
+      <Badge role="status" aria-live="polite" variant="outline" className={cn(control === 'you' && 'border-contrast-danger text-contrast-danger', control === 'bot' && 'border-sky text-sky-ink')}>{CHIP[control]}</Badge>
+      {control !== 'you' && <Button size="sm" onClick={onTake} disabled={!connected}>Take control</Button>}
       {control === 'you' && <Button size="sm" variant="outline" onClick={onHandBack}>Hand back</Button>}
       {control === 'someone' && <Button size="sm" variant="outline" onClick={onForce}>Give control back to {botTitle}</Button>}
     </div>

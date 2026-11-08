@@ -103,7 +103,7 @@ describe('useScreen lease ordering', () => {
     await waitFor(() => expect(result.current.view.kind).toBe('live'))
     let reply!: (v: unknown) => void
     client.handlers['display.status'] = () => new Promise(r => { reply = r })
-    let pending!: Promise<void>
+    let pending!: Promise<unknown>
     act(() => { pending = result.current.refresh() })
     act(() => client.emit(leaseEvent(9)))
     await act(async () => { reply(status({ running: true })); await pending })
