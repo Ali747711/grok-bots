@@ -48,13 +48,35 @@ describe('routeServerRequest', () => {
 })
 
 describe('applyGatewayEvent', () => {
+  it('holds canonical approval.request events and settles them on approval.settled', () => {
+    const store = new PendingStore()
+    applyGatewayEvent({
+      type: 'approval.request', session_id: 's1',
+      payload: { prompt_id: 'p-9', execution_generation: 2, kind: 'approval', command: 'rm -r /tmp/crew-fixture/victim', choices: ['once', 'session', 'deny'] }
+    }, store, ctx)
+    expect(store.list()).toEqual([expect.objectContaining({
+      id: 'p-9', kind: 'approval', profile: 'crew-test', sessionId: 's1', source: 'event',
+      promptId: 'p-9', executionGeneration: 2, choices: ['once', 'session', 'deny'], receivedAt: 5_000
+    })])
+    expect(store.list()[0]!.summary).toContain('rm -r /tmp/crew-fixture/victim')
+    applyGatewayEvent({ type: 'approval.settled', session_id: 's1', payload: { prompt_id: 'p-9' } }, store, ctx)
+    expect(store.list()).toEqual([])
+    expect(store.get('p-9')?.settled).toBe('answered')
+  })
+
+  it('holds clarify.request events as questions', () => {
+    const store = new PendingStore()
+    applyGatewayEvent({ type: 'clarify.request', session_id: 's1', payload: { prompt_id: 'q-1', question: 'Which folder?' } }, store, ctx)
+    expect(store.list()[0]).toMatchObject({ id: 'q-1', kind: 'clarify', summary: 'Which folder?' })
+  })
+
   it('settles on request.cancel and approval.cancelled events', () => {
     const store = new PendingStore()
     routeServerRequest(fakeRequest('approval', { session_id: 's1' }, 'srq-1'), store, ctx)
     routeServerRequest(fakeRequest('approval', { session_id: 's1' }, 'srq-2'), store, ctx)
-    applyGatewayEvent({ type: 'request.cancel', payload: { id: 'srq-1', reason: 'answered elsewhere' } }, store)
+    applyGatewayEvent({ type: 'request.cancel', payload: { id: 'srq-1', reason: 'answered elsewhere' } }, store, ctx)
     expect(store.list().map(r => r.id)).toEqual(['srq-2'])
-    applyGatewayEvent({ type: 'approval.cancelled', session_id: 's1', payload: { request_ids: ['srq-2'] } }, store)
+    applyGatewayEvent({ type: 'approval.cancelled', session_id: 's1', payload: { request_ids: ['srq-2'] } }, store, ctx)
     expect(store.list()).toEqual([])
     expect(store.get('srq-2')?.settled).toBe('cancelled')
   })
