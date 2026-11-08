@@ -16,6 +16,7 @@ const valid = `crew_session=${signSession(cookieKey, { sid: 's', exp: now() + 60
 let upstream: WebSocketServer
 let upstreamSockets: WebSocket[]
 let upstreamUrls: string[]
+let upstreamMessages: { data: Buffer; isBinary: boolean }[]
 let crew: Server
 let port: number
 let token: HermesToken
@@ -23,11 +24,14 @@ let token: HermesToken
 beforeEach(async () => {
   upstreamSockets = []
   upstreamUrls = []
+  upstreamMessages = []
   upstream = new WebSocketServer({ port: 0, host: '127.0.0.1' })
   await new Promise<void>(resolve => upstream.on('listening', () => resolve()))
   upstream.on('connection', (ws, req) => {
     upstreamSockets.push(ws)
     upstreamUrls.push(req.url ?? '')
+    // Record from the first moment: the proxy may flush buffered frames before a test attaches a listener.
+    ws.on('message', (data, isBinary) => upstreamMessages.push({ data: data as Buffer, isBinary }))
   })
   const upPort = (upstream.address() as AddressInfo).port
 
@@ -94,7 +98,8 @@ describe('WebSocket proxy', () => {
     const ws = await connect({ origin: origin(), cookie: valid })
     ws.send('{"jsonrpc":"2.0","id":1,"method":"ping"}')
     const up = await waitForUpstream()
-    const received = await nextMessage(up)
+    for (let i = 0; i < 50 && upstreamMessages.length === 0; i++) await new Promise(r => setTimeout(r, 10))
+    const received = upstreamMessages[0]!
     expect(received.data.toString()).toBe('{"jsonrpc":"2.0","id":1,"method":"ping"}')
     expect(received.isBinary).toBe(false)
     expect(upstreamUrls[0]).toBe('/api/ws?token=tok-1')
