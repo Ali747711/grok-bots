@@ -41,3 +41,20 @@ WebSocket connection to 'ws://127.0.0.1:7070/api/ws' failed: Error during WebSoc
 - The VM did not come back: UTM showed "Display output is not active". Cause found after a forced power cycle (`utmctl stop --force` + `start`, user-approved): the **Ubuntu installer ISO is still attached** and boots first; its GRUB menu ("Try or Install Ubuntu / Boot from next volume / UEFI Firmware Settings") waits for input. User chose "Boot from next volume". Follow-up: eject the ISO in UTM (VM still sees `/dev/sr0 3.9G` at 17:16).
 - 17:15 VM up; `hermes-gateway`, `hermes-dashboard`, `crew` all **active** without manual action.
 - Re-ran the check with the **pre-reboot cookie** (`--reuse`): `GET /api/profiles` → 200 incl. default; WS → `gateway.ready`. 2/2 passed — login persists across reboot.
+
+## Token rotation (live, after the final-review fixes)
+
+`node app/scripts/rotation-check.mjs` through the tunnel, 2026-11-08 ~17:5x:
+
+```
+token before: 0da35648aa2a
+WS open via Crew, gateway.ready received
+sign-out: Signed out of every Webapp tab: closed 4 browser connections.
+token after: f0d41d49aa4b (rotated)
+existing WS closed with: 4401 Signed out
+REST /api/profiles after rotation: 200
+new WS after rotation: gateway.ready
+watcher: gateway.ready → subscribed default, crew-test (reconnected with the new token)
+```
+
+Crew survives Webapp sign-out as specified: REST recovers after one token re-read, open sockets close with 4401, new sockets and the watcher reconnect without manual action. Note the design consequence (Codex review #16): a Webapp sign-out does **not** sign Crew out — Crew re-reads the rotated token. That is intentional for v1 (Crew has its own login).
