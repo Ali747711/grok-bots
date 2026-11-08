@@ -44,7 +44,7 @@ export interface Watcher {
   getAvatar(name: string): Promise<{ found: boolean; mime?: string; data?: string }>
   /** JSON-RPC to Hermes over the watcher's connection. Rejects HermesUnavailableError when not connected. */
   request: Rpc
-  /** Re-read the roster now; coalesced with a sync already in flight. */
+  /** Re-read the roster now. Resolves only after a sync that started after the call (a running one gets one shared trailing sync). */
   refresh(): Promise<void>
   debug(): readonly DebugEntry[]
   stop(): void
