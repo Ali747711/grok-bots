@@ -22,7 +22,10 @@ export async function start(): Promise<Server> {
   }
   const token = new HermesToken(config.hermesTokenFile)
   const gateway = { config, token }
-  const client = createGatewayClient(gateway)
+  const closeListeners = new Set<(code: number) => void>()
+  const client = createGatewayClient(gateway, code => {
+    for (const listener of closeListeners) listener(code)
+  })
   const watcher = startWatcher({
     client,
     connect: async () => {
@@ -32,6 +35,12 @@ export async function start(): Promise<Server> {
         // A rotated token surfaces as a failed connect: re-read it before the next backoff attempt.
         await token.refresh().catch(() => undefined)
         throw error
+      }
+    },
+    onSocketClose: handler => {
+      closeListeners.add(handler)
+      return () => {
+        closeListeners.delete(handler)
       }
     },
     now: Date.now,

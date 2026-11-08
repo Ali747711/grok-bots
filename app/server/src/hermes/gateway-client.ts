@@ -17,8 +17,15 @@ export interface GatewayClientDeps {
  * Server-side Hermes client (direct loopback connection, not through Crew's proxy), using Node's
  * built-in WebSocket. Unhandled server requests are logged; the vendored channel answers them -32601.
  */
-export function createGatewayClient(_deps: GatewayClientDeps): JsonRpcGatewayClient {
+export function createGatewayClient(
+  _deps: GatewayClientDeps,
+  onCloseCode?: (code: number) => void
+): JsonRpcGatewayClient {
   return new JsonRpcGatewayClient({
+    // Observe only: returning nothing keeps the client's normal closed-state handling.
+    onSocketClose: event => {
+      onCloseCode?.(event.code)
+    },
     requestIdPrefix: 'crew',
     onUnhandledRequest: request => log.warn('unhandled hermes server request', { method: request.method }),
     onRequestHandlerError: (error, request) =>

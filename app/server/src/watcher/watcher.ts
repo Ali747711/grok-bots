@@ -1,4 +1,5 @@
 import type { ServerRequest } from '../vendor/hermes/json-rpc-channel.js'
+import { BotStateTracker, type CrewState, type ProfileInput } from './bot-state.js'
 import { type PendingKind, PendingStore } from './pending-store.js'
 import { applyGatewayEvent, routeServerRequest, summarize, type WatcherEvent } from './request-router.js'
 
@@ -16,6 +17,8 @@ export interface WatcherDeps {
   readonly connect: (client: WatcherClient) => Promise<void>
   readonly now: () => number
   readonly reconnectDelayMs: (attempt: number) => number
+  /** Observe WebSocket close codes (4401 = Hermes says our token is no longer valid). */
+  readonly onSocketClose?: (handler: (code: number) => void) => () => void
 }
 
 export interface DebugEntry {
@@ -26,20 +29,33 @@ export interface DebugEntry {
 
 export interface Watcher {
   readonly store: PendingStore
+  /** Current roster, bot status, Hermes connection and open requests. */
+  state(): CrewState
+  /** Fires (debounced 100 ms) when anything in `state()` may have changed. */
+  onChange(listener: () => void): () => void
   debug(): readonly DebugEntry[]
   stop(): void
 }
 
-interface ProfileRow { name: string; canonical_session?: { id?: string } | null }
+type ProfileRow = ProfileInput
 interface PendingPrompt { kind: PendingKind; prompt_id: string; execution_generation: number; choices?: string[] }
 interface Snapshot {
   session_id: string
   stored_session_id?: string
+  execution_generation?: number
+  running?: boolean
   prompts?: (PendingPrompt & Record<string, unknown>)[]
   open_requests?: { id: string; method: string; params: Record<string, unknown> }[] | null
 }
 
 const DEBUG_MAX = 200
+const DEBOUNCE_MS = 100
+const SYNC_RETRY_BASE_MS = 1000
+const SYNC_RETRY_MAX_MS = 30_000
+const REFRESH_MS = 30_000
+const SETTLED_TTL_MS = 10 * 60_000
+const AUTH_CLOSE_CODES = new Set([4401, 4403])
+const AUTH_ERROR = /\b(4401|4403|401|403)\b/
 const noop = () => undefined
 
 /**
@@ -48,7 +64,14 @@ const noop = () => undefined
  */
 export function startWatcher(deps: WatcherDeps): Watcher {
   const { client } = deps
-  const store = new PendingStore()
+  const store = new PendingStore(deps.now)
+  const tracker = new BotStateTracker()
+  const listeners = new Set<() => void>()
+  let hermes: CrewState['hermes'] = 'connecting'
+  let authClosed = false
+  let changeTimer: NodeJS.Timeout | null = null
+  let syncRetryTimer: NodeJS.Timeout | null = null
+  let syncFailures = 0
   const sessionProfile = new Map<string, string>()
   let log: readonly DebugEntry[] = []
   let subscribed = new Set<string>()
@@ -61,11 +84,31 @@ export function startWatcher(deps: WatcherDeps): Watcher {
   const note = (kind: DebugEntry['kind'], detail: string) => {
     log = [...log.slice(-(DEBUG_MAX - 1)), { at: deps.now(), kind, detail }]
   }
+
+  function changed(): void {
+    if (changeTimer || stopped) return
+    changeTimer = setTimeout(() => {
+      changeTimer = null
+      for (const listener of [...listeners]) listener()
+    }, DEBOUNCE_MS)
+  }
+  const setHermes = (next: CrewState['hermes']) => {
+    if (hermes === next) return
+    hermes = next
+    changed()
+  }
   const ctx = { profileForSession: (sid: string) => sessionProfile.get(sid), now: deps.now }
 
   function recordSnapshot(profile: string, snap: Snapshot): void {
-    sessionProfile.set(snap.session_id, profile)
-    if (snap.stored_session_id) sessionProfile.set(snap.stored_session_id, profile)
+    for (const sid of [snap.session_id, snap.stored_session_id]) {
+      if (!sid) continue
+      sessionProfile.set(sid, profile)
+      tracker.markSubscribed(profile, sid)
+    }
+    tracker.applyEvent({
+      type: 'session.info', session_id: snap.session_id, execution_generation: snap.execution_generation,
+      payload: { running: snap.running }
+    })
     for (const p of snap.prompts ?? []) {
       store.add({
         id: p.prompt_id, kind: p.kind, profile, sessionId: snap.session_id, summary: summarize(p.kind, p),
@@ -79,8 +122,12 @@ export function startWatcher(deps: WatcherDeps): Watcher {
     }
   }
 
-  async function syncOnce(): Promise<void> {
+  /** Returns false when profiles.list or any resume failed, so the caller retries with backoff. */
+  async function syncOnce(): Promise<boolean> {
     const { profiles } = await client.request<{ profiles: ProfileRow[] }>('profiles.list', { include_sessions: true })
+    tracker.applyProfiles(profiles)
+    changed()
+    let ok = true
     for (const row of profiles) {
       const storedId = row.canonical_session?.id
       if (!storedId || subscribed.has(storedId)) continue
@@ -92,10 +139,23 @@ export function startWatcher(deps: WatcherDeps): Watcher {
         const sessionIds = [snap.session_id, snap.stored_session_id].filter((id): id is string => Boolean(id))
         store.reconcile(sessionIds, new Set((snap.prompts ?? []).map(p => p.prompt_id)), requestedAt)
         note('subscribed', `${row.name} ${storedId} → ${snap.session_id}`)
+        changed()
       } catch (error) {
+        ok = false
         note('error', `resume ${row.name}: ${error instanceof Error ? error.message : String(error)}`)
       }
     }
+    return ok
+  }
+
+  function scheduleSyncRetry(): void {
+    if (stopped || syncRetryTimer) return
+    const delay = Math.min(SYNC_RETRY_MAX_MS, SYNC_RETRY_BASE_MS * 2 ** syncFailures)
+    syncFailures += 1
+    syncRetryTimer = setTimeout(() => {
+      syncRetryTimer = null
+      void sync()
+    }, delay)
   }
 
   /** Serialized: a sessions.changed during a sync triggers exactly one more pass afterwards. */
@@ -105,7 +165,14 @@ export function startWatcher(deps: WatcherDeps): Watcher {
       return syncing
     }
     syncing = syncOnce()
-      .catch(error => note('error', `sync: ${error instanceof Error ? error.message : String(error)}`))
+      .then(ok => {
+        if (ok) syncFailures = 0
+        else scheduleSyncRetry()
+      })
+      .catch(error => {
+        note('error', `sync: ${error instanceof Error ? error.message : String(error)}`)
+        scheduleSyncRetry()
+      })
       .finally(() => {
         syncing = null
         if (resyncWanted && !stopped) {
@@ -126,13 +193,18 @@ export function startWatcher(deps: WatcherDeps): Watcher {
 
   async function connectNow(): Promise<void> {
     attempt += 1
+    setHermes('connecting')
     try {
       subscribed = new Set()
       await deps.connect(client)
       attempt = 0
+      authClosed = false
       await sync()
+      setHermes('connected')
     } catch (error) {
-      note('error', `connect: ${error instanceof Error ? error.message : String(error)}`)
+      const message = error instanceof Error ? error.message : String(error)
+      note('error', `connect: ${message}`)
+      setHermes(AUTH_ERROR.test(message) ? 'signed_out' : 'offline')
       scheduleReconnect()
     }
   }
@@ -145,20 +217,49 @@ export function startWatcher(deps: WatcherDeps): Watcher {
     client.onEvent(event => {
       note('event', `${event.type}${event.session_id ? ` ${event.session_id}` : ''}`)
       applyGatewayEvent(event, store, ctx)
+      tracker.applyEvent(event)
+      changed()
       if (event.type === 'sessions.changed') void sync()
     }),
     client.onState(state => {
-      if (state === 'closed' || state === 'error') scheduleReconnect()
-    })
+      if (state === 'closed' || state === 'error') {
+        setHermes(authClosed ? 'signed_out' : 'offline')
+        scheduleReconnect()
+      }
+    }),
+    store.onChange(changed),
+    deps.onSocketClose?.(code => {
+      authClosed = AUTH_CLOSE_CODES.has(code)
+    }) ?? noop
   ]
+  // Periodic refresh: roster changes (new bots, previews) without a sessions.changed, and pruning.
+  const refresh = setInterval(() => {
+    store.prune(SETTLED_TTL_MS)
+    if (hermes === 'connected') void sync()
+  }, REFRESH_MS)
   void connectNow()
 
   return {
     store,
+    state: () => {
+      const open = store.list()
+      return {
+        hermes,
+        bots: tracker.view(open),
+        pending: open.map(({ settled: _settled, settledAt: _settledAt, ...rest }) => ({ ...rest, state: 'open' as const }))
+      }
+    },
+    onChange: listener => {
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
+      }
+    },
     debug: () => log,
     stop: () => {
       stopped = true
-      if (timer) clearTimeout(timer)
+      clearInterval(refresh)
+      for (const t of [timer, changeTimer, syncRetryTimer]) if (t) clearTimeout(t)
       for (const unsubscribe of unsubscribers) unsubscribe()
       client.close()
     }

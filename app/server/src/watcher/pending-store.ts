@@ -17,19 +17,47 @@ export interface PendingRequest {
   readonly promptId?: string
   readonly executionGeneration?: number
   readonly settled?: SettleReason
+  readonly settledAt?: number
 }
 
 /** In-memory record of requests waiting for the user. First sighting of an id wins (no duplicates). */
 export class PendingStore {
   private readonly entries = new Map<string, PendingRequest>()
+  private readonly listeners = new Set<() => void>()
+
+  constructor(private readonly now: () => number = Date.now) {}
+
+  /** Called after any add / settle / prune that changed what `list()` or `get()` returns. */
+  onChange(listener: () => void): () => void {
+    this.listeners.add(listener)
+    return () => {
+      this.listeners.delete(listener)
+    }
+  }
+
+  private notify(): void {
+    for (const listener of [...this.listeners]) listener()
+  }
 
   add(request: PendingRequest): void {
-    if (!this.entries.has(request.id)) this.entries.set(request.id, request)
+    if (this.entries.has(request.id)) return
+    this.entries.set(request.id, request)
+    this.notify()
   }
 
   settle(id: string, reason: SettleReason): void {
     const entry = this.entries.get(id)
-    if (entry && !entry.settled) this.entries.set(id, { ...entry, settled: reason })
+    if (!entry || entry.settled) return
+    this.entries.set(id, { ...entry, settled: reason, settledAt: this.now() })
+    this.notify()
+  }
+
+  /** Forget entries that settled more than `olderThanMs` ago (they only exist to explain late answers). */
+  prune(olderThanMs: number): void {
+    const cutoff = this.now() - olderThanMs
+    for (const [id, entry] of this.entries) {
+      if (entry.settledAt !== undefined && entry.settledAt <= cutoff) this.entries.delete(id)
+    }
   }
 
   /**

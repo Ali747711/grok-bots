@@ -8,6 +8,7 @@ import type { HermesToken } from './hermes/token.js'
 import { hostGuard } from './http/host-guard.js'
 import { originGuard } from './http/origin-guard.js'
 import { type CrewEnv, sessionGuard } from './http/session-guard.js'
+import { stateRoutes } from './http/state-routes.js'
 import { spaRoutes } from './http/spa.js'
 import type { Watcher } from './watcher/watcher.js'
 
@@ -19,7 +20,7 @@ export interface AppDeps {
   readonly token: HermesToken
   readonly fetchUpstream: typeof fetch
   /** Absent in tests that don't need it; /crew/pending then answers 503. */
-  readonly watcher?: Pick<Watcher, 'store' | 'debug'>
+  readonly watcher?: Pick<Watcher, 'store' | 'debug' | 'state' | 'onChange'>
 }
 
 export const PUBLIC_PATHS = [
@@ -41,6 +42,7 @@ export function createApp(deps: AppDeps): Hono<CrewEnv> {
     if (!deps.watcher) return c.json({ error: 'watcher_not_running' }, 503)
     return c.json({ pending: deps.watcher.store.list(), debug: deps.watcher.debug() })
   })
+  app.route('/', stateRoutes(deps.watcher))
   app.route('/', authRoutes(deps))
   app.route('/', restProxy(deps))
   // Last: the SPA answers every remaining GET, so later-mounted routes would be shadowed.
