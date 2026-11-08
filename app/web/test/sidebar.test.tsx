@@ -39,6 +39,7 @@ describe('Sidebar', () => {
     expect(names).toEqual(['researcher', 'dev'])
     expect(within(screen.getByRole('button', { name: /Hermes/ })).getByTestId('stub')).toHaveAttribute('data-state', 'working')
     expect(within(screen.getByRole('button', { name: /Dev/ })).getByTestId('stub')).toHaveAttribute('data-state', 'default')
+    expect(within(screen.getByRole('button', { name: /Researcher/ })).getByRole('img', { name: 'Needs you', hidden: true })).toBeInTheDocument()
     expect(screen.getAllByRole('img', { name: 'Needs you', hidden: true })).toHaveLength(1)
   })
 
