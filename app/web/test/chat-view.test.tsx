@@ -65,7 +65,7 @@ describe('ChatView', () => {
   })
 
   it('pins this bot\u2019s requests above the composer, outside the transcript, oldest first, and answers through Crew', async () => {
-    const fetchMock = vi.fn((url: string) => Promise.resolve(new Response(String(url).includes('/answer') ? '{"status":"sent"}' : JSON.stringify({ messages: [] }), { status: url.includes('/answer') ? 202 : 200 })))
+    const fetchMock = vi.fn((url: string, _init?: RequestInit) => Promise.resolve(new Response(String(url).includes('/answer') ? '{"status":"sent"}' : JSON.stringify({ messages: [] }), { status: url.includes('/answer') ? 202 : 200 })))
     vi.stubGlobal('fetch', fetchMock)
     const mk = (id: string, profile: string, receivedAt: number) => ({ id, kind: 'approval' as const, profile, sessionId: 's', summary: `cmd ${id}`, choices: ['once', 'deny'], receivedAt, source: 'event' as const, state: 'open' as const, answerable: true })
     render(<ChatView bot={dev} state={crewState({ pending: [mk('late', 'dev', 20), mk('other', 'researcher', 5), mk('early', 'dev', 10)] })} crewConnected />)

@@ -87,12 +87,13 @@ describe('RequestCard: clarify', () => {
     expect(onAnswer).toHaveBeenCalledWith(expect.anything(), { answer: 'dev' })
   })
 
-  it('sends free text, and an empty skip', () => {
+  it('sends free text, and an empty skip', async () => {
     const onAnswer = vi.fn(noop)
     render(<RequestCard entry={clarify({ choices: undefined })} onAnswer={onAnswer} />)
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'release' } })
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
     expect(onAnswer).toHaveBeenLastCalledWith(expect.anything(), { answer: 'release' })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Skip' })).toBeEnabled())
     fireEvent.click(screen.getByRole('button', { name: 'Skip' }))
     expect(onAnswer).toHaveBeenLastCalledWith(expect.anything(), { answer: '' })
   })
