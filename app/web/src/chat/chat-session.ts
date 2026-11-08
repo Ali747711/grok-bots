@@ -362,12 +362,21 @@ export class ChatSession {
     }
     if (token !== this.openToken) return
     this.base = history.items
+    this.dropStoredLocalMessages(history.items)
     this.drainBuffer(history.rowIds)
     this.hydrated = true
     await this.resubmitChecking(opened.sessionId)
     if (token !== this.openToken) return
     this.ready = true
     this.emit()
+  }
+
+  /** A local message the stored transcript already holds (same submission id) is dropped: the stored row wins and the message is settled. */
+  private dropStoredLocalMessages(stored: readonly ChatItem[]): void {
+    const ids = new Set(stored.flatMap(i => (i.kind === 'user' && i.submissionId ? [i.submissionId] : [])))
+    if (ids.size === 0) return
+    this.pending = this.pending.filter(i => !(i.kind === 'user' && i.submissionId && ids.has(i.submissionId)))
+    for (const id of ids) if (this.submissions.has(id)) this.settle(id)
   }
 
   /** Apply parked live events, skipping turns whose rows the stored transcript already holds. */

@@ -600,5 +600,45 @@ describe('ChatSession', () => {
       await expect(session.send('nope')).rejects.toThrow('session_busy')
       expect(texts(session.items).at(-1)).toBe('notice:Not sent: session_busy')
     })
+
+  describe('history reload and local messages (submission id)', () => {
+    const sendUnconfirmed = async () => {
+      const { client, session } = setup()
+      await session.open()
+      client.handlers['prompt.submit'] = () => { throw new Error('WebSocket closed') }
+      await session.send('hello')
+      for (let i = 0; i < 4; i += 1) await flush()
+      const id = client.callsOf('prompt.submit')[0]!.params.submission_id as string
+      return { client, session, id }
+    }
+    const reload = async (client: FakeClient, rows: unknown[]) => {
+      fetchMock.mockImplementation(() => Promise.resolve(historyBody(rows)))
+      client.emit(frame('session.replay_gap', {}, { execution_generation: undefined }))
+      for (let i = 0; i < 4; i += 1) await flush()
+    }
+    const hello = (extra: Record<string, unknown> = {}) => ({ ...row(3, 'user', 'hello'), ...extra })
+    const count = (session: ChatSession) => session.items.filter(i => i.kind === 'user' && i.text === 'hello').length
+
+    it('drops a local message whose submission id the reloaded history already holds (history wins)', async () => {
+      const { client, session, id } = await sendUnconfirmed()
+      expect(count(session)).toBe(1)
+      await reload(client, [row(1, 'user', 'earlier question'), hello({ display_metadata: { submission_id: id } })])
+      expect(count(session)).toBe(1)
+      expect(session.items.find(i => i.kind === 'user' && i.text === 'hello')?.id).toBe('row-3')
+      await expect(session.retry(id)).rejects.toThrow()
+    })
+
+    it('keeps the local message when the history row has no submission id', async () => {
+      const { client, session } = await sendUnconfirmed()
+      await reload(client, [row(1, 'user', 'earlier question'), hello()])
+      expect(count(session)).toBe(2)
+    })
+
+    it('keeps both when a different submission id has identical text', async () => {
+      const { client, session } = await sendUnconfirmed()
+      await reload(client, [row(1, 'user', 'earlier question'), hello({ display_metadata: { submission_id: 'someone-else' } })])
+      expect(count(session)).toBe(2)
+    })
+  })
   })
 })

@@ -10,6 +10,8 @@ export interface HistoryRow {
   content?: string | null
   display_content?: string | null
   display_kind?: string | null
+  /** `submission_id` identifies the row of a message sent by Crew (matches the local optimistic item). */
+  display_metadata?: { submission_id?: unknown } | null
   tool_call_id?: string | null
   tool_name?: string | null
   tool_calls?: readonly { id?: string; function?: { name?: string; arguments?: string } }[] | null
@@ -51,6 +53,11 @@ function resultIsError(content: string): boolean {
 function relayedNotice(text: string): string {
   const match = RELAYED.exec(text)
   return match ? `From @${match[1]}: ${text.slice(match[0].length, match[0].length + NOTICE_MAX)}` : text.slice(0, NOTICE_MAX)
+}
+
+const submissionOf = (row: HistoryRow): { submissionId?: string } => {
+  const id = row.display_metadata?.submission_id
+  return typeof id === 'string' && id ? { submissionId: id } : {}
 }
 
 const textOf = (row: HistoryRow): string => (row.display_content ?? row.content ?? '').trim()
@@ -98,7 +105,7 @@ export function historyToItems(rows: readonly HistoryRow[]): ChatItem[] {
     flush()
     if (row.display_kind === 'failed_turn') items.push({ kind: 'notice', id, text })
     else if (row.display_kind === 'internal_notification') items.push({ kind: 'notice', id, text: relayedNotice(text) })
-    else if (row.role === 'user') items.push({ kind: 'user', id, text })
+    else if (row.role === 'user') items.push({ kind: 'user', id, text, ...submissionOf(row) })
     else if (row.role === 'assistant') items.push({ kind: 'assistant', id, text })
   }
   flush()
