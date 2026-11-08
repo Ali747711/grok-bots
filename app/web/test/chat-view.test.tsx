@@ -47,6 +47,21 @@ describe('MessageList', () => {
   })
 })
 
+describe('MessageList: delivery state', () => {
+  it('shows checking, and Not sent with its reason and a working Retry', () => {
+    const onRetry = vi.fn()
+    const items: ChatItem[] = [
+      { kind: 'user', id: 'u1', text: 'one', submissionId: 's1', delivery: 'checking' },
+      { kind: 'user', id: 'u2', text: 'two', submissionId: 's2', delivery: 'not_sent', reason: 'Not sent: session busy' }
+    ]
+    render(<MessageList items={items} onRetry={onRetry} />)
+    expect(screen.getByText('Delivery uncertain — checking…')).toBeInTheDocument()
+    expect(screen.getByText(/Not sent: session busy/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(onRetry).toHaveBeenCalledWith('s2')
+  })
+})
+
 describe('ChatView', () => {
   it('opens the chat, shows history and the header status', async () => {
     render(<ChatView bot={{ ...dev, status: 'working' }} state={crewState()} crewConnected />)

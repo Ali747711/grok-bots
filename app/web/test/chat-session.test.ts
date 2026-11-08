@@ -332,6 +332,25 @@ describe('ChatSession', () => {
       expect(texts(session.items)).toEqual(['user:question', 'assistant:older', 'assistant:Reply'])
     })
 
+    it('completes a turn that was running at open and finished during the history load (not stuck running)', async () => {
+      const release = deferredHistory()
+      const { client, session } = setup({ running: true, execution_generation: 4 })
+      const opening = session.open()
+      await flush()
+      client.emit(frame('message.delta', { text: 'Reply', turn_id: 't', segment: 0, offset: 0 }))
+      client.emit(complete([1, 2]))
+      release([row(1, 'user', 'question'), row(2, 'assistant', 'Reply')])
+      await opening
+      expect(session.running).toBe(false)
+      expect(session.canSend).toBe(true)
+      expect(texts(session.items)).toEqual(['user:question', 'assistant:Reply'])
+      // The next exchange lands after it, in order.
+      await session.send('next')
+      client.emit(frame('message.start', {}, { execution_generation: 5 }))
+      client.emit(frame('message.delta', { text: 'Second', turn_id: 't2', segment: 0, offset: 0 }, { execution_generation: 5 }))
+      expect(texts(session.items).filter(t => t !== 'work:0')).toEqual(['user:question', 'assistant:Reply', 'user:next', 'assistant:Second'])
+    })
+
     it('does the same after a replay gap reload', async () => {
       const { client, session } = setup()
       await session.open()
@@ -423,63 +442,155 @@ describe('ChatSession', () => {
     })
   })
 
-  describe('uncertain delivery (W7)', () => {
+  describe('uncertain delivery: re-submit under the same id', () => {
     const transportFailure = () => new Error('WebSocket closed')
     const lastUser = (session: ChatSession) => session.items.findLast(i => i.kind === 'user') as Extract<ChatItem, { kind: 'user' }>
-
-    it('does not report Not sent when the turn started before the receipt was lost', async () => {
-      const { client, session } = setup()
-      await session.open()
-      client.handlers['prompt.submit'] = () => {
-        client.emit(frame('message.start', {}))
-        throw transportFailure()
-      }
-      await expect(session.send('hello')).resolves.toBeDefined()
-      expect(texts(session.items).join('|')).not.toContain('Not sent')
-      expect(lastUser(session)).toMatchObject({ text: 'hello' })
-      expect(lastUser(session).delivery).toBeUndefined()
-      expect(session.running).toBe(true)
-    })
-
-    it('shows a transport failure as checking, then Not sent with Retry when nothing happened after reconnect', async () => {
-      const { client, session } = setup()
-      await session.open()
+    const settle = async () => { for (let i = 0; i < 5; i += 1) await flush() }
+    /** First submit loses its receipt with the socket closed; the reconnect then re-resumes. */
+    const loseReceipt = async (client: FakeClient, session: ChatSession) => {
       client.handlers['prompt.submit'] = () => { client.setState('closed'); throw transportFailure() }
       await session.send('hello')
-      expect(lastUser(session)).toMatchObject({ text: 'hello', delivery: 'checking' })
+    }
+    const reconnect = async (client: FakeClient) => {
       client.handlers['session.resume'] = () => ({ session_id: SID, execution_generation: 3, running: false })
       client.setState('open')
-      for (let i = 0; i < 4; i += 1) await flush()
-      expect(lastUser(session)).toMatchObject({ text: 'hello', delivery: 'not_sent' })
+      await settle()
+    }
 
+    it('shows the message as checking, re-submits once with the same id after re-attach, and shows it once', async () => {
+      const { client, session } = setup()
+      await session.open()
+      await loseReceipt(client, session)
+      expect(lastUser(session)).toMatchObject({ text: 'hello', delivery: 'checking' })
       client.handlers['prompt.submit'] = () => ({ status: 'started' })
-      await session.retry(lastUser(session).submissionId!)
+      await reconnect(client)
       const submits = client.callsOf('prompt.submit')
       expect(submits).toHaveLength(2)
-      expect(submits[1]?.params.submission_id).toBe(submits[0]?.params.submission_id)
+      expect(submits[1]?.params).toMatchObject({ submission_id: submits[0]?.params.submission_id, text: 'hello', session_id: SID })
+      expect(session.items.filter(i => i.kind === 'user' && i.text === 'hello')).toHaveLength(1)
+      expect(lastUser(session).delivery).toBeUndefined()
+      expect(texts(session.items).join('|')).not.toContain('Not sent')
+      expect(session.canSend).toBe(true)
+    })
+
+    it('does not enable send until the re-submit has finished', async () => {
+      const { client, session } = setup()
+      await session.open()
+      await loseReceipt(client, session)
+      let release: (v: unknown) => void = () => undefined
+      client.handlers['prompt.submit'] = () => new Promise(resolve => { release = resolve })
+      await reconnect(client)
+      expect(session.canSend).toBe(false)
+      release({ status: 'started' })
+      await settle()
+      expect(session.canSend).toBe(true)
+    })
+
+    it('treats a duplicate answer to the re-submit as delivered (the message stays)', async () => {
+      const { client, session } = setup()
+      await session.open()
+      await loseReceipt(client, session)
+      client.handlers['prompt.submit'] = () => ({ status: 'terminal' })
+      await reconnect(client)
+      expect(lastUser(session)).toMatchObject({ text: 'hello' })
       expect(lastUser(session).delivery).toBeUndefined()
     })
 
-    it('marks the message delivered when the snapshot after reconnect shows the turn running', async () => {
+    it('a turn that started before the receipt was lost is covered by the immediate re-submit (socket still up)', async () => {
       const { client, session } = setup()
       await session.open()
-      client.handlers['prompt.submit'] = () => { client.setState('closed'); throw transportFailure() }
+      let calls = 0
+      client.handlers['prompt.submit'] = () => {
+        calls += 1
+        if (calls === 1) { client.emit(frame('message.start', {})); throw transportFailure() }
+        return { status: 'started' }
+      }
       await session.send('hello')
-      client.handlers['session.resume'] = () => ({ session_id: SID, execution_generation: 4, running: true })
-      client.setState('open')
-      for (let i = 0; i < 4; i += 1) await flush()
+      await settle()
+      expect(calls).toBe(2)
+      expect(lastUser(session).delivery).toBeUndefined()
+      expect(texts(session.items).join('|')).not.toContain('Not sent')
+    })
+
+    it('shows Not sent with the reason and a Retry (same id) when the re-submit gets an RPC error', async () => {
+      const { client, session } = setup()
+      await session.open()
+      await loseReceipt(client, session)
+      client.handlers['prompt.submit'] = () => { throw new JsonRpcGatewayError('session_busy', { code: -32000 }) }
+      await reconnect(client)
+      expect(lastUser(session)).toMatchObject({ delivery: 'not_sent', reason: 'Not sent: session_busy' })
+      client.handlers['prompt.submit'] = () => ({ status: 'started' })
+      await expect(session.retry(lastUser(session).submissionId!)).resolves.toBe('started')
+      const submits = client.callsOf('prompt.submit')
+      expect(submits.at(-1)?.params.submission_id).toBe(submits[0]?.params.submission_id)
       expect(lastUser(session).delivery).toBeUndefined()
     })
 
-    it('marks the message delivered when history shows it after reconnect', async () => {
+    it('resolves to "couldn’t confirm delivery" when the re-submit also fails at the transport', async () => {
       const { client, session } = setup()
       await session.open()
-      client.handlers['prompt.submit'] = () => { client.setState('closed'); throw transportFailure() }
-      await session.send('hello')
-      fetchMock.mockImplementation(() => Promise.resolve(historyBody([row(1, 'user', 'earlier question'), row(2, 'assistant', 'earlier answer'), row(3, 'user', 'hello')])))
+      await loseReceipt(client, session)
+      client.handlers['prompt.submit'] = () => { throw transportFailure() }
+      await reconnect(client)
+      expect(lastUser(session)).toMatchObject({ delivery: 'not_sent', reason: 'Not sent — couldn’t confirm delivery' })
+      expect(session.canSend).toBe(true)
+    })
+
+    it('makes a failed Retry visible instead of swallowing it', async () => {
+      const { client, session } = setup()
+      await session.open()
+      await loseReceipt(client, session)
+      client.handlers['prompt.submit'] = () => { throw transportFailure() }
+      await reconnect(client)
+      client.handlers['prompt.submit'] = () => { throw new JsonRpcGatewayError('rate_limited', { code: -32000 }) }
+      await expect(session.retry(lastUser(session).submissionId!)).resolves.toBe('not_sent')
+      expect(lastUser(session)).toMatchObject({ delivery: 'not_sent', reason: 'Not sent: rate_limited' })
+    })
+
+    it('a Retry while disconnected shows why', async () => {
+      const { client, session } = setup()
+      await session.open()
+      await loseReceipt(client, session)
+      client.handlers['prompt.submit'] = () => { throw transportFailure() }
+      await reconnect(client)
+      client.setState('closed')
+      await session.retry(lastUser(session).submissionId!)
+      expect(lastUser(session)).toMatchObject({ delivery: 'not_sent', reason: 'Not sent — not connected to Hermes' })
+    })
+
+    it('never leaves a message checking forever when the re-open keeps failing', async () => {
+      const { client, session } = setup()
+      await session.open()
+      await loseReceipt(client, session)
+      client.handlers['session.resume'] = () => { throw new Error('down') }
       client.setState('open')
-      for (let i = 0; i < 4; i += 1) await flush()
-      expect(lastUser(session).delivery).toBeUndefined()
+      await settle()
+      expect(lastUser(session)).toMatchObject({ delivery: 'not_sent', reason: 'Not sent — couldn’t confirm delivery' })
+      session.close()
+    })
+
+    it('does not treat another bot’s message.start as delivery', async () => {
+      const { client, session } = setup()
+      await session.open()
+      await loseReceipt(client, session)
+      client.emit({ type: 'message.start', session_id: 'other-bot-session', payload: {}, execution_generation: 9 })
+      expect(lastUser(session)).toMatchObject({ delivery: 'checking' })
+    })
+
+    it('resolves a message that is still checking after the confirmation timeout', async () => {
+      vi.useFakeTimers()
+      try {
+        const client = new FakeClient()
+        client.handlers['session.resume'] = () => ({ session_id: SID, execution_generation: 3, running: false })
+        client.handlers['prompt.submit'] = () => { client.setState('closed'); throw new Error('WebSocket closed') }
+        const session = new ChatSession(client, bot({ name: 'default', sessionId: 'tip-1' }), { retryDelayMs: () => 0, confirmTimeoutMs: 5000 })
+        await session.open()
+        await session.send('hello')
+        await vi.advanceTimersByTimeAsync(5001)
+        expect(session.items.findLast(i => i.kind === 'user')).toMatchObject({ delivery: 'not_sent', reason: 'Not sent — couldn’t confirm delivery' })
+      } finally {
+        vi.useRealTimers()
+      }
     })
 
     it('keeps the plain Not sent notice for a definite rejection from Hermes', async () => {

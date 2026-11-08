@@ -118,6 +118,33 @@ describe('RequestCard: approval detail', () => {
   })
 })
 
+describe('RequestCard: hidden characters in the approval text', () => {
+  it('makes a bidi override visible in the command and warns', () => {
+    const command = 'echo safe \u202Etxt.sh'
+    render(<RequestCard entry={entry({ command })} onAnswer={noop} />)
+    expect(screen.getByText('⟨U+202E⟩')).toBeInTheDocument()
+    expect(screen.getByText('This command contains hidden characters.')).toBeInTheDocument()
+    expect(screen.getByTestId('approval-command').textContent).toContain('echo safe ⟨U+202E⟩txt.sh')
+  })
+
+  it.each(['\u2066', '\u200B', '\uFEFF', '\u00AD', '\u061C', '\u2060'])('flags %j', ch => {
+    render(<RequestCard entry={entry({ command: `a${ch}b` })} onAnswer={noop} />)
+    expect(screen.getByText(/^⟨U\+[0-9A-F]{4}⟩$/)).toBeInTheDocument()
+  })
+
+  it('marks hidden characters in the description too', () => {
+    render(<RequestCard entry={entry({ description: 'clean\u200Dup', command: 'ls' })} onAnswer={noop} />)
+    expect(screen.getByText('⟨U+200D⟩')).toBeInTheDocument()
+    expect(screen.getByText('This command contains hidden characters.')).toBeInTheDocument()
+  })
+
+  it('shows neither token nor warning for a plain command', () => {
+    render(<RequestCard entry={entry({ command: 'ls -la', description: 'List files' })} onAnswer={noop} />)
+    expect(screen.queryByText(/⟨U\+/)).toBeNull()
+    expect(screen.queryByText(/hidden characters/)).toBeNull()
+  })
+})
+
 describe('RequestCard: clarify', () => {
   const clarify = (over: Partial<PendingView> = {}) => entry({ kind: 'clarify', summary: 'Which branch?', choices: ['main', 'dev'], ...over })
 

@@ -6,7 +6,7 @@ import { fetchHistory, openBotChat, type HistoryResult, type OpenedChat, type Rp
 import { applyFrame, initialTurnState, type TurnFrame, type TurnState } from './turn-reducer'
 import type { ChatItem } from './types'
 
-export type AdmissionResult = 'queued' | 'started' | 'duplicate' | 'lost' | 'uncertain'
+export type AdmissionResult = 'queued' | 'started' | 'duplicate' | 'lost' | 'uncertain' | 'not_sent'
 
 /** What ChatSession needs from the vendored gateway client. */
 export interface ChatClient extends RpcClient {
@@ -18,20 +18,23 @@ export interface ChatClient extends RpcClient {
 
 type UserItem = Extract<ChatItem, { kind: 'user' }>
 
-/** A sent message whose receipt was lost or not yet confirmed. */
+/** A sent message whose delivery is not settled yet. */
 interface Submission {
   text: string
-  /** `message.start` count when it was sent; any later start counts as evidence it was delivered. */
-  startsAtSend: number
-  /** User item ids that existed at send time, to recognise the new stored row. */
-  knownUserIds: ReadonlySet<string>
   status: 'checking' | 'not_sent'
+  /** Resolves a still-"checking" message to "couldn't confirm" so it never waits forever. */
+  timer?: ReturnType<typeof setTimeout>
 }
+
+/** `send` = first attempt; `resubmit` = the single automatic re-ask under the same id; `retry` = the user's button. */
+type Attempt = 'send' | 'resubmit' | 'retry'
 
 const SUBMIT_TIMEOUT_MS = 1_800_000
 const RETRY_MIN_MS = 1000
 const RETRY_MAX_MS = 15_000
 const RECONNECTING = 'Reconnecting to the chat…'
+const CONFIRM_TIMEOUT_MS = 30_000
+const UNCONFIRMED = 'Not sent — couldn’t confirm delivery'
 const backoff = (attempt: number) => Math.min(RETRY_MAX_MS, RETRY_MIN_MS * 2 ** attempt)
 const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
 const reason = (error: unknown) => (error instanceof Error ? error.message : String(error))
@@ -75,7 +78,6 @@ export class ChatSession {
   /** Live events are parked here while history loads, then reconciled with the stored rows. */
   private loading = false
   private buffer: TurnFrame[] = []
-  private startsSeen = 0
   private noticeCount = 0
   private readonly submissions = new Map<string, Submission>()
   private readonly listeners = new Set<(items: readonly ChatItem[]) => void>()
@@ -84,7 +86,7 @@ export class ChatSession {
   constructor(
     private readonly client: ChatClient,
     private readonly bot: BotView,
-    private readonly options: { retryDelayMs?: (attempt: number) => number } = {}
+    private readonly options: { retryDelayMs?: (attempt: number) => number; confirmTimeoutMs?: number } = {}
   ) {}
 
   get sessionId(): string | null { return this._sessionId }
@@ -113,6 +115,7 @@ export class ChatSession {
     this.retryToken += 1
     this.ready = false
     this.attached = false
+    for (const record of this.submissions.values()) clearTimeout(record.timer)
     for (const off of this.detach) off()
     this.detach = []
   }
@@ -121,23 +124,23 @@ export class ChatSession {
     const sessionId = this._sessionId
     if (!this.canSend || !sessionId) throw new Error('Not connected to Hermes')
     const submissionId = crypto.randomUUID()
-    const known = new Set(this.items.filter(i => i.kind === 'user').map(i => i.id))
-    this.submissions.set(submissionId, { text, startsAtSend: this.startsSeen, knownUserIds: known, status: 'checking' })
+    this.submissions.set(submissionId, { text, status: 'checking' })
     this.pending = [...this.pending, { kind: 'user', id: `user-${submissionId}`, text, submissionId }]
     this.emit()
-    return this.submit(submissionId, sessionId, false)
+    return this.attempt(submissionId, sessionId, 'send')
   }
 
-  /** Resubmit an unsent message with the SAME submission id (Hermes treats it as idempotent). */
+  /** Ask again under the SAME submission id; Hermes answers with the admission it already holds, so the prompt runs once. */
   async retry(submissionId: string): Promise<AdmissionResult> {
-    const sessionId = this._sessionId
     const record = this.submissions.get(submissionId)
     if (!record) throw new Error('That message is no longer waiting')
-    if (!this.canSend || !sessionId) throw new Error('Not connected to Hermes')
-    record.status = 'checking'
-    this.setDelivery(submissionId, 'checking')
-    this.emit()
-    return this.submit(submissionId, sessionId, true)
+    const sessionId = this._sessionId
+    if (!this.canSend || !sessionId) {
+      this.markNotSent(submissionId, 'Not sent — not connected to Hermes')
+      return 'not_sent'
+    }
+    this.markChecking(submissionId)
+    return this.attempt(submissionId, sessionId, 'retry')
   }
 
   async stop(): Promise<void> {
@@ -153,73 +156,87 @@ export class ChatSession {
     }
   }
 
-  private async submit(submissionId: string, sessionId: string, retrying: boolean): Promise<AdmissionResult> {
-    const record = this.submissions.get(submissionId)!
-    const userId = `user-${submissionId}`
+  private async attempt(submissionId: string, sessionId: string, mode: Attempt): Promise<AdmissionResult> {
+    const record = this.submissions.get(submissionId)
+    if (!record) return 'started'
     try {
       const result = await this.client.request<{ status?: unknown } | undefined>(
         'prompt.submit',
         { profile: this.bot.name, session_id: sessionId, text: record.text, submission_id: submissionId },
         SUBMIT_TIMEOUT_MS
       )
-      this.submissions.delete(submissionId)
+      this.settle(submissionId)
       const admission = toAdmission(result?.status)
-      // On a retry, "duplicate" means the first attempt did land, so the message stays.
-      if (admission === 'duplicate' && !retrying) this.replaceItem(userId, null)
+      // For a re-ask, "duplicate" means the first attempt did land, so the message stays.
+      if (admission === 'duplicate' && mode === 'send') this.replaceItem(`user-${submissionId}`, null)
       else this.setDelivery(submissionId, undefined)
       if (admission === 'lost') this.pending = [...this.pending, { kind: 'notice', id: `lost-${submissionId}`, text: 'This message was lost when Hermes restarted' }]
       this.emit()
       return admission
     } catch (error) {
-      return this.submitFailed(error, submissionId, record)
+      return this.attemptFailed(error, submissionId, mode)
     }
   }
 
-  private submitFailed(error: unknown, submissionId: string, record: Submission): AdmissionResult {
-    const userId = `user-${submissionId}`
-    if (error instanceof JsonRpcGatewayError) {
-      // Hermes answered with a definite refusal.
-      this.submissions.delete(submissionId)
-      this.replaceItem(userId, { kind: 'notice', id: `notice-${userId}`, text: `Not sent: ${reason(error)}` })
+  private attemptFailed(error: unknown, submissionId: string, mode: Attempt): AdmissionResult {
+    const refused = error instanceof JsonRpcGatewayError
+    if (refused && mode === 'send') {
+      // Hermes answered with a definite refusal of the first attempt.
+      this.settle(submissionId)
+      this.replaceItem(`user-${submissionId}`, { kind: 'notice', id: `notice-user-${submissionId}`, text: `Not sent: ${reason(error)}` })
       this.emit()
       throw error
     }
-    // Socket closed or timed out: Hermes may or may not have accepted it.
-    if (this.startsSeen > record.startsAtSend) {
-      this.submissions.delete(submissionId)
-      this.setDelivery(submissionId, undefined)
-      this.emit()
-      return 'started'
+    if (refused) {
+      this.markNotSent(submissionId, `Not sent: ${reason(error)}`)
+      return 'not_sent'
     }
-    record.status = 'checking'
-    this.setDelivery(submissionId, 'checking')
-    this.emit()
-    if (this.canSend) void this.reconcile(false, false)
-    return 'uncertain'
+    // Socket closed or timed out on the first attempt: ask again once under the same id.
+    if (mode === 'send') {
+      this.markChecking(submissionId)
+      if (this.socketUp && this._sessionId) void this.attempt(submissionId, this._sessionId, 'resubmit')
+      return 'uncertain'
+    }
+    this.markNotSent(submissionId, UNCONFIRMED)
+    return 'not_sent'
   }
 
-  /**
-   * Decide the fate of messages whose receipt was lost: delivered when a turn started since, the snapshot
-   * shows one running, or the stored transcript holds a new user row with that text; otherwise "not sent".
-   */
-  private async reconcile(running: boolean, baseHasHistory: boolean): Promise<void> {
-    const waiting = [...this.submissions].filter(([, r]) => r.status === 'checking')
-    const sessionId = this._sessionId
-    if (waiting.length === 0 || !sessionId) return
-    const history: HistoryResult | null = await fetchHistory(this.bot.name, sessionId).catch(() => null)
-    for (const [id, record] of waiting) {
-      const stored = history?.items.some(i => i.kind === 'user' && !record.knownUserIds.has(i.id) && i.text === record.text) ?? false
-      if (running || stored || this.startsSeen > record.startsAtSend) {
-        this.submissions.delete(id)
-        // When history was loaded into `base` it already holds this message; drop the local copy.
-        if (stored && baseHasHistory) this.replaceItem(`user-${id}`, null)
-        else this.setDelivery(id, undefined)
-      } else if (history) {
-        record.status = 'not_sent'
-        this.setDelivery(id, 'not_sent')
-      }
-    }
+  private markChecking(submissionId: string): void {
+    const record = this.submissions.get(submissionId)
+    if (!record) return
+    clearTimeout(record.timer)
+    record.status = 'checking'
+    record.timer = setTimeout(() => {
+      if (record.status === 'checking') this.markNotSent(submissionId, UNCONFIRMED)
+    }, this.options.confirmTimeoutMs ?? CONFIRM_TIMEOUT_MS)
+    this.setDelivery(submissionId, 'checking')
     this.emit()
+  }
+
+  private markNotSent(submissionId: string, text: string): void {
+    const record = this.submissions.get(submissionId)
+    if (!record) return
+    clearTimeout(record.timer)
+    record.status = 'not_sent'
+    this.setDelivery(submissionId, 'not_sent', text)
+    this.emit()
+  }
+
+  private settle(submissionId: string): void {
+    clearTimeout(this.submissions.get(submissionId)?.timer)
+    this.submissions.delete(submissionId)
+  }
+
+  /** Re-ask every message still "checking", once each, before Send is enabled again. */
+  private async resubmitChecking(sessionId: string): Promise<void> {
+    for (const [id, record] of [...this.submissions]) {
+      if (record.status === 'checking') await this.attempt(id, sessionId, 'resubmit')
+    }
+  }
+
+  /** The re-open failed: nothing may stay "checking", so resolve what is left to "couldn't confirm". */
+  private resolveUnconfirmed(): void {
+    for (const [id, record] of this.submissions) if (record.status === 'checking') this.markNotSent(id, UNCONFIRMED)
   }
 
   private attach(): void {
@@ -257,7 +274,6 @@ export class ChatSession {
       void this.reopenWithRetry(true)
       return
     }
-    if (event.type === 'message.start') this.startsSeen += 1
     this.foldBeforeNextTurn(event)
     const next = applyFrame(this.turn, event)
     if (next === this.turn) return
@@ -287,6 +303,7 @@ export class ChatSession {
         if (mine === this.retryToken) { this._error = null; this.emit() }
         return
       } catch {
+        this.resolveUnconfirmed()
         if (mine !== this.retryToken || !this.attached || !this.socketUp) return
         this._error = RECONNECTING
         this.emit()
@@ -321,9 +338,10 @@ export class ChatSession {
     this.maxGeneration = sameId ? Math.max(this.maxGeneration, opened.generation) : opened.generation
     if (sameId && this.hydrated && !fresh) {
       this.turn = { ...this.turn, generation: Math.max(this.turn.generation, opened.generation), running: opened.running }
+      await this.resubmitChecking(opened.sessionId)
+      if (token !== this.openToken) return
       this.ready = true
       this.emit()
-      void this.reconcile(opened.running, false)
       return
     }
     await this.hydrate(token, opened)
@@ -346,9 +364,10 @@ export class ChatSession {
     this.base = history.items
     this.drainBuffer(history.rowIds)
     this.hydrated = true
+    await this.resubmitChecking(opened.sessionId)
+    if (token !== this.openToken) return
     this.ready = true
     this.emit()
-    void this.reconcile(opened.running, true)
   }
 
   /** Apply parked live events, skipping turns whose rows the stored transcript already holds. */
@@ -362,16 +381,32 @@ export class ChatSession {
       if (e.type === 'message.complete' && stored && Array.isArray(rows) && rows.some(r => typeof r === 'number' && stored.has(r))) persisted.add(e.execution_generation)
     }
     for (const e of events) {
-      if (persisted.has(e.execution_generation) || e.type === 'session.replay_gap') continue
-      this.handleEvent(e)
+      if (e.type === 'session.replay_gap') continue
+      if (!persisted.has(e.execution_generation)) this.handleEvent(e)
+      else if (e.type === 'message.complete') this.finishPersistedTurn(e)
     }
   }
 
-  private setDelivery(submissionId: string, delivery: 'checking' | 'not_sent' | undefined): void {
+  /** The turn is already in the stored transcript: only record that it ended (no text again), so the chat is not stuck "running". */
+  private finishPersistedTurn(event: TurnFrame): void {
+    const g = num(event.execution_generation) ?? this.turn.generation
+    this.noteGeneration(g)
+    this.turn = {
+      ...this.turn,
+      generation: Math.max(this.turn.generation, g),
+      running: false,
+      textOpen: false,
+      status: null,
+      started: [...this.turn.started, g],
+      completed: [...this.turn.completed, g]
+    }
+  }
+
+  private setDelivery(submissionId: string, delivery: 'checking' | 'not_sent' | undefined, reasonText?: string): void {
     const update = (items: readonly ChatItem[]) => items.map((i): ChatItem => {
       if (i.kind !== 'user' || i.submissionId !== submissionId) return i
-      const { delivery: _old, ...rest } = i
-      return (delivery ? { ...rest, delivery } : rest) as UserItem
+      const { delivery: _d, reason: _r, ...rest } = i
+      return (delivery ? { ...rest, delivery, ...(reasonText ? { reason: reasonText } : {}) } : rest) as UserItem
     })
     this.base = update(this.base)
     this.pending = update(this.pending)

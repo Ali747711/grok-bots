@@ -6,6 +6,7 @@ import type { PendingView } from '@/state/types'
 
 import type { AnswerBody } from './answer-request'
 import { choiceCopy } from './choice-copy'
+import { hasHidden, RevealHidden } from './reveal-hidden'
 
 interface RequestCardProps {
   entry: PendingView
@@ -30,10 +31,11 @@ function ApprovalDetail({ entry }: { entry: PendingView }) {
   if (entry.command === undefined && entry.description === undefined) return <p className="mb-2 font-medium break-words">{entry.summary}</p>
   return (
     <div className="mb-2 space-y-2">
-      {entry.description && <p className="font-medium break-words whitespace-pre-wrap">{entry.description}</p>}
+      {(hasHidden(entry.command) || hasHidden(entry.description)) && <p className="text-xs font-medium text-red-600 dark:text-red-400">This command contains hidden characters.</p>}
+      {entry.description && <p className="font-medium break-words whitespace-pre-wrap"><RevealHidden text={entry.description} /></p>}
       {entry.command && (
         <pre data-testid="approval-command" className="max-h-[40vh] overflow-auto rounded-md border border-border bg-card p-2 font-mono text-xs break-all whitespace-pre-wrap">
-          {entry.command}
+          <RevealHidden text={entry.command} />
         </pre>
       )}
       {entry.detailTruncated && <p className="text-xs font-medium text-red-600 dark:text-red-400">This command is too long to show in full. Review it in the Hermes app.</p>}

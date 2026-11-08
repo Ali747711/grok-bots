@@ -16,7 +16,7 @@ function Item({ item, onRetry }: { item: ChatItem; onRetry?: (submissionId: stri
           {item.delivery === 'checking' && <p className="text-xs text-muted-foreground">Delivery uncertain — checking…</p>}
           {item.delivery === 'not_sent' && (
             <p className="text-xs text-muted-foreground">
-              Not sent.{' '}
+              {item.reason ?? 'Not sent'}.{' '}
               {item.submissionId && onRetry && (
                 <button type="button" className="underline" onClick={() => onRetry(item.submissionId!)}>Retry</button>
               )}
