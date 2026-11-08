@@ -148,9 +148,9 @@ describe('runNow', () => {
   })
 
   it('reports already_running on a 409 and throws other errors', async () => {
-    cron.handler = () => { throw new HermesRestError(409, 'Job is already running') }
+    cron.handler = call => { if (call.path.endsWith('/trigger')) throw new HermesRestError(409, 'Job is already running'); return job() }
     await expect(svc.runNow('scout', 'abc123')).resolves.toBe('already_running')
-    cron.handler = () => { throw new HermesRestError(404, 'Job not found') }
+    cron.handler = call => { if (call.path.endsWith('/trigger')) throw new HermesRestError(404, 'Job not found'); return job() }
     await expect(svc.runNow('scout', 'abc123')).rejects.toMatchObject({ status: 404 })
     cron.handler = () => job()
     await expect(svc.runNow('scout', 'abc123')).resolves.toBe('started')
@@ -277,6 +277,14 @@ describe('runNow on a paused routine', () => {
       await vi.advanceTimersByTimeAsync(0)
       expect(pauseCalls()).toHaveLength(0)
     }
+  })
+
+  it('refuses to run when the job cannot be read, sending no trigger and leaving nothing running', async () => {
+    cron.handler = call => { if (call.method === 'GET') throw new HermesRestError(502, 'gateway down'); return job() }
+    await expect(svc.runNow('scout', 'abc123')).rejects.toMatchObject({ status: 502 })
+    expect(cron.calls.filter(c => c.path.endsWith('/trigger'))).toHaveLength(0)
+    cron.handler = () => job()
+    await expect(svc.runNow('scout', 'abc123')).resolves.toBe('started')
   })
 
   it('warns when the re-pause fails', async () => {

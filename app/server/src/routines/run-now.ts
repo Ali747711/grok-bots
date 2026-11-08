@@ -15,13 +15,10 @@ export interface RunNowContext {
 
 const reason = (error: unknown): string => (error instanceof Error ? error.message : String(error)).slice(0, 200)
 
+/** A failed read propagates: without knowing the state, triggering could un-pause the routine for good. */
 async function wasPaused(ctx: RunNowContext, bot: string, id: string): Promise<boolean> {
-  try {
-    const job = jobSchema.safeParse(await ctx.rest.request<unknown>('GET', jobPath(id), { query: { profile: bot } }))
-    return job.success && (job.data.enabled === false || job.data.state === 'paused')
-  } catch {
-    return false
-  }
+  const job = jobSchema.safeParse(await ctx.rest.request<unknown>('GET', jobPath(id), { query: { profile: bot } }))
+  return job.success && (job.data.enabled === false || job.data.state === 'paused')
 }
 
 async function repause(ctx: RunNowContext, bot: string, id: string): Promise<void> {
@@ -42,7 +39,12 @@ export async function runNow(ctx: RunNowContext, bot: string, id: string): Promi
   const k = jobKey(bot, id)
   if (ctx.running.has(k)) return 'already_running'
   ctx.running.add(k)
-  if (await wasPaused(ctx, bot, id)) ctx.restorePause.add(k)
+  try {
+    if (await wasPaused(ctx, bot, id)) ctx.restorePause.add(k)
+  } catch (error) {
+    ctx.running.delete(k)
+    throw error
+  }
   let detached = false
   const settled = ctx.rest.request('POST', `${jobPath(id)}/trigger`, { query: { profile: bot }, timeoutMs: 0 })
     .then(() => null, (error: unknown) => {
