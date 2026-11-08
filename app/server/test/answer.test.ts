@@ -387,3 +387,80 @@ describe('answer audit trail', () => {
   })
 })
 
+
+describe('session tip following', () => {
+  function tipClient() {
+    const calls: { method: string; params: Record<string, unknown> }[] = []
+    const handlers: Handler<{ type: string; session_id?: string; payload?: unknown }>[] = []
+    let resolvedId = 'A'
+    const c = {
+      calls,
+      setTip: (id: string) => { resolvedId = id },
+      emitEvent: (e: { type: string; session_id?: string; payload?: unknown }) => { for (const h of handlers) h(e) },
+      close: () => undefined,
+      onRequest: () => () => undefined,
+      onEvent: (h: Handler<{ type: string; session_id?: string; payload?: unknown }>) => { handlers.push(h); return () => undefined },
+      onState: () => () => undefined,
+      request: async (method: string, params: Record<string, unknown> = {}) => {
+        calls.push({ method, params })
+        if (method === 'profiles.list') return { profiles: [{ name: 'crew-test', canonical_session: { id: 'root', resolved_id: resolvedId } }] }
+        if (method === 'session.resume') {
+          return { session_id: `live-${String(params.session_id)}`, stored_session_id: params.session_id, execution_generation: 1, running: false, prompts: [] }
+        }
+        return { status: 'resolved' }
+      }
+    }
+    return c
+  }
+
+  it('resumes a changed tip, repairs an unknown-owner approval and answers with the right profile and session', async () => {
+    const c = tipClient()
+    const w = startWatcher({ client: c as unknown as WatcherClient, connect: async () => undefined, now: () => 1, reconnectDelayMs: () => 60_000 })
+    await flush(); await flush()
+    expect(c.calls.filter(x => x.method === 'session.resume').map(x => x.params.session_id)).toEqual(['A'])
+    c.setTip('B')
+    c.emitEvent({ type: 'approval.request', session_id: 'B', execution_generation: 2, payload: { prompt_id: 'p-b', command: 'ls', choices: ['once', 'deny'] } })
+    const before = w.state()
+    expect(before.pending[0]).toMatchObject({ profile: 'unknown', answerable: false })
+    expect(before.bots[0]!.status).toBe('idle')
+    c.emitEvent({ type: 'sessions.changed' })
+    await flush(); await flush(); await flush()
+    expect(c.calls.filter(x => x.method === 'session.resume').map(x => x.params.session_id)).toEqual(['A', 'B'])
+    const after = w.state()
+    expect(after.pending[0]).toMatchObject({ id: 'p-b', profile: 'crew-test', answerable: true })
+    expect(after.bots[0]!.status).toBe('needs_you')
+    const appB = createApp({ ...base, watcher: w })
+    const res = await appB.request('/crew/requests/p-b/answer', {
+      method: 'POST',
+      headers: { Host: HOST, Cookie: cookie, Origin: ORIGIN, 'X-Crew-CSRF': CSRF, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ choice: 'deny' })
+    })
+    expect(res.status).toBe(202)
+    expect(c.calls.at(-1)).toEqual({
+      method: 'approval.respond',
+      params: { profile: 'crew-test', session_id: 'B', execution_generation: 2, prompt_id: 'p-b', choice: 'deny' }
+    })
+    w.stop()
+  })
+
+  it('does not resume again while the tip is unchanged', async () => {
+    const c = tipClient()
+    const w = startWatcher({ client: c as unknown as WatcherClient, connect: async () => undefined, now: () => 1, reconnectDelayMs: () => 60_000 })
+    await flush(); await flush()
+    c.emitEvent({ type: 'sessions.changed' })
+    await flush(); await flush()
+    expect(c.calls.filter(x => x.method === 'session.resume').length).toBe(1)
+    w.stop()
+  })
+
+  it('repairs an unknown owner as soon as the roster names the session, even before a resume', async () => {
+    const c = tipClient()
+    const w = startWatcher({ client: c as unknown as WatcherClient, connect: async () => undefined, now: () => 1, reconnectDelayMs: () => 60_000 })
+    await flush(); await flush()
+    w.store.add({ id: 'orphan', kind: 'approval', profile: 'unknown', sessionId: 'root', summary: 's', receivedAt: 1, source: 'event', promptId: 'orphan', executionGeneration: 1, choices: ['once'] })
+    c.emitEvent({ type: 'sessions.changed' })
+    await flush(); await flush()
+    expect(w.state().pending[0]).toMatchObject({ id: 'orphan', profile: 'crew-test' })
+    w.stop()
+  })
+})

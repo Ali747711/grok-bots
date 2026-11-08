@@ -79,6 +79,20 @@ export class PendingStore {
     this.notify()
   }
 
+  /**
+   * The owner of `sessionId` became known (roster or resume): fix unsettled entries first seen
+   * before the mapping existed. Immutable update, one notification.
+   */
+  repairProfile(sessionId: string, profile: string): void {
+    let changed = false
+    for (const [id, entry] of this.entries) {
+      if (entry.settled || entry.profile !== 'unknown' || entry.sessionId !== sessionId) continue
+      this.entries.set(id, { ...entry, profile })
+      changed = true
+    }
+    if (changed) this.notify()
+  }
+
   /** Forget entries that settled more than `olderThanMs` ago (they only exist to explain late answers). */
   prune(olderThanMs: number): void {
     const cutoff = this.now() - olderThanMs

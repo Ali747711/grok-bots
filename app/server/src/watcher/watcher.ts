@@ -86,7 +86,8 @@ export function startWatcher(deps: WatcherDeps): Watcher {
   let syncFailures = 0
   const sessionProfile = new Map<string, string>()
   let log: readonly DebugEntry[] = []
-  let subscribed = new Set<string>()
+  /** profile → the session tip it is currently subscribed to (a changed tip needs a fresh resume). */
+  let subscribed = new Map<string, string>()
   let attempt = 0
   let timer: NodeJS.Timeout | null = null
   let stopped = false
@@ -111,12 +112,17 @@ export function startWatcher(deps: WatcherDeps): Watcher {
   }
   const ctx = { profileForSession: (sid: string) => sessionProfile.get(sid), now: deps.now }
 
+  /** Learn that `sid` belongs to `profile`; entries first seen before this get their owner back. */
+  function mapSession(profile: string, sid: string | undefined): void {
+    if (!sid) return
+    sessionProfile.set(sid, profile)
+    tracker.markSubscribed(profile, sid)
+    store.repairProfile(sid, profile)
+  }
+
   function recordSnapshot(profile: string, snap: Snapshot): void {
-    for (const sid of [snap.session_id, snap.stored_session_id]) {
-      if (!sid) continue
-      sessionProfile.set(sid, profile)
-      tracker.markSubscribed(profile, sid)
-    }
+    mapSession(profile, snap.session_id)
+    mapSession(profile, snap.stored_session_id)
     tracker.applyEvent({
       type: 'session.info', session_id: snap.session_id, execution_generation: snap.execution_generation,
       payload: { running: snap.running }
@@ -141,12 +147,17 @@ export function startWatcher(deps: WatcherDeps): Watcher {
     changed()
     let ok = true
     for (const row of profiles) {
-      const storedId = row.canonical_session?.id
-      if (!storedId || subscribed.has(storedId)) continue
+      const chat = row.canonical_session
+      // The tip (resolved_id) moves when a chat is compressed; the root id stays. Follow the tip.
+      const storedId = chat?.resolved_id ?? chat?.id
+      if (!chat || !storedId) continue
+      mapSession(row.name, chat.id)
+      mapSession(row.name, chat.resolved_id)
+      if (subscribed.get(row.name) === storedId) continue
       try {
         const requestedAt = deps.now()
         const snap = await client.request<Snapshot>('session.resume', { profile: row.name, session_id: storedId, omit_messages: true })
-        subscribed = new Set([...subscribed, storedId])
+        subscribed = new Map([...subscribed, [row.name, storedId]])
         recordSnapshot(row.name, snap)
         const sessionIds = [snap.session_id, snap.stored_session_id].filter((id): id is string => Boolean(id))
         store.reconcile(sessionIds, new Set((snap.prompts ?? []).map(p => p.prompt_id)), requestedAt)
@@ -208,7 +219,7 @@ export function startWatcher(deps: WatcherDeps): Watcher {
     setHermes('connecting')
     const epoch = connectionEpoch
     try {
-      subscribed = new Set()
+      subscribed = new Map()
       await deps.connect(client)
       attempt = 0
       authClosed = false
