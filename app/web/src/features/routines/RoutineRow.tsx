@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
+import { describeSchedule } from './describe-schedule'
 import { deleteRoutine, pauseRoutine, resumeRoutine, runRoutine } from './routines-api'
 import type { LastStatus, RoutineView } from './types'
 import { formatInZone } from './use-schedule-preview'
@@ -60,7 +61,7 @@ export function RoutineRow({ routine, onChanged, onEdit }: RoutineRowProps) {
           <span className={cn('block size-3.5 rounded-full bg-background transition-transform', routine.enabled ? 'translate-x-4' : 'bg-muted-foreground')} />
         </button>
       </div>
-      <div className="text-xs text-muted-foreground">{routine.scheduleText}</div>
+      <div className="text-xs text-muted-foreground">{describeSchedule(routine.schedule)}</div>
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <span>{routine.enabled ? (routine.nextRunAt !== null ? `Next: ${formatInZone(routine.nextRunAt, routine.timezone)}` : '') : 'Paused'}</span>
         {result && <span title={routine.lastError ?? undefined} className={cn('rounded-full bg-secondary px-1.5', result.bad && 'text-destructive')}>{result.text}</span>}

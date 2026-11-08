@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 
 import { CrewApiError, createRoutine, updateRoutine } from './routines-api'
-import { SchedulePicker } from './SchedulePicker'
+import { SchedulePicker, scheduleReady } from './SchedulePicker'
 import type { RoutineInput, RoutineView, ScheduleSpec } from './types'
 import { formatInZone, useSchedulePreview } from './use-schedule-preview'
 
@@ -24,12 +24,13 @@ const browserZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone
 const DEFAULT_SCHEDULE: ScheduleSpec = { kind: 'daily', time: '09:00' }
 
 function saveError(e: unknown): string {
+  if (e instanceof CrewApiError && e.body?.error === 'bad_body') return "Some fields aren't filled in correctly."
   if (e instanceof CrewApiError && typeof e.body?.message === 'string') return e.body.message
   return e instanceof CrewApiError && e.status === 503 ? 'Hermes is offline' : 'Could not save the routine. Try again.'
 }
 
 function NextRuns({ schedule, timezone }: { schedule: ScheduleSpec; timezone: string }) {
-  const { next, error } = useSchedulePreview(schedule, timezone)
+  const { next, error } = useSchedulePreview(schedule, timezone, scheduleReady(schedule))
   return (
     <div className="text-xs text-muted-foreground">
       <div className="font-medium">Next runs</div>
@@ -97,7 +98,7 @@ export function RoutineForm({ onCancel, ...props }: RoutineFormProps) {
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
-        <Button type="button" disabled={busy || title.trim() === '' || instruction.trim() === ''} onClick={() => void save()}>Save</Button>
+        <Button type="button" disabled={busy || title.trim() === '' || instruction.trim() === '' || !scheduleReady(schedule)} onClick={() => void save()}>Save</Button>
       </div>
     </div>
   )

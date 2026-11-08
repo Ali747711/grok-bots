@@ -11,17 +11,22 @@ export interface Preview {
 }
 
 /** Next run times for a schedule, asked 300 ms after the last change. A failure is text, never a throw. */
-export function useSchedulePreview(schedule: ScheduleSpec, timezone: string): Preview {
+export function useSchedulePreview(schedule: ScheduleSpec, timezone: string, enabled = true): Preview {
   const [preview, setPreview] = useState<Preview>({ next: null, error: null })
   const key = JSON.stringify(schedule)
 
   useEffect(() => {
     let active = true
+    if (!enabled) {
+      setPreview({ next: null, error: null })
+      return undefined
+    }
     const timer = setTimeout(() => {
       previewRoutine(JSON.parse(key) as ScheduleSpec, timezone).then(
         next => active && setPreview({ next, error: null }),
         (e: unknown) => {
-          const message = e instanceof CrewApiError && typeof e.body?.message === 'string' ? e.body.message : "Couldn't work out the next runs"
+          const friendly = e instanceof CrewApiError && e.body?.error !== 'bad_body' && typeof e.body?.message === 'string'
+          const message = friendly ? String((e as CrewApiError).body?.message) : "Couldn't work out the next runs"
           if (active) setPreview({ next: null, error: message })
         }
       )
@@ -30,7 +35,7 @@ export function useSchedulePreview(schedule: ScheduleSpec, timezone: string): Pr
       active = false
       clearTimeout(timer)
     }
-  }, [key, timezone])
+  }, [key, timezone, enabled])
 
   return preview
 }

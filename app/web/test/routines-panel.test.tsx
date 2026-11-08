@@ -9,7 +9,7 @@ import { bot } from './fixtures'
 const json = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status }))
 const routine = (over: Partial<RoutineView> = {}): RoutineView => ({
   id: 'r1', bot: 'dev', title: 'Daily digest', instruction: 'Summarise the news', schedule: { kind: 'daily', time: '09:00' },
-  scheduleText: 'Every day at 09:00', timezone: 'Europe/London', deliverToChat: false, enabled: true, nextRunAt: Date.UTC(2026, 10, 9, 9, 0),
+  scheduleText: '0 9 * * *', timezone: 'Europe/London', deliverToChat: false, enabled: true, nextRunAt: Date.UTC(2026, 10, 9, 9, 0),
   lastRunAt: null, lastStatus: null, lastError: null, running: false, ...over
 })
 
@@ -44,7 +44,8 @@ describe('RoutinesPanel list', () => {
     stub({ [LIST]: () => json([routine({ lastStatus: 'delivery_failed', lastError: 'boom' })]) })
     open()
     expect(await screen.findByText('Daily digest')).toBeInTheDocument()
-    expect(screen.getByText('Every day at 09:00')).toBeInTheDocument()
+    expect(screen.getByText(/Every day at 9:00\s?AM/)).toBeInTheDocument()
+    expect(screen.queryByText('0 9 * * *')).toBeNull()
     expect(screen.getByText(/Next: Nov 9, 2026/)).toBeInTheDocument()
     expect(screen.getByText('Delivery failed')).toBeInTheDocument()
   })
@@ -123,7 +124,7 @@ describe('RoutinesPanel form', () => {
     const fn = stub({ [LIST]: () => json([]), 'POST /crew/routines?bot=dev': () => json(routine(), 201) })
     open()
     await fill()
-    fireEvent.change(screen.getByLabelText('Repeat'), { target: { value: 'weekdays' } })
+    fireEvent.change(screen.getByLabelText('When'), { target: { value: 'weekdays' } })
     fireEvent.change(screen.getByLabelText('Time'), { target: { value: '09:30' } })
     fireEvent.change(screen.getByLabelText('Timezone'), { target: { value: 'Asia/Tokyo' } })
     fireEvent.click(screen.getByLabelText(/Also post the result in the chat/))
@@ -171,5 +172,38 @@ describe('RoutinesPanel form', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(callsTo(fn, 'PUT /crew/routines/r1?bot=dev')).toHaveLength(1))
     expect(body(callsTo(fn, 'PUT /crew/routines/r1?bot=dev')[0])).toMatchObject({ title: 'Digest', timezone: 'Europe/London', schedule: { kind: 'daily', time: '09:00' } })
+  })
+
+  it('keeps Save off and skips the preview until a cron expression is typed', async () => {
+    const fn = stub({ [LIST]: () => json([]) })
+    open()
+    await fill()
+    fireEvent.change(screen.getByLabelText('When'), { target: { value: 'cron' } })
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    await new Promise(r => setTimeout(r, 450))
+    const previews = () => callsTo(fn, 'POST /crew/routines/preview').map(c => body(c).schedule.kind)
+    expect(previews()).not.toContain('cron')
+    fireEvent.change(screen.getByLabelText('Cron expression'), { target: { value: '*/5 * * * *' } })
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+    await waitFor(() => expect(previews()).toContain('cron'))
+  })
+
+  it('keeps Save off until the date of a one-time routine is set', async () => {
+    stub({ [LIST]: () => json([]) })
+    open()
+    await fill()
+    fireEvent.change(screen.getByLabelText('When'), { target: { value: 'once_at' } })
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('Date and time'), { target: { value: '2026-12-01T08:15' } })
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+  })
+
+  it('never shows raw validation text for a bad body', async () => {
+    stub({ [LIST]: () => json([]), 'POST /crew/routines?bot=dev': () => json({ error: 'bad_body', message: 'Invalid string: must match pattern' }, 400) })
+    open()
+    await fill()
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByText("Some fields aren't filled in correctly.")).toBeInTheDocument()
+    expect(screen.queryByText(/Invalid string/)).toBeNull()
   })
 })

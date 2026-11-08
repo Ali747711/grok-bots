@@ -1,3 +1,5 @@
+import { useEffect, useId, useState } from 'react'
+
 import { Input } from '@/components/ui/input'
 
 import type { ScheduleKind, ScheduleSpec, Unit } from './types'
@@ -21,6 +23,41 @@ interface PickerProps {
 }
 
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, Math.trunc(n) || min))
+
+/** False while a one-time date or a cron expression is still empty; the form holds Save and the preview until then. */
+export function scheduleReady(spec: ScheduleSpec): boolean {
+  if (spec.kind === 'once_at') return spec.at !== ''
+  if (spec.kind === 'cron') return spec.expr.trim() !== ''
+  return true
+}
+
+interface NumberFieldProps {
+  label: string
+  value: number
+  min: number
+  max: number
+  onChange: (n: number) => void
+}
+
+/** Keeps what is typed as text (so it can be cleared and retyped); the clamped number goes up, the text is tidied on blur. */
+function NumberField({ label, value, min, max, onChange }: NumberFieldProps) {
+  const [raw, setRaw] = useState(String(value))
+  useEffect(() => {
+    // Follow outside changes (a different kind picked), but never fight a field the user has emptied.
+    setRaw(r => (r === '' || clamp(Number(r), min, max) === value ? r : String(value)))
+  }, [value, min, max])
+
+  return (
+    <Input
+      aria-label={label} type="number" min={min} max={max} className="w-24" value={raw}
+      onChange={e => {
+        setRaw(e.target.value)
+        if (e.target.value !== '') onChange(clamp(Number(e.target.value), min, max))
+      }}
+      onBlur={() => setRaw(String(value))}
+    />
+  )
+}
 const timeOf = (v: ScheduleSpec) => ('time' in v ? v.time : '09:00')
 
 /** A schedule of another kind, carrying over what still makes sense (the time of day). */
@@ -40,7 +77,7 @@ export function defaultFor(kind: ScheduleKind, from: ScheduleSpec): ScheduleSpec
 function AmountUnit({ value, onChange }: { value: Extract<ScheduleSpec, { amount: number }>; onChange: (n: ScheduleSpec) => void }) {
   return (
     <div className="flex gap-2">
-      <Input aria-label="Amount" type="number" min={1} max={999} className="w-24" value={value.amount} onChange={e => onChange({ ...value, amount: clamp(Number(e.target.value), 1, 999) })} />
+      <NumberField label="Amount" value={value.amount} min={1} max={999} onChange={amount => onChange({ ...value, amount })} />
       <select aria-label="Unit" className={SELECT} value={value.unit} onChange={e => onChange({ ...value, unit: e.target.value as Unit })}>
         <option value="m">minutes</option>
         <option value="h">hours</option>
@@ -74,7 +111,7 @@ function Details({ value, onChange }: PickerProps) {
     case 'monthly':
       return (
         <div className="flex gap-2">
-          <Input aria-label="Day of the month" type="number" min={1} max={31} className="w-24" value={value.day} onChange={e => onChange({ ...value, day: clamp(Number(e.target.value), 1, 31) })} />
+          <NumberField label="Day of the month" value={value.day} min={1} max={31} onChange={day => onChange({ ...value, day })} />
           <TimeInput value={value} onChange={onChange} />
         </div>
       )
@@ -85,9 +122,11 @@ function Details({ value, onChange }: PickerProps) {
 
 /** Pick when a routine runs; emits a `ScheduleSpec`. */
 export function SchedulePicker({ value, onChange }: PickerProps) {
+  const id = useId()
   return (
     <div className="flex flex-col gap-2">
-      <select aria-label="Repeat" className={SELECT} value={value.kind} onChange={e => onChange(defaultFor(e.target.value as ScheduleKind, value))}>
+      <label htmlFor={id} className="text-sm font-medium">When</label>
+      <select id={id} className={SELECT} value={value.kind} onChange={e => onChange(defaultFor(e.target.value as ScheduleKind, value))}>
         {KINDS.map(k => <option key={k.kind} value={k.kind}>{k.label}</option>)}
       </select>
       <Details value={value} onChange={onChange} />
