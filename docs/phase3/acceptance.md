@@ -4,6 +4,9 @@ Branch `crew-phase3`. Run on 2026-11-09 against the live VM (Hermes on 127.0.0.1
 Every screenshot was taken on a test-owned `e2e<digits>` bot, deleted afterwards. Every other roster row (Hermes, Fixture, Reese, X) is masked grey with Playwright's `mask`, and no non-e2e transcript is visible. Every PNG was opened and checked before it was committed.
 Honest limits are marked **unverified** or **failed** below.
 
+
+**Post-wave browser recheck (controller, 3cd5846):** the crew-test Computer tab with a live screen, light 1440x900 and dark 1000x800, showed the canvas with 0 console errors and 0 CSP violations; the screen was stopped afterwards (no Xvnc left running). This supersedes the earlier statement that the console/CSP check only predates the fix wave.
+
 ## Spec section 9, "Done when"
 
 ### 1. Computer tab, live view, Expand, Take control / Hand back / force, Stop, header thumbnail and use-screen switch work in a real browser, light and dark
@@ -12,15 +15,15 @@ Evidence: headless Chromium, 1440x900 and 1000x800, light and dark, live screen 
 - Live, bot in control: `live-bot-*.png`. Live, you in control with the red frame, "You're in control" and Stop disabled ("Hand back first"): `live-you-*.png`.
 - Expand: `expand-*.png`. The use-screen switch on: `use-screen-switch-*.png`. The header thumbnail with the tab closed: `header-thumbnail-*.png`.
 - Stop, with its confirm dialog: exercised in the live spec (below) and in an earlier real-browser run (Task 6); it left no Xvnc running.
-- Force hand back ("Give control back to <bot>"): unit tested only (`live-view.test.tsx` "shows both Take control and Give control back..."); not driven live because it needs a second viewer holding control.
+- Force hand back ("Give control back to <bot>"): unit tested only (`live-view-control.test.tsx` "shows both Take control and Give control back..."); not driven live because it needs a second viewer holding control.
 - Header at 1280x900 with the Routines panel open and a running screen (measured, `getBoundingClientRect`): with the thumbnail the bot name is 148 px wide and untruncated; with the "Someone is in control" chip (a second browser held control) the name block is at its 96 px minimum and the name is ellipsised ("E2E Accept..."). So the name stays visible but truncated while the chip shows. The chip itself is `min-w-0 truncate` with a `title`, and it opens the Computer tab like the thumbnail.
 
 ### 2. A Crew-started screen has the 15-minute idle stop in its bot's config
 Evidence: `computer.spec.ts` "a Crew-started screen has the 15-minute idle stop in its config" reads Hermes's raw config (`GET /api/config?profile=...&include_defaults=false`) after a Start from the Computer tab: `bot_desktop.idle_stop_minutes` is 15. Server unit tests cover the idempotent, sparse write (`screen-config.test.ts`, `screen-routes.test.ts`); Task 1 proved on `crew-test` that the PUT deep-merges (`hermes-facts.md` section 5).
 
 ### 3. A dropped link keeps control, and a closed view hands back, both proven by tests
-- Dropped link keeps control: display proxy test "turns an abnormal browser close into an upstream terminate, keeping the lease" (the fake Hermes sees close 1006, never 1000), plus the 1005/4999 variants; and `live-view.test.tsx` "follows the close-code table" (the browser redials with the same viewer id).
-- Closed view hands back: `live-view.test.tsx` "hands back and closes 1000 when the Computer tab unmounts", `computer-panel.test.tsx` "hands back and closes 1000 when the Computer tab is left"; moving between the panel and Expand does not hand back ("keeps control when the view moves between the panel and Expand", and the three-round-trip test).
+- Dropped link keeps control: display proxy test "turns an abnormal browser close into an upstream terminate, keeping the lease" (the fake Hermes sees close 1006, never 1000), plus the 1005/4999 variants; and `live-view-reconnect.test.tsx` "follows the close-code table" (the browser redials with the same viewer id).
+- Closed view hands back: `live-view-control.test.tsx` "hands back and closes 1000 when the Computer tab unmounts", `computer-panel.test.tsx` "hands back and closes 1000 when the Computer tab is left"; moving between the panel and Expand does not hand back ("keeps control when the view moves between the panel and Expand", and the three-round-trip test).
 
 ### 4. All unit suites pass, the 16 existing live e2e specs plus `computer.spec.ts` pass, no console errors or CSP violations
 - After the final fix wave: web `npm test -w web` gives 46 files, 535 tests passed; server `npm test -w server` gives 37 files, 436 tests passed.
@@ -44,7 +47,7 @@ An e2e bot with "Let <bot> use its screen" on (both keys read back as true) was 
 The first attempt in this run looked like a failure; most of it was the test, one part was a real bug.
 - **The clipboard reaches the screen.** On an e2e bot's running screen, with control taken in Crew and `crew-paste-ok` on the browser clipboard, pressing Control+V on the focused canvas made `xclip -o -selection clipboard` run on the host (against the bot's `DISPLAY` and Xauthority file) print `crew-paste-ok` (before the press it printed "target STRING not available"). So Hermes's bridge and Xvnc's built-in clipboard carry the text; no `vncconfig` is needed (my earlier `vncconfig` experiment was unnecessary).
 - **Why the first terminal test failed (test artifact):** in xfce4-terminal plain Ctrl+V is bash's "quote next key", not paste, which is why `^V` and then `^M` appeared. Terminal paste is Ctrl+Shift+V.
-- **The real bug found on the way:** the Shift chord sent the lowercase keysym `v` while Shift was held; Xvnc fakes Shift itself to produce the keysym it is sent, so it released Shift and the terminal still saw plain Ctrl+V. The chord now sends the uppercase keysym (`V`, 0x56) when Shift is held (unit tested in `live-view.test.tsx`, "keeps Shift in the chord...").
+- **The real bug found on the way:** the Shift chord sent the lowercase keysym `v` while Shift was held; Xvnc fakes Shift itself to produce the keysym it is sent, so it released Shift and the terminal still saw plain Ctrl+V. The chord now sends the uppercase keysym (`V`, 0x56) when Shift is held (unit tested in `live-view-control.test.tsx`, "keeps Shift in the chord...").
 - **Proof of a real paste:** on the current build, with xfce4-terminal opened from the screen's own dock and focused, Control+Shift+V from the browser pasted `crew-paste-ok`; Enter ran it and the shell answered `crew-paste-ok: command not found`. Screenshot: `paste-terminal-light.png` (roster masked; e2e bot only).
 - Also fixed in this round: a held-down Ctrl+V no longer pastes repeatedly (`event.repeat` is swallowed), covered by a unit test. Paste into a GUI text field with plain Ctrl+V was not driven live (the terminal case above is the proof).
 
