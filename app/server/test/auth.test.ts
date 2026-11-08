@@ -139,3 +139,15 @@ describe('ensureSecret', () => {
     expect((await ensureSecret(path)).equals(first)).toBe(true)
   })
 })
+
+describe('login page style', () => {
+  it('serves the sky style with the ticket script and the unchanged CSP', async () => {
+    const app = createApp(makeDeps())
+    const res = await app.request('/login', { headers: { Host: HOST } })
+    const html = await res.text()
+    for (const stop of ['#2a8af0', '#4ea4f6', '#bcdcfb', '#d6f55a']) expect(html).toContain(stop)
+    expect(html).toContain("fetch('/crew/login'")
+    expect(html).toContain("new URLSearchParams(location.hash.slice(1)).get('ticket')")
+    expect(res.headers.get('Content-Security-Policy')).toBe("default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'")
+  })
+})
