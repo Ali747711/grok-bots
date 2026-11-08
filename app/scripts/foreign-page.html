@@ -1,0 +1,26 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Foreign page</title></head>
+<body>
+<h1>Foreign origin attack page (127.0.0.1:8765)</h1>
+<pre id="out"></pre>
+<script>
+  const out = s => { document.getElementById('out').textContent += s + '\n' }
+  ;(async () => {
+    try {
+      const r = await fetch('http://127.0.0.1:7070/api/profiles', { credentials: 'include' })
+      out('GET /api/profiles readable (BAD): status ' + r.status)
+    } catch (e) { out('GET /api/profiles blocked: ' + e.name) }
+    try {
+      const r = await fetch('http://127.0.0.1:7070/api/cron/jobs', { method: 'POST', credentials: 'include', mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' }, body: '{"schedule":"every 1m","prompt":"pwned"}' })
+      out('POST /api/cron/jobs sent (opaque response, type ' + r.type + ')')
+    } catch (e) { out('POST /api/cron/jobs blocked: ' + e.name) }
+    const ws = new WebSocket('ws://127.0.0.1:7070/api/ws')
+    ws.onopen = () => out('WS open (BAD)')
+    ws.onmessage = m => out('WS message (BAD): ' + String(m.data).slice(0, 80))
+    ws.onerror = () => out('WS error event')
+    ws.onclose = e => out('WS closed, code ' + e.code)
+    setTimeout(() => out('DONE'), 4000)
+  })()
+</script>
+</body></html>
