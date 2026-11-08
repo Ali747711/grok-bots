@@ -101,9 +101,10 @@ function applyComplete(state: TurnState, payload: CompletePayload): TurnState {
   const at = items.findLastIndex(i => i.kind === 'assistant' && i.id.startsWith(assistantPrefix(g)))
   if (final) {
     const target = items[at]
-    items = target?.kind === 'assistant'
-      ? items.map((i, n) => (n === at ? { ...target, text: final } : i))
-      : [...items, { kind: 'assistant', id: newAssistantId(state), text: final }]
+    const sameText = target?.kind === 'assistant' && target.text.trim() === final
+    // Only the still-open segment is the final answer. A closed or sealed one (commentary) is kept as is.
+    if (target?.kind === 'assistant' && state.textOpen) items = items.map((i, n) => (n === at ? { ...target, text: final } : i))
+    else if (!sameText) items = [...items, { kind: 'assistant', id: newAssistantId(state), text: final }]
   }
   items = items.filter(i => !(i.kind === 'assistant' && i.id.startsWith(assistantPrefix(g)) && i.text.trim() === ''))
   const interrupted = payload.interrupted === true || payload.status === 'interrupted' || payload.outcome === 'interrupted'
