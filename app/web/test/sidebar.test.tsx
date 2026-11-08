@@ -11,7 +11,7 @@ vi.mock('bot-avatars', async () => {
   return {
     ...actual,
     BotAvatar: (props: Record<string, unknown>) => (
-      <div data-testid="stub" data-type={String(props.type)} data-color={props.color === undefined ? '' : String(props.color)} data-size={String(props.size)} />
+      <div data-testid="stub" data-type={String(props.type)} data-color={props.color === undefined ? '' : String(props.color)} data-size={String(props.size)} data-state={String(props.state)} />
     )
   }
 })
@@ -24,6 +24,11 @@ const pending = (id: string): PendingView => ({
 const renderSidebar = (state = crewState(), selected: string | null = null, onSelect = vi.fn()) =>
   render(<Sidebar state={state} selected={selected} onSelect={onSelect} />)
 
+function expectNoStatusShown() {
+  for (const stub of screen.getAllByTestId('stub')) expect(stub).not.toHaveAttribute('data-state', 'working')
+  expect(screen.queryAllByRole('img', { name: 'Needs you', hidden: true })).toHaveLength(0)
+}
+
 describe('Sidebar', () => {
   it('lists the primary bot first, then the others, with status dots', () => {
     renderSidebar()
@@ -32,9 +37,9 @@ describe('Sidebar', () => {
     const others = screen.getByRole('group', { name: 'Bots' })
     const names = within(others).getAllByRole('button').map(b => b.getAttribute('data-bot'))
     expect(names).toEqual(['researcher', 'dev'])
-    expect(screen.getByTestId('status-default')).toHaveAttribute('data-status', 'working')
-    expect(screen.getByTestId('status-researcher')).toHaveAttribute('data-status', 'needs_you')
-    expect(screen.getByTestId('status-dev')).toHaveAttribute('data-status', 'idle')
+    expect(within(screen.getByRole('button', { name: /Hermes/ })).getByTestId('stub')).toHaveAttribute('data-state', 'working')
+    expect(within(screen.getByRole('button', { name: /Dev/ })).getByTestId('stub')).toHaveAttribute('data-state', 'default')
+    expect(screen.getAllByRole('img', { name: 'Needs you', hidden: true })).toHaveLength(1)
   })
 
   it('shows the preview line', () => {
@@ -53,7 +58,7 @@ describe('Sidebar', () => {
   it('shows the hermes offline banner and dims the roster without statuses', () => {
     renderSidebar(crewState({ hermes: 'offline' }))
     expect(screen.getByText('Hermes is offline')).toBeInTheDocument()
-    expect(screen.queryByTestId('status-default')).toBeNull()
+    expectNoStatusShown()
     expect(screen.getByTestId('roster')).toHaveAttribute('data-stale', 'true')
   })
 
@@ -116,7 +121,7 @@ describe('Sidebar', () => {
     renderSidebar(crewState({ pending: [pending('a')] }))
     expect(within(screen.getByRole('group', { name: 'Primary' })).getByText('Primary')).toHaveClass('label-mono')
     expect(within(screen.getByRole('group', { name: 'Bots' })).getByText('Bots')).toHaveClass('label-mono')
-    expect(screen.getByTestId('needs-you-count')).toHaveClass('bg-needs')
+    expect(screen.getByTestId('needs-you-count')).toHaveClass('bg-primary', 'text-primary-foreground')
   })
 
   it('renders a loading sidebar before the first state', () => {
@@ -128,7 +133,7 @@ describe('Sidebar', () => {
     render(<Sidebar state={crewState()} selected={null} onSelect={() => undefined} crewConnected={false} />)
     expect(screen.getByText('Reconnecting to Crew…')).toBeInTheDocument()
     expect(screen.getByTestId('roster')).toHaveAttribute('data-stale', 'true')
-    expect(screen.queryByTestId('status-default')).toBeNull()
+    expectNoStatusShown()
   })
 
   it('opens the Needs you view', () => {

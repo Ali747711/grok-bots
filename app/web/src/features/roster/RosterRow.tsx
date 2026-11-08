@@ -24,8 +24,8 @@ export function RosterRow({ bot, active, showStatus, onSelect }: RosterRowProps)
         active && 'bg-sky-soft shadow-[inset_3px_0_0_var(--sky)] hover:bg-sky-soft'
       )}
     >
-      <CrewAvatar bot={bot} size={36} decorative />
-      {showStatus && <span data-testid={`status-${bot.name}`} data-status={bot.status} aria-hidden="true" className="sr-only" />}
+      {/* A stale roster must not show live status, so the avatar sees an idle copy (hidden/old bots still sleep). */}
+      <CrewAvatar bot={showStatus ? bot : { ...bot, status: 'idle' }} size={36} decorative />
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5">
           <span className={cn('truncate text-sm font-semibold', active && 'text-sky')}>{bot.title}</span>

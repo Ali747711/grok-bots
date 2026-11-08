@@ -62,7 +62,7 @@ export function Sidebar({ state, selected, onSelect, crewConnected = true, onNee
       <button type="button" onClick={onNeedsYou} className="flex w-full items-center gap-2.5 rounded-2xl p-2 text-left text-sm font-medium transition-colors hover:bg-muted">
         <span>Needs you</span>
         {needsYou > 0 && (
-          <Badge data-testid="needs-you-count" className="ml-auto bg-needs font-semibold text-black">
+          <Badge data-testid="needs-you-count" className="ml-auto font-semibold">
             {needsYou}
           </Badge>
         )}

@@ -10,7 +10,7 @@ const MESSAGES: Record<Exclude<HermesConnection, 'connected'>, string> = {
 export function HermesBanner({ hermes, crewConnected = true }: { hermes: HermesConnection; crewConnected?: boolean }) {
   if (hermes === 'connected' && crewConnected) return null
   return (
-    <div role="status" className="mx-1 mb-2 rounded-2xl border border-needs/60 bg-needs/20 px-3 py-2 text-xs font-medium text-foreground">
+    <div role="status" className="mx-1 mb-2 rounded-2xl border border-border bg-muted px-3 py-2 text-xs font-medium text-muted-foreground">
       {!crewConnected ? 'Reconnecting to Crew…' : MESSAGES[hermes as Exclude<HermesConnection, 'connected'>]}
     </div>
   )
