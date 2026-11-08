@@ -36,7 +36,7 @@ export interface Watcher {
   /** Fires (debounced 100 ms) when anything in `state()` may have changed. */
   onChange(listener: () => void): () => void
   /** Send the user's answer to Hermes without waiting for it; progress shows in `state()`. */
-  answer(id: string, input: AnswerInput): 'sent' | 'not_found' | 'already_resolved' | 'answering'
+  answer(id: string, input: AnswerInput): 'sent' | 'not_found' | 'already_resolved' | 'answering' | 'offline'
   debug(): readonly DebugEntry[]
   stop(): void
 }
@@ -61,9 +61,6 @@ const SETTLED_TTL_MS = 10 * 60_000
 const AUTH_CLOSE_CODES = new Set([4401, 4403])
 const AUTH_ERROR = /\b(4401|4403|401|403)\b/
 const noop = () => undefined
-
-/** Batch clarify server requests (other clients' turns) need an answer shape Crew has no UI for. */
-export const isUnsupported = (e: Pick<PendingRequest, 'kind' | 'source'>): boolean => e.kind === 'clarify' && e.source === 'server_request'
 
 /**
  * Headless observer: one upstream connection, subscribed to every bot's canonical "Bot Chat", holding
@@ -218,6 +215,12 @@ export function startWatcher(deps: WatcherDeps): Watcher {
     }
   }
 
+  /** What Crew can actually send: prompts need ids, server requests need the live request, batch clarify never. */
+  function isAnswerable(e: PendingRequest): boolean {
+    if (e.source === 'event' || e.source === 'snapshot_prompt') return Boolean(e.promptId) && typeof e.executionGeneration === 'number'
+    return e.kind !== 'clarify' && held.has(e.id)
+  }
+
   async function deliverAnswer(entry: PendingRequest, input: AnswerInput): Promise<void> {
     const serverRequest = held.get(entry.id)
     try {
@@ -237,7 +240,8 @@ export function startWatcher(deps: WatcherDeps): Watcher {
     client.onRequest(req => {
       note('server_request', `${req.method} keys=${Object.keys(req.params ?? {}).join(',')}`)
       const handled = routeServerRequest(req, store, ctx)
-      if (store.get(req.id)) held.set(req.id, req)
+      // A replay after reconnect reuses the id: keep the fresh object so an entry that failed offline works again.
+      if (store.get(req.id) && !store.get(req.id)?.settled) held.set(req.id, req)
       return handled
     }),
     client.onEvent(event => {
@@ -278,7 +282,7 @@ export function startWatcher(deps: WatcherDeps): Watcher {
         pending: open.map(({ settled: _s, settledAt: _t, answerState, answerError, ...rest }) => ({
           ...rest,
           state: answerState ?? ('open' as const),
-          answerable: !isUnsupported(rest),
+          answerable: isAnswerable(rest as PendingRequest),
           ...(answerState === 'failed' && answerError ? { error: answerError } : {})
         }))
       }
@@ -288,6 +292,11 @@ export function startWatcher(deps: WatcherDeps): Watcher {
       if (!entry) return 'not_found'
       if (entry.settled) return 'already_resolved'
       if (entry.answerState === 'answering') return 'answering'
+      if (hermes !== 'connected') {
+        // respond() on a disconnected channel silently drops the answer, so never call it offline.
+        store.markAnswer(id, 'failed', 'not_connected')
+        return 'offline'
+      }
       store.markAnswer(id, 'answering')
       void deliverAnswer(entry, input)
       return 'sent'

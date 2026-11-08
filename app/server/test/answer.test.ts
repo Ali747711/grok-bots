@@ -23,7 +23,9 @@ class Fake implements WatcherClient {
   close(): void {}
   onRequest(h: (r: Req) => boolean | void): () => void { this.requestHandlers.push(h); return () => undefined }
   onEvent(h: Handler<{ type: string; session_id?: string; payload?: unknown }>): () => void { this.eventHandlers.push(h); return () => undefined }
-  onState(): () => void { return () => undefined }
+  private stateHandlers: Handler<string>[] = []
+  onState(h: Handler<string>): () => void { this.stateHandlers.push(h); return () => undefined }
+  emitState(state: string): void { for (const h of this.stateHandlers) h(state) }
   emitEvent(e: { type: string; session_id?: string; payload?: unknown }): void { for (const h of this.eventHandlers) h(e) }
   emitRequest(r: Req): void { for (const h of this.requestHandlers) h(r) }
   async request<T>(method: string, params: Record<string, unknown> = {}, timeout?: number): Promise<T> {
@@ -40,12 +42,14 @@ class Fake implements WatcherClient {
 
 const flush = () => new Promise(resolve => setTimeout(resolve, 0))
 let client: Fake
+let connectImpl: () => Promise<void> = async () => undefined
 let watcher: ReturnType<typeof startWatcher>
 let app: ReturnType<typeof createApp>
 
 beforeEach(async () => {
+  connectImpl = async () => undefined
   client = new Fake()
-  watcher = startWatcher({ client, connect: async () => undefined, now: () => 1, reconnectDelayMs: () => 60_000 })
+  watcher = startWatcher({ client, connect: () => connectImpl(), now: () => 1, reconnectDelayMs: () => 60_000 })
   await flush(); await flush()
   app = createApp({ ...base, watcher })
 })
@@ -132,18 +136,55 @@ describe('POST /crew/requests/:id/answer', () => {
     expect(exposed).not.toContain('sk-live-123')
   })
 
-  it('settles a held approval server request after respond, and keeps a failed one open', async () => {
+  it('settles a held approval server request after respond', async () => {
     const ok = secretRequest('srq-2', 'approval', { choices: ['once', 'deny'] })
     expect((await post('srq-2', { choice: 'once' })).status).toBe(202)
     expect(ok.respond).toHaveBeenCalledWith({ choice: 'once' })
     expect(entry('srq-2')).toBeUndefined()
     expect(watcher.store.get('srq-2')?.settled).toBe('answered')
-    const bad = secretRequest('srq-3', 'sudo')
-    bad.respond.mockImplementation(() => { throw new Error('closed') })
-    await post('srq-3', { value: 'pw' })
+  })
+
+  it('refuses to answer while Hermes is not connected: 503, entry failed not_connected, request left unused', async () => {
+    const lines: string[] = []
+    const restore = setLogSink(l => lines.push(l))
+    const req = secretRequest()
+    client.emitState('closed')
+    expect(watcher.state().hermes).toBe('offline')
+    const res = await post('srq-1', { value: 'sk-live-789' })
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({ error: 'hermes_offline' })
     await flush()
-    expect(entry('srq-3')?.state).toBe('failed')
-    expect(watcher.store.get('srq-3')?.settled).toBeUndefined()
+    restore()
+    expect(req.respond).not.toHaveBeenCalled()
+    expect(entry('srq-1')).toMatchObject({ state: 'failed', error: 'not_connected' })
+    expect(watcher.store.get('srq-1')?.settled).toBeUndefined()
+    expect(JSON.stringify(watcher.state()) + JSON.stringify(watcher.debug()) + lines.join('\n')).not.toContain('sk-live-789')
+    // prompt entries fail fast the same way
+    expect((await post('p-1', { choice: 'deny' })).status).toBe(503)
+    expect(client.calls.some(c => c.method === 'approval.respond')).toBe(false)
+  })
+
+  it('accepts the replayed request after reconnect and answers it with the fresh object', async () => {
+    watcher.stop()
+    watcher = startWatcher({ client, connect: () => connectImpl(), now: () => 1, reconnectDelayMs: () => 0 })
+    app = createApp({ ...base, watcher })
+    await flush(); await flush()
+    const stale = secretRequest()
+    let release: () => void = () => undefined
+    connectImpl = () => new Promise<void>(resolve => { release = resolve })
+    client.emitState('closed')
+    await flush()
+    expect(watcher.state().hermes).toBe('connecting')
+    expect((await post('srq-1', { value: 'v' })).status).toBe(503)
+    expect(entry('srq-1')).toMatchObject({ state: 'failed', error: 'not_connected' })
+    release()
+    await flush(); await flush(); await flush()
+    expect(watcher.state().hermes).toBe('connected')
+    const fresh = secretRequest()
+    expect((await post('srq-1', { value: 'again' })).status).toBe(202)
+    expect(fresh.respond).toHaveBeenCalledWith({ value: 'again' })
+    expect(stale.respond).not.toHaveBeenCalled()
+    expect(watcher.store.get('srq-1')?.settled).toBe('answered')
   })
 
   it('does not answer held clarify server requests: 422 unsupported, nothing sent, answerable false', async () => {
@@ -156,18 +197,6 @@ describe('POST /crew/requests/:id/answer', () => {
     expect(req.respond).not.toHaveBeenCalled()
     expect(req.fail).not.toHaveBeenCalled()
     expect(req.decline).not.toHaveBeenCalled()
-  })
-
-  it('does not leak the value when the answer fails', async () => {
-    const lines: string[] = []
-    const restore = setLogSink(l => lines.push(l))
-    const req = secretRequest()
-    req.respond.mockImplementation(() => { throw new Error('socket closed') })
-    await post('srq-1', { value: 'sk-live-456' })
-    await flush()
-    restore()
-    expect(entry('srq-1')?.state).toBe('failed')
-    expect(JSON.stringify(watcher.state()) + JSON.stringify(watcher.debug()) + lines.join('\n')).not.toContain('sk-live-456')
   })
 
   it('second answer reports already_resolved once Hermes settles the entry', async () => {
@@ -193,6 +222,21 @@ describe('POST /crew/requests/:id/answer', () => {
     expect(entry('p-1')).toMatchObject({ state: 'failed', error: 'stale_generation' })
     client.rpcError = null
     expect((await post('p-1', { choice: 'deny' })).status).toBe(202)
+  })
+
+  it('marks entries Crew cannot answer as answerable false and refuses them with 422', async () => {
+    client.emitEvent({ type: 'approval.request', session_id: 'run-fixture', payload: { prompt_id: 'p-nogen', command: 'ls', choices: ['once'] } })
+    const openRequest = { id: 'srq-9', method: 'approval', params: { session_id: 'run-fixture', command: 'ls' }, replayed: true, respond: vi.fn(), fail: vi.fn(), decline: vi.fn() }
+    watcher.store.add({ id: 'srq-9', kind: 'approval', profile: 'crew-test', sessionId: 'run-fixture', summary: 's', choices: ['once'], receivedAt: 1, source: 'open_request' })
+    for (const id of ['p-nogen', 'srq-9']) {
+      expect(entry(id)?.answerable).toBe(false)
+      const res = await post(id, { choice: 'once' })
+      expect(res.status).toBe(422)
+      expect(await res.json()).toEqual({ error: 'unsupported', hint: 'answer in the app that asked' })
+    }
+    expect(openRequest.respond).not.toHaveBeenCalled()
+    expect(client.calls.some(c => c.method === 'approval.respond')).toBe(false)
+    expect(entry('p-1')?.answerable).toBe(true)
   })
 
   it('answers 404 for an unknown id', async () => {
