@@ -68,7 +68,12 @@ test('a bot created in Crew appears identically in the official Webapp', async (
   expect(row).toBeDefined()
   expect(row?.ui_meta?.[NAMESPACE]).toMatchObject({ title, shape: 'squircle', color: '#7c3aed', imageKind: 'shape' })
   expect(typeof row?.ui_meta?.[NAMESPACE]?.created).toBe('number')
-  expect(row?.description).toBe(`${title} — Find papers`)
+  // The description is the job text itself; the persona has a title header and no Role line.
+  expect(row?.description).toBe('Find papers')
+  const soul = await soulOf(handle)
+  expect(soul.startsWith(`# ${title}\n`)).toBe(true)
+  expect(soul).toContain('**Mission:** Find papers')
+  expect(soul).not.toContain('**Role:**')
   expect(row?.canonical_session?.title).toBe('Bot Chat')
 })
 
