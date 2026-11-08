@@ -15,6 +15,21 @@ interface ComposerProps {
   stopDisabled?: boolean
 }
 
+function SendButton({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button type="button" size="icon" aria-label="Send" disabled={disabled} onClick={onClick} className="rounded-full">
+            <ArrowUp />
+          </Button>
+        }
+      />
+      <TooltipContent>Send</TooltipContent>
+    </Tooltip>
+  )
+}
+
 /** Message box: Enter sends, Shift+Enter adds a line, Stop replaces Send while the bot is running. */
 export function Composer({ onSend, onStop, running, disabledReason, stopDisabled = false }: ComposerProps) {
   const [text, setText] = useState('')
@@ -50,16 +65,7 @@ export function Composer({ onSend, onStop, running, disabledReason, stopDisabled
           {running ? (
             <Button type="button" disabled={stopDisabled} onClick={onStop} className="rounded-full bg-contrast text-contrast-foreground hover:bg-contrast/90">Stop</Button>
           ) : (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button type="button" size="icon" aria-label="Send" disabled={disabled || !text.trim()} onClick={submit} className="rounded-full">
-                    <ArrowUp />
-                  </Button>
-                }
-              />
-              <TooltipContent>Send</TooltipContent>
-            </Tooltip>
+            <SendButton disabled={disabled || !text.trim()} onClick={submit} />
           )}
         </div>
       </div>

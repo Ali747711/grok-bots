@@ -19,7 +19,7 @@ createRoot(root).render(
   <StrictMode>
     <BrowserRouter>
       <App />
-      <Toaster position="top-center" />
+      <Toaster position="top-center" offset={{ top: 88 }} />
     </BrowserRouter>
   </StrictMode>
 )

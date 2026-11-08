@@ -48,10 +48,24 @@ interface BotRouteProps {
   onPanel: (tab: PanelTab) => void
 }
 
+const MISSING_GRACE_MS = 3000
+
+/** A bot just created can be opened before the state stream delivers it: wait for the next state (or the grace) before saying it is missing. */
+function useMissingGrace(state: CrewState | null): boolean {
+  const first = useRef(state)
+  const [expired, setExpired] = useState(false)
+  useEffect(() => {
+    const timer = setTimeout(() => setExpired(true), MISSING_GRACE_MS)
+    return () => clearTimeout(timer)
+  }, [])
+  return !expired && state === first.current
+}
+
 function BotRoute({ state, crewConnected, name, panel, onPanel }: BotRouteProps) {
+  const waiting = useMissingGrace(state)
   if (!state) return <Loading />
   const bot = state.bots.find(b => b.name === name)
-  if (!bot) return <NotFound />
+  if (!bot) return waiting ? <Loading /> : <NotFound />
   return <ChatView key={bot.name} bot={bot} state={state} crewConnected={crewConnected} panel={panel} onPanel={onPanel} />
 }
 
@@ -116,7 +130,7 @@ export default function App() {
         main={
           <Routes>
             <Route path="/" element={<HomeRedirect state={state} />} />
-            <Route path="/bots/:name" element={<BotRoute state={state} crewConnected={connected} name={selected ?? ''} panel={panel} onPanel={togglePanel} />} />
+            <Route path="/bots/:name" element={<BotRoute key={selected} state={state} crewConnected={connected} name={selected ?? ''} panel={panel} onPanel={togglePanel} />} />
             <Route path="/needs-you" element={state ? <NeedsYouPage state={state} crewConnected={connected} /> : <Loading />} />
             <Route path="*" element={<Navigate replace to="/" />} />
           </Routes>

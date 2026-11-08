@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -94,8 +94,11 @@ describe('W7: a bot deleted elsewhere', () => {
     expect(await screen.findByRole('heading', { name: 'Hermes' })).toBeInTheDocument()
   })
 
-  it('does not redirect for a bot that has not appeared yet', async () => {
+  it('does not redirect for a bot that has not appeared yet', () => {
+    vi.useFakeTimers()
     rerenderAt('/bots/new-one')
-    expect(await screen.findByText('Bot not found')).toBeInTheDocument()
+    act(() => { vi.advanceTimersByTime(3100) })
+    expect(screen.getByText('Bot not found')).toBeInTheDocument()
+    vi.useRealTimers()
   })
 })

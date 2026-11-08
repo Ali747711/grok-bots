@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -33,9 +33,12 @@ describe('App routes', () => {
     expect(await screen.findByRole('heading', { name: 'Dev' })).toBeInTheDocument()
   })
 
-  it('says so for an unknown bot', async () => {
+  it('says so for an unknown bot once the grace period has passed', () => {
+    vi.useFakeTimers()
     renderAt('/bots/nobody')
-    expect(await screen.findByText('Bot not found')).toBeInTheDocument()
+    act(() => { vi.advanceTimersByTime(3100) })
+    expect(screen.getByText('Bot not found')).toBeInTheDocument()
+    vi.useRealTimers()
   })
 
   it('shows the Needs you page', () => {

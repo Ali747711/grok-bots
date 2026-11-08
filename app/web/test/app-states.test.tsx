@@ -51,10 +51,13 @@ describe('loading and empty states', () => {
     expect(screen.queryByTestId('chat-skeleton')).toBeNull()
   })
 
-  it('says a bot was not found, with a way back', async () => {
-    renderAt('/bots/zz-none')
-    expect(await screen.findByText('Bot not found')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Back to your bots' })).toHaveAttribute('href', '/')
+  it.each([
+    ['Hermes offline', { hermes: 'offline' as const }, true],
+    ['Crew stream down', {}, false]
+  ])('shows no chat skeleton while stale (%s)', (_label, over, connected) => {
+    hook.value = { state: crewState(over), connected }
+    renderAt('/bots/dev')
+    expect(screen.queryByTestId('chat-skeleton')).toBeNull()
   })
 })
 
@@ -65,11 +68,17 @@ const PREFIX = '(?:bg|text|border|ring|outline|fill|stroke|shadow|divide|placeho
 const PALETTE = '(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)'
 // A colour utility (with any variants) that names a palette shade, white/black, or an arbitrary hex.
 const RAW_COLOUR = new RegExp(
-  `(?<![\\w-])(?:[\\w\\[\\]=\\-:]+:)*${PREFIX}-(?:${PALETTE}-(?:50|100|200|300|400|500|600|700|800|900|950)|white|black|\\[#[0-9a-fA-F]{3,8}\\])(?![\\w-])`,
+  `(?<![\\w-])(?:[\\w\\[\\]=\\-:]+:)*${PREFIX}-(?:${PALETTE}-(?:50|100|200|300|400|500|600|700|800|900|950)|white|black|\\[(?:#|rgb|hsl|oklch)[^\\]]*\\])(?![\\w-])`,
   'g'
 )
 
 export const rawColours = (source: string): string[] => source.match(RAW_COLOUR) ?? []
+
+// Colour literals outside class names (inline styles, canvas code): hex, rgb(), hsl(), oklch().
+const LITERAL = /#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|oklch)\(/g
+export const colourLiterals = (source: string): string[] => source.match(LITERAL) ?? []
+// The only places that may hold colour data: the sky canvas gradient and the avatar swatches.
+const LITERAL_ALLOWED = [join('layout', 'SkyCanvas.tsx'), join('features', 'avatars', 'avatar-model.ts')]
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
@@ -84,11 +93,56 @@ describe('theme tokens only', () => {
   it('catches planted raw colours but lets our tokens through', () => {
     const planted = rawColours('className="text-red-600 hover:bg-white dark:border-[#fff] data-checked:text-black/80"')
     expect(planted).toEqual(['text-red-600', 'hover:bg-white', 'dark:border-[#fff]', 'data-checked:text-black'])
+    expect(rawColours('bg-[rgb(1,2,3)] text-[oklch(0.5_0_0)] bg-[hsl(0,0%,0%)] border-[#abc]')).toHaveLength(4)
     expect(rawColours('bg-sky text-sky-ink bg-sky-soft bg-needs bg-contrast text-contrast-foreground bg-ok-soft text-danger-ink border-contrast-line')).toEqual([])
+  })
+
+  it('catches planted colour literals', () => {
+    expect(colourLiterals("style={{ color: '#f00', background: 'rgb(1,2,3)', fill: 'oklch(0.5 0 0)', stroke: 'hsl(0 0% 0%)' }}")).toHaveLength(4)
+    expect(colourLiterals("const url = '/login#ticket=abc' // not a colour")).toEqual([])
+  })
+
+  it('keeps colour literals to the sky canvas and the avatar swatches', () => {
+    const hits = sourceFiles(SRC)
+      .filter(file => !LITERAL_ALLOWED.includes(relative(SRC, file)))
+      .flatMap(file => colourLiterals(readFileSync(file, 'utf8')).map(hit => `${relative(SRC, file)}: ${hit}`))
+    expect(hits).toEqual([])
   })
 
   it('uses only theme tokens outside components/ui', () => {
     const hits = sourceFiles(SRC).flatMap(file => rawColours(readFileSync(file, 'utf8')).map(hit => `${relative(SRC, file)}: ${hit}`))
     expect(hits).toEqual([])
+  })
+})
+
+describe('a bot that has not arrived yet', () => {
+  const tree = () => <MemoryRouter initialEntries={['/bots/fresh']}><App /></MemoryRouter>
+  const withFresh = () => crewState({ bots: [...crewState().bots, { ...crewState().bots[0]!, name: 'fresh', title: 'Fresh', isPrimary: false }] })
+
+  it('waits for the next state instead of flashing "Bot not found"', async () => {
+    const { rerender } = render(tree())
+    expect(screen.queryByText('Bot not found')).toBeNull()
+    expect(screen.getByText('Loading…')).toBeInTheDocument()
+    hook.value = { state: withFresh(), connected: true }
+    rerender(tree())
+    expect(screen.queryByText('Bot not found')).toBeNull()
+    expect(await screen.findByRole('heading', { name: 'Fresh' })).toBeInTheDocument()
+  })
+
+  it('says "Bot not found" once a state arrives without it', () => {
+    const { rerender } = render(tree())
+    hook.value = { state: { ...crewState() }, connected: true }
+    rerender(tree())
+    expect(screen.getByText('Bot not found')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Back to your bots' })).toHaveAttribute('href', '/')
+  })
+
+  it('says "Bot not found" after the grace period with no update', () => {
+    vi.useFakeTimers()
+    render(tree())
+    expect(screen.queryByText('Bot not found')).toBeNull()
+    act(() => { vi.advanceTimersByTime(3100) })
+    expect(screen.getByText('Bot not found')).toBeInTheDocument()
+    vi.useRealTimers()
   })
 })

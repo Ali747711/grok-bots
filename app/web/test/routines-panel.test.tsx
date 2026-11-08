@@ -251,7 +251,7 @@ describe('RoutinesPanel finished routines and row errors', () => {
     expect(rows[0]).toHaveClass('bg-muted', 'rounded-2xl')
     expect(within(rows[0]!).getByRole('switch', { name: 'Daily digest enabled' })).toBeChecked()
     expect(within(rows[0]!).getByText('OK')).toHaveClass('bg-ok-soft', 'text-ok-ink', 'ring-1', 'ring-border')
-    for (const name of ['History', 'Edit', 'Delete']) expect(within(rows[0]!).getByRole('button', { name })).toHaveClass('hover:bg-card')
+    for (const name of ['History', 'Edit', 'Delete']) expect(within(rows[0]!).getByRole('button', { name })).toHaveClass('hover:bg-card', 'dark:hover:bg-card')
     expect(within(rows[1]!).getByText('Config problem')).toHaveClass('bg-warn-soft', 'text-warn-ink')
     expect(within(rows[0]!).getByText(/^Next/)).toHaveClass('label-mono')
   })
