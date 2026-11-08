@@ -143,7 +143,7 @@ describe('turn reducer (captured fixture turn)', () => {
 
   it('opens a distinct item for the next generation', () => {
     const turn = [find('message.start'), withPayload(find('message.complete'), { text: 'One' })]
-    const next = turn.map(f => ({ ...f, execution_generation: (f.execution_generation ?? 0) + 1 }))
+    const next: TurnFrame[] = turn.map(f => ({ ...f, execution_generation: (f.execution_generation ?? 0) + 1 }))
     next[1] = withPayload(next[1]!, { text: 'Two' })
     const state = play(initialTurnState, [...turn, ...next])
     expect(assistantText(state)).toEqual(['One', 'Two'])
