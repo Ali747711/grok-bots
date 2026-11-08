@@ -30,7 +30,7 @@ const renderAt = (path: string) => render(<MemoryRouter initialEntries={[path]}>
 describe('BotPanel', () => {
   it('shows the routines placeholder and the profile tab', async () => {
     const { rerender } = render(<MemoryRouter><BotPanel bot={bot({ name: 'dev', title: 'Dev' })} tab="routines" /></MemoryRouter>)
-    expect(screen.getByText('Routines will appear here.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'New routine' })).toBeInTheDocument()
     rerender(<MemoryRouter><BotPanel bot={bot({ name: 'dev', title: 'Dev' })} tab="profile" /></MemoryRouter>)
     expect(await screen.findByLabelText('Name')).toBeInTheDocument()
   })
@@ -46,7 +46,7 @@ describe('panel in the app', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Profile' }))
     expect(screen.queryByRole('region', { name: 'Panel' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Routines' }))
-    expect(screen.getByText('Routines will appear here.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'New routine' })).toBeInTheDocument()
   })
 
   it('survives a reload: ?panel=profile opens the panel', async () => {

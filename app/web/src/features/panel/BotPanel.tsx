@@ -1,4 +1,5 @@
 import { ProfilePanel } from '@/features/bots/ProfilePanel'
+import { RoutinesPanel } from '@/features/routines/RoutinesPanel'
 import type { BotView } from '@/state/types'
 
 export type PanelTab = 'routines' | 'profile'
@@ -10,7 +11,7 @@ export function BotPanel({ bot, tab }: { bot: BotView; tab: PanelTab }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       <h3 className="border-b border-border px-4 py-3 text-sm font-semibold">{tab === 'profile' ? 'Profile' : 'Routines'}</h3>
-      {tab === 'profile' ? <ProfilePanel key={bot.name} bot={bot} /> : <p className="p-4 text-sm text-muted-foreground">Routines will appear here.</p>}
+      {tab === 'profile' ? <ProfilePanel key={bot.name} bot={bot} /> : <RoutinesPanel key={bot.name} bot={bot} />}
     </div>
   )
 }
