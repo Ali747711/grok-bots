@@ -1,0 +1,13 @@
+[Unit]
+Description=Crew - Grok-Bot-style app on Hermes (loopback only; reach via SSH tunnel)
+After=network-online.target hermes-gateway.service
+Wants=hermes-gateway.service
+
+[Service]
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node /home/ali/projects/grok-bots/app/server/dist/main.js
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
