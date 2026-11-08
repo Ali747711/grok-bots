@@ -43,10 +43,11 @@ describe('avatarState', () => {
     expect(avatarState({ status: 'idle', hidden: false, lastActive: null }, NOW)).toBe('default')
   })
 
-  it('a working or needs-you bot is awake even when old, a hidden one sleeps even when working', () => {
+  it('a working or needs-you bot is awake even when old or hidden (hiding is display-only)', () => {
     expect(avatarState({ status: 'working', hidden: false, lastActive: (NOW - 48 * HOUR) / 1000 }, NOW)).toBe('working')
     expect(avatarState({ status: 'needs_you', hidden: false, lastActive: (NOW - 48 * HOUR) / 1000 }, NOW)).toBe('default')
-    expect(avatarState({ status: 'working', hidden: true, lastActive: null }, NOW)).toBe('sleeping')
+    expect(avatarState({ status: 'working', hidden: true, lastActive: null }, NOW)).toBe('working')
+    expect(avatarState({ status: 'needs_you', hidden: true, lastActive: null }, NOW)).toBe('default')
   })
 })
 

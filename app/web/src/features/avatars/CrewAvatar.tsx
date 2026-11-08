@@ -1,4 +1,5 @@
 import { BotAvatar } from 'bot-avatars'
+import { useState } from 'react'
 
 import { cn } from '@/lib/utils'
 import type { BotView } from '@/state/types'
@@ -7,7 +8,7 @@ import { avatarSeed, avatarState, resolvedAvatar } from './avatar-model'
 import { useNow } from './use-now'
 
 interface CrewAvatarProps {
-  bot: Pick<BotView, 'name' | 'avatar' | 'imageKind' | 'hasAvatar' | 'status' | 'hidden' | 'lastActive'>
+  bot: Pick<BotView, 'name' | 'title' | 'avatar' | 'imageKind' | 'hasAvatar' | 'status' | 'hidden' | 'lastActive'>
   size: number
   /** Pickers pass false so the avatar does not react to the pointer. */
   interactive?: boolean
@@ -17,18 +18,23 @@ interface CrewAvatarProps {
 export function CrewAvatar({ bot, size, interactive = true }: CrewAvatarProps) {
   const now = useNow()
   const state = avatarState(bot, now)
-  const look = resolvedAvatar(bot)
+  // Photo load failures are remembered per bot and photo, so a new bot or a new upload retries.
+  const photoKey = `${bot.name}:${bot.imageKind}`
+  const [brokenKey, setBrokenKey] = useState<string | null>(null)
+  const resolved = resolvedAvatar(bot)
+  const look = resolved.kind === 'photo' && brokenKey === photoKey ? resolvedAvatar({ ...bot, imageKind: null }) : resolved
   const dim = state === 'sleeping' && 'opacity-60'
   return (
     <div className="relative flex-none" style={{ width: size, height: size }}>
       {look.kind === 'photo' ? (
         <div className={cn('size-full overflow-hidden rounded-[30%]', state === 'working' && 'ring-2 ring-sky', dim)}>
-          <img src={`/crew/avatars/${encodeURIComponent(bot.name)}`} alt="" className="size-full object-cover" />
+          <img src={`/crew/avatars/${encodeURIComponent(bot.name)}`} alt={bot.title} onError={() => setBrokenKey(photoKey)} className="size-full object-cover" />
         </div>
       ) : (
         <div className={cn('size-full', dim)}>
           <BotAvatar
             shading="fabric"
+            aria-label={bot.title}
             type={look.type}
             {...(look.color ? { color: look.color } : {})}
             state={state}

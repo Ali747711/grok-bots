@@ -28,13 +28,14 @@ export const deriveAvatarType = (handle: string): AvatarType => AVATAR_TYPES[has
 export const avatarSeed = (handle: string): number => hash32(handle) / 2 ** 32
 
 /**
- * Working animates; hidden bots and bots idle for over 24 h sleep. A bot that needs you is awake.
+ * Working animates, even when hidden (hiding is display-only and the bot is spending). A bot that needs
+ * you is awake. Otherwise hidden bots and bots idle for over 24 h sleep.
  * `lastActive` is in seconds, `null` (a brand-new bot) is never asleep.
  */
 export function avatarState(bot: { status: BotStatus; hidden: boolean; lastActive: number | null }, now: number): AvatarState {
-  if (bot.hidden) return 'sleeping'
   if (bot.status === 'working') return 'working'
   if (bot.status === 'needs_you') return 'default'
+  if (bot.hidden) return 'sleeping'
   return bot.lastActive !== null && now - bot.lastActive * 1000 > DAY_MS ? 'sleeping' : 'default'
 }
 

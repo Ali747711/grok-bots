@@ -1,4 +1,4 @@
-import { act, render, renderHook, screen } from '@testing-library/react'
+import { act, fireEvent, render, renderHook, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { AVATAR_TYPES, avatarSeed, deriveAvatarType } from '@/features/avatars/avatar-model'
@@ -14,7 +14,7 @@ vi.mock('bot-avatars', async () => {
     BotAvatar: (props: Record<string, unknown>) => (
       <div data-testid="stub" data-type={String(props.type)} data-state={String(props.state)} data-shading={String(props.shading)}
         data-seed={String(props.seed)} data-color={props.color === undefined ? '' : String(props.color)} data-size={String(props.size)}
-        data-interactive={String(props.interactive)} />
+        data-interactive={String(props.interactive)} data-label={String(props['aria-label'])} />
     )
   }
 })
@@ -68,6 +68,23 @@ describe('CrewAvatar', () => {
     expect(screen.getByLabelText('Needs you')).toHaveClass('bg-needs')
     rerender(<CrewAvatar bot={bot({ name: 'x', status: 'idle' })} size={34} />)
     expect(screen.queryByLabelText('Needs you')).toBeNull()
+  })
+
+  it('names the avatar and the photo with the bot title', () => {
+    const { rerender } = render(<CrewAvatar bot={bot({ name: 'x', title: 'Scout Bot' })} size={34} />)
+    expect(screen.getByTestId('stub')).toHaveAttribute('data-label', 'Scout Bot')
+    rerender(<CrewAvatar bot={bot({ name: 'x', title: 'Scout Bot', imageKind: 'photo', hasAvatar: true })} size={34} />)
+    expect(screen.getByAltText('Scout Bot')).toBeInTheDocument()
+  })
+
+  it('falls back to the fur avatar when the photo fails to load, and retries for another bot', () => {
+    const photo = { imageKind: 'photo' as const, hasAvatar: true }
+    const { rerender } = render(<CrewAvatar bot={bot({ name: 'x', avatar: { type: 'cat' }, ...photo })} size={34} />)
+    fireEvent.error(screen.getByRole('img'))
+    expect(screen.queryByRole('img')).toBeNull()
+    expect(screen.getByTestId('stub')).toHaveAttribute('data-type', 'cat')
+    rerender(<CrewAvatar bot={bot({ name: 'y', ...photo })} size={34} />)
+    expect(screen.getByRole('img')).toBeInTheDocument()
   })
 
   it('keeps a fixed-size box', () => {
