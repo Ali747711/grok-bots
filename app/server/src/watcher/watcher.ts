@@ -85,9 +85,12 @@ export function startWatcher(deps: WatcherDeps): Watcher {
       const storedId = row.canonical_session?.id
       if (!storedId || subscribed.has(storedId)) continue
       try {
+        const requestedAt = deps.now()
         const snap = await client.request<Snapshot>('session.resume', { profile: row.name, session_id: storedId, omit_messages: true })
         subscribed = new Set([...subscribed, storedId])
         recordSnapshot(row.name, snap)
+        const sessionIds = [snap.session_id, snap.stored_session_id].filter((id): id is string => Boolean(id))
+        store.reconcile(sessionIds, new Set((snap.prompts ?? []).map(p => p.prompt_id)), requestedAt)
         note('subscribed', `${row.name} ${storedId} → ${snap.session_id}`)
       } catch (error) {
         note('error', `resume ${row.name}: ${error instanceof Error ? error.message : String(error)}`)

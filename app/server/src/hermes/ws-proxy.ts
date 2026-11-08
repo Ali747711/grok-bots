@@ -17,6 +17,8 @@ export interface WsProxyDeps {
 
 const PROXIED_PATH = '/api/ws'
 const MAX_PENDING_FRAMES = 64
+/** Far above any JSON-RPC frame; ws's 100 MiB default would let one client exhaust memory. */
+const MAX_PAYLOAD_BYTES = 16 * 1024 * 1024
 const SERVICE_RESTART = 1012
 const TRY_AGAIN_LATER = 1013
 const BAD_CREDENTIAL = 4401
@@ -40,6 +42,8 @@ type Frame = { data: RawData; isBinary: boolean }
 
 /** Wire one browser socket to a fresh upstream socket. Frames sent before upstream opens are buffered. */
 async function bridge(client: WebSocket, deps: WsProxyDeps): Promise<void> {
+  // Without an 'error' listener a malformed or oversized client frame throws and kills the process.
+  client.on('error', () => client.terminate())
   let pending: readonly Frame[] = []
   let upstream: WebSocket
   try {
@@ -84,8 +88,10 @@ async function bridge(client: WebSocket, deps: WsProxyDeps): Promise<void> {
 
 /** Handle WebSocket upgrades on the Crew server: only `/api/ws`, only with Host + Origin + session. */
 export function attachWsProxy(server: Server, deps: WsProxyDeps): void {
-  const wss = new WebSocketServer({ noServer: true })
+  const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD_BYTES })
   server.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+    // Node drops its own socket error listener before 'upgrade'; a client reset would otherwise crash us.
+    socket.on('error', () => socket.destroy())
     const path = new URL(req.url ?? '/', 'http://crew.invalid').pathname
     if (path !== PROXIED_PATH) return refuse(socket, 404, 'Not Found')
     if (!isAllowedUpgrade(req, deps.config, deps.cookieKey, deps.now())) return refuse(socket, 403, 'Forbidden')
