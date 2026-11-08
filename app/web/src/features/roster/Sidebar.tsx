@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 
 import { Settings } from 'lucide-react'
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { DEFAULT_MAX_WORKING_BOTS } from '@/features/chat/disabled-reason'
 import { SettingsDialog } from '@/features/settings/SettingsDialog'
-import { CreditPill } from '@/features/usage/CreditPill'
+import { CreditPillView, useUsage } from '@/features/usage/CreditPill'
 import { cn } from '@/lib/utils'
 import type { BotStatus, BotView, CrewState } from '@/state/types'
 
@@ -59,9 +59,47 @@ function BotRow({ bot, active, showStatus, onSelect }: { bot: BotView; active: b
   )
 }
 
+function HiddenSection({ bots, row }: { bots: readonly BotView[]; row: (bot: BotView) => ReactNode }) {
+  if (bots.length === 0) return null
+  return (
+    <Collapsible>
+      <CollapsibleTrigger className="w-full px-2 pt-3.5 pb-1 text-left text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+        {`Hidden (${bots.length})`}
+      </CollapsibleTrigger>
+      <CollapsibleContent className="flex flex-col gap-1">{bots.map(row)}</CollapsibleContent>
+    </Collapsible>
+  )
+}
+
+/** New-bot button, credit pill, settings gear and dialog. Polls credit once and shares it with both. */
+function SidebarFooter({ onNewBot, maxWorkingBots }: { onNewBot?: () => void; maxWorkingBots: number | null }) {
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const usage = useUsage()
+  return (
+    <>
+      {onNewBot && (
+        <button type="button" onClick={onNewBot} className="mt-2 rounded-[10px] p-2 text-left text-sm font-medium hover:bg-secondary">
+          + New bot
+        </button>
+      )}
+      <div className="flex items-center gap-2 pt-2">
+        <CreditPillView usage={usage} />
+        <button
+          type="button"
+          aria-label="Settings"
+          onClick={() => setSettingsOpen(true)}
+          className="ml-auto rounded-md p-1.5 text-muted-foreground hover:bg-secondary"
+        >
+          <Settings className="size-4" />
+        </button>
+      </div>
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} maxWorkingBots={maxWorkingBots} usage={usage} />
+    </>
+  )
+}
+
 /** Roster: Needs-you row, the primary bot and the rest. Dimmed with statuses hidden while Hermes is not connected. */
 export function Sidebar({ state, selected, onSelect, crewConnected = true, onNeedsYou, onNewBot }: SidebarProps) {
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const bots = (state?.bots ?? []).filter(b => !b.hidden)
   const hidden = (state?.bots ?? []).filter(b => b.hidden)
   const stale = state !== null && (state.hermes !== 'connected' || !crewConnected)
@@ -95,36 +133,9 @@ export function Sidebar({ state, selected, onSelect, crewConnected = true, onNee
             {others.map(row)}
           </section>
         )}
-        {hidden.length > 0 && (
-          <Collapsible>
-            <CollapsibleTrigger className="w-full px-2 pt-3.5 pb-1 text-left text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
-              {`Hidden (${hidden.length})`}
-            </CollapsibleTrigger>
-            <CollapsibleContent className="flex flex-col gap-1">{hidden.map(row)}</CollapsibleContent>
-          </Collapsible>
-        )}
+        <HiddenSection bots={hidden} row={row} />
       </div>
-      {onNewBot && (
-        <button type="button" onClick={onNewBot} className="mt-2 rounded-[10px] p-2 text-left text-sm font-medium hover:bg-secondary">
-          + New bot
-        </button>
-      )}
-      <div className="flex items-center gap-2 pt-2">
-        <CreditPill />
-        <button
-          type="button"
-          aria-label="Settings"
-          onClick={() => setSettingsOpen(true)}
-          className="ml-auto rounded-md p-1.5 text-muted-foreground hover:bg-secondary"
-        >
-          <Settings className="size-4" />
-        </button>
-      </div>
-      <SettingsDialog
-        open={settingsOpen}
-        onOpenChange={setSettingsOpen}
-        maxWorkingBots={state?.settings ? state.settings.maxWorkingBots : DEFAULT_MAX_WORKING_BOTS}
-      />
+      <SidebarFooter onNewBot={onNewBot} maxWorkingBots={state?.settings ? state.settings.maxWorkingBots : DEFAULT_MAX_WORKING_BOTS} />
     </>
   )
 }

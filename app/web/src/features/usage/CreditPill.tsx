@@ -47,14 +47,18 @@ export function creditText(usage: Usage | null): string {
   return remaining !== null ? `$${remaining.toFixed(2)} credit left` : 'credit unknown'
 }
 
-/** OpenRouter credit left; "credit unknown" when the server has no good value. */
-export function CreditPill() {
-  const usage = useUsage()
+/** The pill for an already-loaded usage value (the sidebar polls once and shares it). */
+export function CreditPillView({ usage }: { usage: Usage | null }) {
   const remaining = usage !== null && usage.state !== 'unavailable' ? usage.remaining : null
   return (
     <div data-testid="credit-pill" className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
-      <span>{remaining !== null ? `$${remaining.toFixed(2)} credit left` : 'credit unknown'}</span>
+      <span>{creditText(usage)}</span>
       {remaining !== null && usage?.state === 'stale' && <span className="ml-1 opacity-70">(stale)</span>}
     </div>
   )
+}
+
+/** OpenRouter credit left; "credit unknown" when the server has no good value. */
+export function CreditPill() {
+  return <CreditPillView usage={useUsage()} />
 }

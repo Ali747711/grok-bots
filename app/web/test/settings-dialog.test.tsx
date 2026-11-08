@@ -16,7 +16,7 @@ function stubFetch(put: (init: RequestInit) => Promise<Response>) {
 afterEach(() => vi.unstubAllGlobals())
 
 const open = (value: number | null = 2, onOpenChange = vi.fn()) =>
-  render(<SettingsDialog open onOpenChange={onOpenChange} maxWorkingBots={value} />)
+  render(<SettingsDialog open onOpenChange={onOpenChange} maxWorkingBots={value} usage={{ state: 'ok', remaining: 2 }} />)
 
 describe('SettingsDialog', () => {
   it('shows the current limit, the credit helper and the credit line', async () => {
@@ -24,7 +24,7 @@ describe('SettingsDialog', () => {
     open(3)
     expect(screen.getByLabelText('Bots working at the same time')).toHaveValue('3')
     expect(screen.getByText('Each working bot spends credit.')).toBeInTheDocument()
-    expect(await screen.findByText('$2.00 credit left')).toBeInTheDocument()
+    expect(screen.getByText('$2.00 credit left')).toBeInTheDocument()
   })
 
   it('saves the chosen limit', async () => {

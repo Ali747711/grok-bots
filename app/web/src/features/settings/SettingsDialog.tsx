@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { creditText, useUsage } from '@/features/usage/CreditPill'
+import { creditText, type Usage } from '@/features/usage/CreditPill'
 
 import { saveSettings } from './settings-api'
 
@@ -14,16 +14,17 @@ interface SettingsDialogProps {
   onOpenChange: (open: boolean) => void
   /** Current limit from the live state; null means no limit. */
   maxWorkingBots: number | null
+  /** Credit from the caller's single usage poll. */
+  usage: Usage | null
 }
 
 const toValue = (limit: number | null) => (limit === null ? NO_LIMIT : String(limit))
 
 /** Crew settings: the working-bot limit. The state stream shows the saved value to every tab. */
-export function SettingsDialog({ open, onOpenChange, maxWorkingBots }: SettingsDialogProps) {
+export function SettingsDialog({ open, onOpenChange, maxWorkingBots, usage }: SettingsDialogProps) {
   const [value, setValue] = useState(toValue(maxWorkingBots))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const usage = useUsage()
 
   // Start from the saved value each time the dialog opens.
   useEffect(() => {

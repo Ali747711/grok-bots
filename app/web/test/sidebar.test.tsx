@@ -146,3 +146,14 @@ describe('Sidebar', () => {
     vi.unstubAllGlobals()
   })
 })
+
+describe('Sidebar usage polling', () => {
+  it('fetches /crew/usage once with the settings dialog closed', async () => {
+    const fetchFn = vi.fn(() => Promise.resolve(new Response(JSON.stringify({ state: 'ok', remaining: 2 }))))
+    vi.stubGlobal('fetch', fetchFn)
+    renderSidebar()
+    await screen.findByText('$2.00 credit left')
+    expect(fetchFn.mock.calls.filter(([url]) => url === '/crew/usage')).toHaveLength(1)
+    vi.unstubAllGlobals()
+  })
+})
