@@ -94,7 +94,7 @@ export class ChatSession {
     try {
       const result = await this.client.request<{ status?: unknown } | undefined>(
         'prompt.submit',
-        { profile: this.bot.name, session_id: sessionId, text, submission_id: submissionId, surface: 'hud' },
+        { profile: this.bot.name, session_id: sessionId, text, submission_id: submissionId },
         SUBMIT_TIMEOUT_MS
       )
       const admission = toAdmission(result?.status)
