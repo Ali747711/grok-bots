@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { PendingStore } from '../src/watcher/pending-store.js'
 import { applyGatewayEvent, routeServerRequest } from '../src/watcher/request-router.js'
+import { HermesRpcError, HermesUnavailableError } from '../src/hermes/errors.js'
+import { JsonRpcGatewayError } from '../src/vendor/hermes/json-rpc-channel.js'
 import { fakeSettings } from './helpers.js'
 import { startWatcher, type WatcherClient } from '../src/watcher/watcher.js'
 
@@ -328,5 +330,46 @@ describe('watcher live state', () => {
       expect(client.calls.filter(c => c.method === 'profiles.list').length).toBeGreaterThan(before)
       watcher.stop()
     })
+  })
+})
+
+describe('watcher request and refresh', () => {
+  const make = (client: FakeClient) =>
+    startWatcher({ client, connect: c => c.connect(), settings: fakeSettings, now: () => 1, reconnectDelayMs: () => 0 })
+
+  it('request rejects while disconnected and sends no frame', async () => {
+    const client = new FakeClient()
+    const watcher = startWatcher({ client, connect: () => new Promise(() => undefined), settings: fakeSettings, now: () => 1, reconnectDelayMs: () => 0 })
+    expect(watcher.state().hermes).toBe('connecting')
+    await expect(watcher.request('profiles.list', {})).rejects.toBeInstanceOf(HermesUnavailableError)
+    expect(client.calls).toEqual([])
+    watcher.stop()
+  })
+
+  it('request passes through, defaults to 60 s, and maps JSON-RPC errors', async () => {
+    const client = new FakeClient()
+    const watcher = make(client)
+    await flush(); await flush()
+    const timeouts: (number | undefined)[] = []
+    const original = client.request.bind(client)
+    client.request = (async (method: string, params: Record<string, unknown> = {}, timeoutMs?: number) => {
+      timeouts.push(timeoutMs)
+      if (method === 'profiles.create') throw new JsonRpcGatewayError('name taken', { code: 4062 })
+      return original(method, params)
+    }) as typeof client.request
+    await watcher.request('profiles.describe', { name: 'x' })
+    await expect(watcher.request('profiles.create', { name: 'x' }, 5000)).rejects.toEqual(new HermesRpcError(4062, 'name taken'))
+    expect(timeouts).toEqual([60_000, 5000])
+    watcher.stop()
+  })
+
+  it('refresh coalesces with an in-flight sync', async () => {
+    const client = new FakeClient()
+    const watcher = make(client)
+    await flush(); await flush()
+    const before = client.calls.filter(c => c.method === 'profiles.list').length
+    await Promise.all([watcher.refresh(), watcher.refresh()])
+    expect(client.calls.filter(c => c.method === 'profiles.list').length - before).toBe(1)
+    watcher.stop()
   })
 })

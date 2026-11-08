@@ -1,6 +1,7 @@
+import { HermesRpcError, HermesUnavailableError, type Rpc } from '../hermes/errors.js'
 import { log as logger } from '../log.js'
 import type { SettingsStore } from '../settings/settings-store.js'
-import type { ServerRequest } from '../vendor/hermes/json-rpc-channel.js'
+import { JsonRpcGatewayError, type ServerRequest } from '../vendor/hermes/json-rpc-channel.js'
 import { type AnswerInput, answerRequest } from './answer.js'
 import { BotStateTracker, type CrewState, type ProfileInput } from './bot-state.js'
 import { type PendingKind, type PendingRequest, PendingStore } from './pending-store.js'
@@ -41,6 +42,10 @@ export interface Watcher {
   answer(id: string, input: AnswerInput): 'sent' | 'not_found' | 'already_resolved' | 'answering' | 'offline' | 'unsupported'
   /** The bot's avatar as a `data:` URL via `profiles.get_asset`; `found: false` when it has none. */
   getAvatar(name: string): Promise<{ found: boolean; mime?: string; data?: string }>
+  /** JSON-RPC to Hermes over the watcher's connection. Rejects HermesUnavailableError when not connected. */
+  request: Rpc
+  /** Re-read the roster now; coalesced with a sync already in flight. */
+  refresh(): Promise<void>
   debug(): readonly DebugEntry[]
   stop(): void
 }
@@ -56,6 +61,7 @@ interface Snapshot {
   open_requests?: { id: string; method: string; params: Record<string, unknown> }[] | null
 }
 
+const REQUEST_TIMEOUT_MS = 60_000
 const DEBUG_MAX = 200
 const DEBOUNCE_MS = 100
 const SYNC_RETRY_BASE_MS = 1000
@@ -351,6 +357,16 @@ export function startWatcher(deps: WatcherDeps): Watcher {
       const r = await client.request<{ found: boolean; mime?: string | null; data?: string | null }>('profiles.get_asset', { name, asset: 'avatar' })
       return { found: r.found, ...(r.mime ? { mime: r.mime } : {}), ...(r.data ? { data: r.data } : {}) }
     },
+    request: async <T>(method: string, params: Record<string, unknown>, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> => {
+      if (hermes !== 'connected') throw new HermesUnavailableError()
+      try {
+        return await client.request<T>(method, params, timeoutMs)
+      } catch (error) {
+        if (error instanceof JsonRpcGatewayError) throw new HermesRpcError(error.code ?? -1, error.message)
+        throw error
+      }
+    },
+    refresh: () => syncing ?? sync(),
     debug: () => log,
     stop: () => {
       stopped = true
