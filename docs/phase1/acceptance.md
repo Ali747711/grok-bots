@@ -35,6 +35,6 @@ Test-harness fixes made during acceptance (no product change): the Webapp compos
 | Check | Result |
 |---|---|
 | `systemctl --user restart crew` with an approval pending | ✅ open page recovered in ~1 s without re-login; the card re-appeared **exactly once** (server: 1 pending, from the session snapshot); console errors only from the cut SSE stream and one state fetch during the restart |
-| `systemctl --user restart hermes-gateway` | _(pending)_ |
+| `systemctl --user restart hermes-gateway` | ✅ (after the final fix pass, build `efe3a0c`) open chat showed "Hermes is offline" with the composer disabled, then "Connecting to Hermes…", then recovered at 3.0 s; a new turn (`echo after-gateway-restart-7f3`) streamed and completed, shown once |
 | VM reboot | _(pending)_ |
-| 30-minute approval expiry (`approvals.timeout: 1800`) | _(running — approval pending since 10:44:58 UTC)_ |
+| 30-minute approval expiry (`approvals.timeout: 1800`) | ✅ approval asked 10:49:29 UTC (`rm -r /tmp/crew-fixture/repro-a`), left unanswered through several Crew restarts; Hermes timed it out at 11:19:30 (turn ended, command not run, folder still there); the card left Crew at 11:19:36; Crew's audit log: `request settled … answeredByCrew: false` |
