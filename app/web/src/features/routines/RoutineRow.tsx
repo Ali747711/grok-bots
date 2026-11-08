@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -18,6 +19,9 @@ const RESULT: Record<LastStatus, { text: string; tone: string }> = {
   blocked_config: { text: 'Config problem', tone: 'bg-warn-soft text-warn-ink' }
 }
 
+/** Ghost buttons on the muted row card need their own visible hover and open states. */
+const GHOST = 'hover:bg-card aria-expanded:bg-card'
+
 interface RoutineRowProps {
   routine: RoutineView
   onChanged: () => void
@@ -31,15 +35,18 @@ function useRowActions(routine: RoutineView, onChanged: () => void) {
   const [note, setNote] = useState<string | null>(null)
   // Bumped after Run now so an open history re-reads at once.
   const [runTick, setRunTick] = useState(0)
-  const act = async (action: () => Promise<unknown>, fail: string) => {
+  const act = async (action: () => Promise<unknown>, fail: string): Promise<boolean> => {
     setNote(null)
+    let ok = true
     try {
       await action()
     } catch (e) {
+      ok = false
       // The server's own reason (a Hermes refusal) beats a generic line.
       setNote(e instanceof CrewApiError && typeof e.body?.message === 'string' ? e.body.message : fail)
     }
     onChanged()
+    return ok
   }
   return {
     note,
@@ -52,7 +59,9 @@ function useRowActions(routine: RoutineView, onChanged: () => void) {
         setRunTick(t => t + 1)
       }, 'Could not start the routine'),
     toggle: () => act(() => (routine.enabled ? pauseRoutine : resumeRoutine)(routine.bot, routine.id), 'Could not change the routine'),
-    remove: () => act(() => deleteRoutine(routine.bot, routine.id), 'Could not delete the routine')
+    remove: async () => {
+      if (await act(() => deleteRoutine(routine.bot, routine.id), 'Could not delete the routine')) toast.success('Routine deleted')
+    }
   }
 }
 
@@ -75,7 +84,7 @@ function StatusLine({ routine }: { routine: RoutineView }) {
     <div className="flex flex-wrap items-center gap-2">
       <span className="label-mono">{text}</span>
       {routine.finished && routine.lastRunAt !== null && <span className="label-mono">{formatInZone(routine.lastRunAt, routine.timezone)}</span>}
-      {result && <Badge title={routine.lastError ?? undefined} className={cn('h-5 px-2 text-xs', result.tone)}>{result.text}</Badge>}
+      {result && <Badge title={routine.lastError ?? undefined} className={cn('h-5 px-2 text-xs ring-1 ring-border', result.tone)}>{result.text}</Badge>}
     </div>
   )
 }
@@ -105,9 +114,9 @@ export function RoutineRow({ routine, onChanged, onEdit, historyOpen, onToggleHi
           {!routine.finished && (
             <Button type="button" size="sm" variant="outline" disabled={routine.running} onClick={() => void run()}>{routine.running ? 'Running…' : 'Run now'}</Button>
           )}
-          <Button type="button" size="sm" variant="ghost" aria-expanded={historyOpen} onClick={onToggleHistory}>History</Button>
-          <Button type="button" size="sm" variant="ghost" onClick={onEdit}>Edit</Button>
-          <Button type="button" size="sm" variant="ghost" onClick={() => setConfirming(true)}>Delete</Button>
+          <Button type="button" size="sm" variant="ghost" aria-expanded={historyOpen} onClick={onToggleHistory} className={GHOST}>History</Button>
+          <Button type="button" size="sm" variant="ghost" onClick={onEdit} className={GHOST}>Edit</Button>
+          <Button type="button" size="sm" variant="ghost" onClick={() => setConfirming(true)} className={GHOST}>Delete</Button>
         </div>
       )}
       {historyOpen && <RunHistory bot={routine.bot} routineId={routine.id} timezone={routine.timezone} instruction={routine.instruction} refreshKey={runTick} />}

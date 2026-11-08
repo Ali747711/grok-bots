@@ -43,6 +43,14 @@ describe('Composer', () => {
     expect(screen.getByRole('status')).toHaveClass('text-muted-foreground')
   })
 
+  it('names the icon-only Send button and offers a Send tooltip on hover', async () => {
+    render(<Composer {...base} />)
+    const send = screen.getByRole('button', { name: 'Send' })
+    expect(send).toHaveAttribute('aria-label', 'Send')
+    fireEvent.focus(send)
+    expect(await screen.findByText('Send', { selector: '[data-slot=tooltip-content]' })).toBeInTheDocument()
+  })
+
   it('shows Stop instead of Send while running', () => {
     const onStop = vi.fn()
     render(<Composer {...base} running onStop={onStop} />)

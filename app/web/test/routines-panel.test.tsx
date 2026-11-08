@@ -1,6 +1,9 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+const toast = vi.hoisted(() => ({ success: vi.fn() }))
+vi.mock('sonner', () => ({ toast }))
+
 import { RoutinesPanel } from '@/features/routines/RoutinesPanel'
 import type { RoutineView } from '@/features/routines/types'
 
@@ -98,6 +101,7 @@ describe('RoutinesPanel list', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
     fireEvent.click(screen.getByRole('button', { name: 'Yes, delete' }))
     await waitFor(() => expect(callsTo(fn, 'DELETE /crew/routines/r1?bot=dev')).toHaveLength(1))
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Routine deleted'))
   })
 
   it('polls every 20 seconds and stops on unmount', async () => {
@@ -246,7 +250,8 @@ describe('RoutinesPanel finished routines and row errors', () => {
     const rows = await screen.findAllByRole('listitem')
     expect(rows[0]).toHaveClass('bg-muted', 'rounded-2xl')
     expect(within(rows[0]!).getByRole('switch', { name: 'Daily digest enabled' })).toBeChecked()
-    expect(within(rows[0]!).getByText('OK')).toHaveClass('bg-ok-soft', 'text-ok-ink')
+    expect(within(rows[0]!).getByText('OK')).toHaveClass('bg-ok-soft', 'text-ok-ink', 'ring-1', 'ring-border')
+    for (const name of ['History', 'Edit', 'Delete']) expect(within(rows[0]!).getByRole('button', { name })).toHaveClass('hover:bg-card')
     expect(within(rows[1]!).getByText('Config problem')).toHaveClass('bg-warn-soft', 'text-warn-ink')
     expect(within(rows[0]!).getByText(/^Next/)).toHaveClass('label-mono')
   })

@@ -4,6 +4,7 @@ import { ArrowUp } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 interface ComposerProps {
   onSend: (text: string) => void
@@ -49,9 +50,16 @@ export function Composer({ onSend, onStop, running, disabledReason, stopDisabled
           {running ? (
             <Button type="button" disabled={stopDisabled} onClick={onStop} className="rounded-full bg-contrast text-contrast-foreground hover:bg-contrast/90">Stop</Button>
           ) : (
-            <Button type="button" size="icon" aria-label="Send" disabled={disabled || !text.trim()} onClick={submit} className="rounded-full">
-              <ArrowUp />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button type="button" size="icon" aria-label="Send" disabled={disabled || !text.trim()} onClick={submit} className="rounded-full">
+                    <ArrowUp />
+                  </Button>
+                }
+              />
+              <TooltipContent>Send</TooltipContent>
+            </Tooltip>
           )}
         </div>
       </div>

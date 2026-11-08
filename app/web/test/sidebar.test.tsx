@@ -81,7 +81,7 @@ describe('Sidebar', () => {
     renderSidebar(crewState(), 'dev', onSelect)
     fireEvent.click(screen.getByRole('button', { name: /Researcher/ }))
     expect(onSelect).toHaveBeenCalledWith('researcher')
-    expect(screen.getByRole('button', { name: /Dev/ })).toHaveAttribute('aria-current', 'true')
+    expect(screen.getByRole('button', { name: /Dev/ })).toHaveAttribute('aria-current', 'page')
   })
 
   it('renders avatars: photo for a photo bot, a fur avatar otherwise, at 36 px', () => {

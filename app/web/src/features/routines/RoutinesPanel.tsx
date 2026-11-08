@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import type { BotView } from '@/state/types'
@@ -23,7 +24,7 @@ export function RoutinesPanel({ bot }: { bot: BotView }) {
         key={editing.kind === 'edit' ? editing.routine.id : 'new'}
         bot={bot.name}
         {...(editing.kind === 'edit' ? { initial: editing.routine } : {})}
-        onSaved={() => { setEditing(null); void reload() }}
+        onSaved={() => { setEditing(null); void reload(); toast.success('Routine saved') }}
         onCancel={() => setEditing(null)}
       />
     )

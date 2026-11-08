@@ -98,6 +98,10 @@ describe('RunHistory', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Daily digest/ }))
     expect(await screen.findByText('All fine.')).toBeInTheDocument()
     expect(screen.queryByText(/Blocked by policy/)).toBeNull()
+    // Muted pills and blocks inside must stay visible, so the area itself is the card colour with an edge.
+    const area = screen.getByTestId('transcript').parentElement
+    expect(area).toHaveClass('bg-card', 'border')
+    expect(area).not.toHaveClass('bg-muted')
   })
 
   it('says so when the transcript cannot be loaded', async () => {

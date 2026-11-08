@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { DEFAULT_MAX_WORKING_BOTS } from '@/features/chat/disabled-reason'
 import { cn } from '@/lib/utils'
@@ -37,6 +38,32 @@ function HiddenSection({ bots, row }: { bots: readonly BotView[]; row: (bot: Bot
       </CollapsibleTrigger>
       <CollapsibleContent className="flex flex-col gap-1">{bots.map(row)}</CollapsibleContent>
     </Collapsible>
+  )
+}
+
+function RosterSkeleton() {
+  return (
+    <div className="flex flex-col gap-1 pt-3" aria-hidden="true">
+      {[0, 1, 2, 3].map(i => (
+        <div key={i} data-testid="roster-skeleton" className="flex items-center gap-2.5 p-2">
+          <Skeleton className="size-9 rounded-xl" />
+          <div className="flex flex-1 flex-col gap-1.5">
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-2.5 w-36" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function EmptyRoster({ onNewBot }: { onNewBot?: () => void }) {
+  return (
+    <div className="flex flex-col items-start gap-2 p-2 pt-4 text-sm">
+      <p className="font-medium">No bots yet</p>
+      <p className="text-xs text-muted-foreground">Create one to give it a job and start chatting.</p>
+      {onNewBot && <Button type="button" size="sm" className="rounded-full" onClick={onNewBot}>New bot</Button>}
+    </div>
   )
 }
 
@@ -78,7 +105,9 @@ export function Sidebar({ state, selected, onSelect, crewConnected = true, onNee
           </Badge>
         )}
       </button>
+      {state === null && <RosterSkeleton />}
       <div data-testid="roster" data-stale={stale} className={cn('flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto', stale && 'opacity-50')}>
+        {state !== null && !stale && state.bots.length === 0 && <EmptyRoster onNewBot={onNewBot} />}
         {primary.length > 0 && (
           <section role="group" aria-label="Primary" className="flex flex-col gap-1">
             <SectionLabel>Primary</SectionLabel>

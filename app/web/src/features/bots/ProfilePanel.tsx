@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
 
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -29,8 +30,10 @@ function HideSection({ detail, onDetail }: { detail: BotDetail; onDetail: (d: Bo
     setError(null)
     try {
       const out = await updateBot(detail.name, { hidden: !detail.hidden })
-      if (out.status === 'saved') onDetail(out.detail)
-      else setError(failureText(null))
+      if (out.status === 'saved') {
+        onDetail(out.detail)
+        toast.success(out.detail.hidden ? 'Bot hidden' : 'Bot shown')
+      } else setError(failureText(null))
     } catch (e) {
       setError(failureText(e))
     }

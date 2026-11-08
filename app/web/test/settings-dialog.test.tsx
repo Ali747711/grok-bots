@@ -1,6 +1,9 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+const toast = vi.hoisted(() => ({ success: vi.fn() }))
+vi.mock('sonner', () => ({ toast }))
+
 import { SettingsDialog } from '@/features/settings/SettingsDialog'
 
 const json = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status }))
@@ -13,7 +16,10 @@ function stubFetch(put: (init: RequestInit) => Promise<Response>) {
   return fn
 }
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.unstubAllGlobals()
+  toast.success.mockClear()
+})
 
 const limitBox = () => screen.getByRole('combobox', { name: 'Bots working at the same time' })
 const choose = (name: string) => {
@@ -43,6 +49,7 @@ describe('SettingsDialog', () => {
     choose('No limit')
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
+    expect(toast.success).toHaveBeenCalledWith('Settings saved')
     const call = fetchFn.mock.calls.find(([url]) => url === '/crew/settings')
     expect(call?.[1]?.method).toBe('PUT')
     expect(JSON.parse(String(call?.[1]?.body))).toEqual({ maxWorkingBots: null })
@@ -65,5 +72,6 @@ describe('SettingsDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/could not save/i)
     expect(onOpenChange).not.toHaveBeenCalledWith(false)
+    expect(toast.success).not.toHaveBeenCalled()
   })
 })

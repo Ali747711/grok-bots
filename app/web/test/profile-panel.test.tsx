@@ -8,6 +8,8 @@ import type { BotDetail } from '@/features/bots/types'
 
 import { bot } from './fixtures'
 
+const toast = vi.hoisted(() => ({ success: vi.fn() }))
+vi.mock('sonner', () => ({ toast }))
 vi.mock('bot-avatars', async () => {
   const actual = await vi.importActual<typeof import('bot-avatars')>('bot-avatars')
   return { ...actual, BotAvatar: (props: Record<string, unknown>) => <div data-testid="stub" data-type={String(props.type)} /> }
@@ -62,7 +64,10 @@ const pick = (label: string, option: string) => {
 }
 const save = () => fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.unstubAllGlobals()
+  toast.success.mockClear()
+})
 
 describe('ProfilePanel', () => {
   it('shows the name, the read-only handle and the loaded fields', async () => {
@@ -157,6 +162,16 @@ describe('ProfilePanel', () => {
     fireEvent.click(screen.getByRole('switch', { name: /Hide from the list/ }))
     await waitFor(() => expect(patches(fn)).toEqual([{ hidden: true }]))
     await waitFor(() => expect(screen.getByRole('switch', { name: /Hide from the list/ })).toHaveAttribute('aria-checked', 'true'))
+    expect(toast.success).toHaveBeenCalledWith('Bot hidden')
+  })
+
+  it('toasts after a saved profile', async () => {
+    stub()
+    open()
+    await loaded()
+    change('Persona (SOUL.md)', 'Be brief')
+    save()
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Profile saved'))
   })
 
   it('delete requires the typed handle and goes home', async () => {

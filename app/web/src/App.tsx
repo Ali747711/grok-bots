@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { matchPath, Navigate, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, matchPath, Navigate, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 
+import { Skeleton } from '@/components/ui/skeleton'
 import { NewBotDialog } from '@/features/bots/NewBotDialog'
 import { ChatView } from '@/features/chat/ChatView'
 import { NeedsYouPage } from '@/features/needs-you/NeedsYouPage'
@@ -13,9 +14,29 @@ import { useCrewState } from '@/state/use-crew-state'
 
 const centered = 'grid flex-1 place-items-center text-sm text-muted-foreground'
 
+function Loading() {
+  return (
+    <div role="status" className="flex flex-1 flex-col gap-4 p-6">
+      <span className="sr-only">Loading…</span>
+      <Skeleton className="h-10 w-48" />
+      <Skeleton className="h-16 w-2/3" />
+      <Skeleton className="ml-auto h-10 w-1/3" />
+    </div>
+  )
+}
+
+function NotFound() {
+  return (
+    <div className={`${centered} content-center justify-items-center gap-3`}>
+      <p className="text-base font-medium text-foreground">Bot not found</p>
+      <Link to="/" className="text-sky-ink underline underline-offset-2">Back to your bots</Link>
+    </div>
+  )
+}
+
 function HomeRedirect({ state }: { state: CrewState | null }) {
   const primary = state?.bots.find(b => b.isPrimary) ?? state?.bots[0]
-  if (!primary) return <div className={centered}>Loading…</div>
+  if (!primary) return <Loading />
   return <Navigate replace to={`/bots/${encodeURIComponent(primary.name)}`} />
 }
 
@@ -28,9 +49,9 @@ interface BotRouteProps {
 }
 
 function BotRoute({ state, crewConnected, name, panel, onPanel }: BotRouteProps) {
-  if (!state) return <div className={centered}>Loading…</div>
+  if (!state) return <Loading />
   const bot = state.bots.find(b => b.name === name)
-  if (!bot) return <div className={centered}>Bot not found</div>
+  if (!bot) return <NotFound />
   return <ChatView key={bot.name} bot={bot} state={state} crewConnected={crewConnected} panel={panel} onPanel={onPanel} />
 }
 
@@ -89,7 +110,7 @@ export default function App() {
             crewConnected={connected}
             selected={selected}
             onSelect={name => navigate({ pathname: `/bots/${encodeURIComponent(name)}`, ...(panel ? { search: `?panel=${panel}` } : {}) })}
-            needsYouActive={pathname === '/needs-you'}
+            needsYouActive={matchPath('/needs-you', pathname) !== null}
             onNeedsYou={() => navigate('/needs-you')}
             onNewBot={() => setNewBotOpen(true)}
           />
@@ -98,7 +119,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<HomeRedirect state={state} />} />
             <Route path="/bots/:name" element={<BotRoute state={state} crewConnected={connected} name={selected ?? ''} panel={panel} onPanel={togglePanel} />} />
-            <Route path="/needs-you" element={state ? <NeedsYouPage state={state} crewConnected={connected} /> : <div className={centered}>Loading…</div>} />
+            <Route path="/needs-you" element={state ? <NeedsYouPage state={state} crewConnected={connected} /> : <Loading />} />
             <Route path="*" element={<Navigate replace to="/" />} />
           </Routes>
         }

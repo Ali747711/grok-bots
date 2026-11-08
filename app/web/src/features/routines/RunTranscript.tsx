@@ -61,7 +61,7 @@ export function RunTranscript({ bot, sessionId, instruction }: { bot: string; se
           <AlertDescription>Blocked by policy — routines can't ask for approval, so that step was skipped.</AlertDescription>
         </Alert>
       )}
-      <div className="max-h-96 overflow-y-auto rounded-xl bg-muted"><MessageList items={items} /></div>
+      <div className="max-h-96 overflow-y-auto rounded-xl border border-border bg-card"><MessageList items={items} /></div>
     </div>
   )
 }

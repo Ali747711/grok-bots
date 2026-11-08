@@ -1,3 +1,4 @@
+import { Skeleton } from '@/components/ui/skeleton'
 import type { PanelTab } from '@/features/panel/BotPanel'
 import { submitAnswer } from '@/features/requests/answer-request'
 import { RequestCard } from '@/features/requests/RequestCard'
@@ -18,9 +19,19 @@ interface ChatViewProps {
   onPanel?: (tab: PanelTab) => void
 }
 
+function ChatSkeleton() {
+  return (
+    <div data-testid="chat-skeleton" aria-hidden="true" className="flex min-h-0 flex-1 flex-col gap-4 px-6 py-6">
+      <Skeleton className="h-12 w-2/3" />
+      <Skeleton className="ml-auto h-9 w-1/3" />
+      <Skeleton className="h-16 w-3/4" />
+    </div>
+  )
+}
+
 /** One bot's chat: header, transcript, composer. */
 export function ChatView({ bot, state, crewConnected, panel, onPanel }: ChatViewProps) {
-  const { session, items, canSend, connected, running, notice } = useChatSession(bot)
+  const { session, items, canSend, connected, running, loaded, notice } = useChatSession(bot)
   const stale = state.hermes !== 'connected' || !crewConnected
   const othersWorking = state.bots.filter(b => b.name !== bot.name && b.status === 'working').length
   // Oldest first; they leave when Hermes settles them (they drop out of state.pending).
@@ -33,7 +44,7 @@ export function ChatView({ bot, state, crewConnected, panel, onPanel }: ChatView
   return (
     <>
       <ChatHeader bot={bot} stale={stale} panel={panel} onPanel={onPanel} />
-      <MessageList items={items} onRetry={id => void session?.retry(id).catch(() => undefined)} />
+      {!loaded && items.length === 0 && !stale ? <ChatSkeleton /> : <MessageList items={items} onRetry={id => void session?.retry(id).catch(() => undefined)} />}
       {notice && <p role="status" className="px-6 text-center text-xs text-muted-foreground">{notice}</p>}
       {requests.length > 0 && (
         <div className="max-h-[40vh] flex-none overflow-y-auto px-6 pt-2">

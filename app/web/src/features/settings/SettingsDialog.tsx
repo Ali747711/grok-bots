@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -63,6 +64,7 @@ export function SettingsDialog({ open, onOpenChange, maxWorkingBots, usage }: Se
     try {
       await saveSettings({ maxWorkingBots: value === NO_LIMIT ? null : Number(value) })
       onOpenChange(false)
+      toast.success('Settings saved')
     } catch {
       setError('Could not save the settings. Try again.')
     } finally {

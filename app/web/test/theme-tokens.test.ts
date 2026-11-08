@@ -19,6 +19,11 @@ describe('theme tokens', () => {
     expect(light).toContain(`${token}:`)
   })
 
+  it('sets color-scheme so native controls follow the theme', () => {
+    expect(light).toMatch(/color-scheme:\s*light/)
+    expect(dark).toMatch(/color-scheme:\s*dark/)
+  })
+
   it('uses lime as primary with black text, in both themes', () => {
     for (const scope of [light, dark]) {
       expect(scope).toMatch(/--primary:\s*#d6f55a/i)

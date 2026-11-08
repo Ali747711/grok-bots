@@ -17,7 +17,7 @@ export function RosterRow({ bot, active, showStatus, onSelect }: RosterRowProps)
       type="button"
       data-bot={bot.name}
       data-selected={active ? 'true' : undefined}
-      aria-current={active ? 'true' : undefined}
+      aria-current={active ? 'page' : undefined}
       onClick={() => onSelect(bot.name)}
       className={cn(
         'flex w-full items-center gap-2.5 rounded-2xl p-2 text-left transition-colors hover:bg-muted',
