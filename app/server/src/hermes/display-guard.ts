@@ -26,6 +26,7 @@ const asText = (raw: RawData): string => {
   return (Buffer.isBuffer(raw) ? raw : Buffer.from(raw)).toString('utf8')
 }
 
+// A refused display.* notification (no id) gets an id-null error reply, which the client ignores.
 const refusal = (code: number, message: string, id: unknown): FrameVerdict => ({
   forward: false,
   reply: JSON.stringify({ jsonrpc: '2.0', id: typeof id === 'string' || typeof id === 'number' ? id : null, error: { code, message } })

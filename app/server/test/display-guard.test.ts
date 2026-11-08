@@ -39,7 +39,15 @@ describe('checkBrowserFrame', () => {
       [call('display.install', { profile: 'crew-test' }), -32601, 7],
       [call('display.installFoo', { profile: 'crew-test' }), -32601, 7],
       [call('display.switchSandboxImage', { profile: 'crew-test' }), -32601, 7],
-      [call('display.somethingNew', { profile: 'crew-test' }), -32601, 7]
+      [call('display.somethingNew', { profile: 'crew-test' }), -32601, 7],
+      ['{"jsonrpc":"2.0","id":1,"method":"display.start","params":{"profile":"crew-test"}}', -32601, 1],
+      ['{"jsonrpc":"2.0","id":2,"method":"display.status"}', -32602, 2],
+      ['{"jsonrpc":"2.0","id":3,"method":"prompt.submit","method":"display.status","params":{}}', -32602, 3],
+      ['{"jsonrpc":"2.0","id":4,"method":"display.status","params":{"profile":false}}', -32602, 4],
+      ['{"jsonrpc":"2.0","id":5,"method":"display.status","params":{"profile":0}}', -32602, 5],
+      ['{"jsonrpc":"2.0","id":6,"method":"display.status","params":{"profile":null}}', -32602, 6],
+      ['{"jsonrpc":"2.0","id":8,"method":"display.status","params":null}', -32602, 8],
+      ['{"jsonrpc":"2.0","id":9,"method":"display.status","params":{"__proto__":{"profile":"crew-test"}}}', -32602, 9]
     ]
     for (const [text, code, id] of cases) {
       const reply = errorOf(check(text))
