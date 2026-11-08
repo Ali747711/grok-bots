@@ -3,7 +3,7 @@ import type { ServerRequest } from '../vendor/hermes/json-rpc-channel.js'
 import { type AnswerInput, answerRequest } from './answer.js'
 import { BotStateTracker, type CrewState, type ProfileInput } from './bot-state.js'
 import { type PendingKind, type PendingRequest, PendingStore } from './pending-store.js'
-import { applyGatewayEvent, routeServerRequest, summarize, type WatcherEvent } from './request-router.js'
+import { applyGatewayEvent, approvalDetail, routeServerRequest, summarize, type WatcherEvent } from './request-router.js'
 
 /** The slice of the vendored JsonRpcGatewayClient the watcher uses (fakeable in tests). */
 export interface WatcherClient {
@@ -123,7 +123,7 @@ export function startWatcher(deps: WatcherDeps): Watcher {
     })
     for (const p of snap.prompts ?? []) {
       store.add({
-        id: p.prompt_id, kind: p.kind, profile, sessionId: snap.session_id, summary: summarize(p.kind, p),
+        id: p.prompt_id, kind: p.kind, profile, sessionId: snap.session_id, summary: summarize(p.kind, p), ...approvalDetail(p.kind, p),
         ...(p.choices ? { choices: p.choices } : {}), receivedAt: deps.now(), source: 'snapshot_prompt',
         promptId: p.prompt_id, executionGeneration: p.execution_generation
       })

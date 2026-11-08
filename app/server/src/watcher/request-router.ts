@@ -3,6 +3,7 @@ import type { PendingKind, PendingSource, PendingStore } from './pending-store.j
 
 const HELD: ReadonlySet<string> = new Set<PendingKind>(['approval', 'clarify', 'sudo', 'secret'])
 const SUMMARY_MAX = 300
+export const DETAIL_MAX = 16_384
 
 export interface RouteContext {
   profileForSession(sessionId: string): string | undefined
@@ -30,6 +31,25 @@ export function summarize(kind: PendingKind, params: Params): string {
         ? [text(params.question)]
         : [text(params.prompt), text(params.label), text(params.description), text(params.env_var)]
   return parts.filter(Boolean).join(' — ').slice(0, SUMMARY_MAX)
+}
+
+export interface ApprovalDetail {
+  readonly command?: string
+  readonly description?: string
+  readonly detailTruncated?: true
+}
+
+/** Full command/description of an approval (each capped at DETAIL_MAX); empty for every other kind. */
+export function approvalDetail(kind: PendingKind, params: Params): ApprovalDetail {
+  if (kind !== 'approval') return {}
+  const command = text(params.command)
+  const description = text(params.description)
+  const truncated = (command?.length ?? 0) > DETAIL_MAX || (description?.length ?? 0) > DETAIL_MAX
+  return {
+    ...(command ? { command: command.slice(0, DETAIL_MAX) } : {}),
+    ...(description ? { description: description.slice(0, DETAIL_MAX) } : {}),
+    ...(truncated ? { detailTruncated: true as const } : {})
+  }
 }
 
 function stringList(value: unknown): readonly string[] | undefined {
@@ -61,6 +81,7 @@ export function routeServerRequest(
     profile: ctx.profileForSession(sessionId) ?? 'unknown',
     sessionId,
     summary: summarize(kind, params),
+    ...approvalDetail(kind, params),
     ...(choices ? { choices } : {}),
     receivedAt: ctx.now(),
     source
@@ -89,6 +110,7 @@ export function applyGatewayEvent(event: WatcherEvent, store: PendingStore, ctx:
       profile: ctx.profileForSession(sessionId) ?? 'unknown',
       sessionId,
       summary: summarize(promptKind, payload),
+      ...approvalDetail(promptKind, payload),
       ...(choices ? { choices } : {}),
       receivedAt: ctx.now(),
       source: 'event',

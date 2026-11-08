@@ -12,6 +12,10 @@ export interface PendingRequest {
   /** Redacted, human-readable: command/description/question. Never a secret value. */
   readonly summary: string
   readonly choices?: readonly string[]
+  /** Approvals only: the complete (up to 16 384 chars each) operation being authorized. */
+  readonly command?: string
+  readonly description?: string
+  readonly detailTruncated?: true
   readonly receivedAt: number
   readonly source: PendingSource
   readonly promptId?: string
