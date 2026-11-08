@@ -7,6 +7,10 @@ import type { CrewEnv } from './session-guard.js'
 
 const HEARTBEAT_MS = 15_000
 const TEXT_MAX = 4000
+const AVATAR_NAME = /^[a-z0-9][a-z0-9_-]{0,63}$/
+// SVG is deliberately absent: it can carry script.
+const AVATAR_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
+const DATA_URL = /^data:([^;,]+);base64,([A-Za-z0-9+/=\s]*)$/
 
 const bodies = {
   approval: z.object({ choice: z.string() }),
@@ -16,7 +20,7 @@ const bodies = {
 } as const
 
 /** `GET /crew/state` (snapshot), `POST /crew/requests/:id/answer` (the only answer path) and `GET /crew/events` (SSE: event `state`, full CrewState on connect and on change). */
-export function stateRoutes(watcher: Pick<Watcher, 'state' | 'onChange' | 'answer' | 'store'> | undefined, heartbeatMs = HEARTBEAT_MS): Hono<CrewEnv> {
+export function stateRoutes(watcher: Pick<Watcher, 'state' | 'onChange' | 'answer' | 'store' | 'getAvatar'> | undefined, heartbeatMs = HEARTBEAT_MS): Hono<CrewEnv> {
   const routes = new Hono<CrewEnv>()
   routes.get('/crew/state', c => (watcher ? c.json(watcher.state()) : c.json({ error: 'watcher_not_running' }, 503)))
   routes.get('/crew/events', c => {
@@ -34,6 +38,17 @@ export function stateRoutes(watcher: Pick<Watcher, 'state' | 'onChange' | 'answe
         off()
       }
     })
+  })
+  routes.get('/crew/avatars/:name', async c => {
+    const name = z.string().regex(AVATAR_NAME).safeParse(c.req.param('name'))
+    if (!name.success) return c.json({ error: 'not_found' }, 404)
+    if (!watcher || watcher.state().hermes !== 'connected') return c.json({ error: 'hermes_unavailable' }, 503)
+    const asset = await watcher.getAvatar(name.data).catch(() => null)
+    if (!asset) return c.json({ error: 'hermes_unavailable' }, 503)
+    const match = asset.found && asset.data ? DATA_URL.exec(asset.data) : null
+    const mime = match?.[1]?.toLowerCase()
+    if (!match || !mime || !AVATAR_TYPES.has(mime)) return c.json({ error: 'not_found' }, 404)
+    return c.body(Buffer.from(match[2] ?? '', 'base64'), 200, { 'Content-Type': mime, 'Cache-Control': 'private, max-age=300' })
   })
   routes.post('/crew/requests/:id/answer', async c => {
     if (!watcher) return c.json({ error: 'watcher_not_running' }, 503)

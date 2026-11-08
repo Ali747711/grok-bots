@@ -20,7 +20,7 @@ export interface AppDeps {
   readonly token: HermesToken
   readonly fetchUpstream: typeof fetch
   /** Absent in tests that don't need it; /crew/pending then answers 503. */
-  readonly watcher?: Pick<Watcher, 'store' | 'debug' | 'state' | 'onChange' | 'answer'>
+  readonly watcher?: Pick<Watcher, 'store' | 'debug' | 'state' | 'onChange' | 'answer' | 'getAvatar'>
 }
 
 export const PUBLIC_PATHS = [

@@ -37,6 +37,8 @@ export interface Watcher {
   onChange(listener: () => void): () => void
   /** Send the user's answer to Hermes without waiting for it; progress shows in `state()`. */
   answer(id: string, input: AnswerInput): 'sent' | 'not_found' | 'already_resolved' | 'answering' | 'offline'
+  /** The bot's avatar as a `data:` URL via `profiles.get_asset`; `found: false` when it has none. */
+  getAvatar(name: string): Promise<{ found: boolean; mime?: string; data?: string }>
   debug(): readonly DebugEntry[]
   stop(): void
 }
@@ -306,6 +308,10 @@ export function startWatcher(deps: WatcherDeps): Watcher {
       return () => {
         listeners.delete(listener)
       }
+    },
+    getAvatar: async name => {
+      const r = await client.request<{ found: boolean; mime?: string | null; data?: string | null }>('profiles.get_asset', { name, asset: 'avatar' })
+      return { found: r.found, ...(r.mime ? { mime: r.mime } : {}), ...(r.data ? { data: r.data } : {}) }
     },
     debug: () => log,
     stop: () => {
