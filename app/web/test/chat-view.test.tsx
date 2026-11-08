@@ -62,7 +62,7 @@ describe('MessageList: look', () => {
     expect(screen.getByText('hi there')).toHaveClass('bg-contrast', 'text-contrast-foreground', 'rounded-[16px_16px_4px_16px]')
     const reply = screen.getByText('docs').closest('div')!
     expect(reply.closest('.bg-contrast')).toBeNull()
-    expect(screen.getByText('docs')).toHaveClass('text-sky')
+    expect(screen.getByText('docs')).toHaveClass('text-sky-ink')
     expect(screen.getByText('code').closest('code')).toBeInTheDocument()
   })
 })
@@ -96,8 +96,30 @@ describe('ChatView', () => {
   it('shows the working status in sky in the header, with a 40 px avatar', async () => {
     render(<ChatView bot={{ ...dev, status: 'working' }} state={crewState()} crewConnected />)
     await flush()
-    expect(screen.getByText('Working')).toHaveClass('text-sky', 'label-mono')
+    expect(screen.getByText('Working')).toHaveClass('text-sky-ink', 'label-mono')
     expect(screen.getByTestId('stub')).toHaveAttribute('data-size', '40')
+  })
+
+  it.each([
+    ['Hermes offline', { hermes: 'offline' as const }, true],
+    ['Crew stream down', {}, false]
+  ])('hides live status in the header while stale (%s)', async (_label, over, connected) => {
+    for (const status of ['working', 'needs_you'] as const) {
+      const { unmount } = render(<ChatView bot={{ ...dev, status }} state={crewState(over)} crewConnected={connected} />)
+      await flush()
+      expect(screen.queryByText(/^(Working|Needs you)$/)).toBeNull()
+      expect(screen.getByTestId('stub')).not.toHaveAttribute('data-state', 'working')
+      expect(screen.queryByRole('img', { name: 'Needs you', hidden: true })).toBeNull()
+      unmount()
+    }
+  })
+
+  it('marks the pressed panel button with the foreground fill and hides the avatar from assistive tech', async () => {
+    render(<ChatView bot={dev} state={crewState()} crewConnected panel="routines" onPanel={() => undefined} />)
+    await flush()
+    expect(screen.getByRole('button', { name: 'Routines' })).toHaveClass('bg-foreground', 'text-background')
+    expect(screen.getByRole('button', { name: 'Profile' })).not.toHaveClass('bg-foreground')
+    expect(screen.getByTestId('stub').closest('[aria-hidden="true"]')).not.toBeNull()
   })
 
   it('keeps header and composer outside the scrolling transcript', async () => {

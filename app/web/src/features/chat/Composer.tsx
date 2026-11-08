@@ -44,7 +44,7 @@ export function Composer({ onSend, onStop, running, disabledReason, stopDisabled
             placeholder="Message"
             rows={1}
             aria-label="Message"
-            className="max-h-40 min-h-9 flex-1 resize-none field-sizing-content border-0 bg-transparent shadow-none focus-visible:ring-0 dark:bg-transparent"
+            className="max-h-40 min-h-9 flex-1 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 dark:bg-transparent"
           />
           {running ? (
             <Button type="button" disabled={stopDisabled} onClick={onStop} className="rounded-full bg-contrast text-contrast-foreground hover:bg-contrast/90">Stop</Button>

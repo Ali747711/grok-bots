@@ -21,11 +21,11 @@ export function ChatHeader({ bot, stale, panel = null, onPanel }: ChatHeaderProp
   const cost = useSessionCost(bot.sessionId, bot.name, bot.status)
   return (
     <header className="flex items-center gap-3 border-b border-border px-5 py-3">
-      <CrewAvatar bot={stale ? { ...bot, status: 'idle' } : bot} size={40} />
+      <CrewAvatar bot={stale ? { ...bot, status: 'idle' } : bot} size={40} decorative />
       <div className="min-w-0 flex-1">
         <h2 className="truncate text-sm font-semibold">{bot.title}</h2>
         {!stale && (
-          <p className={cn('label-mono mt-0.5', bot.status === 'working' && 'text-sky')}>
+          <p className={cn('label-mono mt-0.5', bot.status === 'working' && 'text-sky-ink')}>
             <span aria-hidden="true">● </span>
             {STATUS_TEXT[bot.status]}
           </p>
@@ -40,7 +40,7 @@ export function ChatHeader({ bot, stale, panel = null, onPanel }: ChatHeaderProp
           variant="outline"
           aria-pressed={panel === tab}
           onClick={() => onPanel(tab)}
-          className={cn('rounded-full', panel === tab && 'border-contrast bg-contrast text-contrast-foreground hover:bg-contrast/90 hover:text-contrast-foreground')}
+          className={cn('rounded-full', panel === tab && 'border-foreground bg-foreground text-background hover:bg-foreground/90 hover:text-background')}
         >
           {tab === 'routines' ? 'Routines' : 'Profile'}
         </Button>

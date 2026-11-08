@@ -6,7 +6,7 @@ export function safeUrl(url: string): string {
 }
 
 const components: Components = {
-  a: ({ node: _node, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" className="text-sky underline underline-offset-2" />,
+  a: ({ node: _node, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" className="text-sky-ink underline underline-offset-2" />,
   p: ({ node: _node, ...props }) => <p {...props} className="my-2 first:mt-0 last:mb-0" />,
   ul: ({ node: _node, ...props }) => <ul {...props} className="my-2 list-disc pl-5" />,
   ol: ({ node: _node, ...props }) => <ol {...props} className="my-2 list-decimal pl-5" />,
