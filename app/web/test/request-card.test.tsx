@@ -168,3 +168,65 @@ describe('RequestCard: secret and sudo', () => {
     expect(document.body.innerHTML).not.toContain('sekret')
   })
 })
+
+describe('RequestCard: input safety', () => {
+  const clarify = entry({ kind: 'clarify', summary: 'Which?', choices: undefined })
+  const secret = entry({ kind: 'secret', summary: 'API key for X', choices: undefined })
+
+  it.each([
+    ['isComposing', { key: 'Enter', isComposing: true }],
+    ['keyCode 229', { key: 'Enter', keyCode: 229 }]
+  ])('does not submit a clarify answer on Enter during IME composition (%s)', (_name, init) => {
+    const onAnswer = vi.fn(noop)
+    render(<RequestCard entry={clarify} onAnswer={onAnswer} />)
+    const input = screen.getByRole('textbox')
+    fireEvent.change(input, { target: { value: '안녕' } })
+    fireEvent.keyDown(input, init)
+    expect(onAnswer).not.toHaveBeenCalled()
+    expect(input).toHaveValue('안녕')
+  })
+
+  it('does not submit a secret on Enter during IME composition', () => {
+    const onAnswer = vi.fn(noop)
+    render(<RequestCard entry={secret} onAnswer={onAnswer} />)
+    const input = screen.getByLabelText('API key for X')
+    fireEvent.change(input, { target: { value: 'abc' } })
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true })
+    fireEvent.keyDown(input, { key: 'Enter', keyCode: 229 })
+    expect(onAnswer).not.toHaveBeenCalled()
+  })
+
+  it('keeps the clarify text when the answer is rejected, and clears it once accepted', async () => {
+    const onAnswer = vi.fn<(e: PendingView, b: unknown) => Promise<string | null>>()
+    onAnswer.mockResolvedValueOnce('Hermes is offline — try again when it’s back').mockResolvedValueOnce(null)
+    render(<RequestCard entry={clarify} onAnswer={onAnswer} />)
+    const input = screen.getByRole('textbox')
+    fireEvent.change(input, { target: { value: 'release branch' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    expect(await screen.findByText(/Hermes is offline/)).toBeInTheDocument()
+    expect(input).toHaveValue('release branch')
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    await waitFor(() => expect(input).toHaveValue(''))
+  })
+
+  it('limits clarify text to 4000 characters and shows the count near the limit', () => {
+    render(<RequestCard entry={clarify} onAnswer={noop} />)
+    const input = screen.getByRole('textbox') as HTMLInputElement
+    expect(input.maxLength).toBe(4000)
+    fireEvent.change(input, { target: { value: 'x'.repeat(4001) } })
+    expect(input.value).toHaveLength(4000)
+    expect(screen.getByText('4,000 / 4,000')).toBeInTheDocument()
+  })
+
+  it('shows no count for short text', () => {
+    render(<RequestCard entry={clarify} onAnswer={noop} />)
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'hi' } })
+    expect(screen.queryByText(/ \/ 4,000/)).toBeNull()
+  })
+
+  it('still shows the summary for a secret request that cannot be answered here', () => {
+    render(<RequestCard entry={{ ...secret, answerable: false }} onAnswer={noop} />)
+    expect(screen.getByText('API key for X')).toBeInTheDocument()
+    expect(screen.getByText('Answer this in the app that asked')).toBeInTheDocument()
+  })
+})
