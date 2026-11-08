@@ -36,7 +36,7 @@ function stub(routes: Record<string, Handler>) {
 }
 const callsTo = (fn: ReturnType<typeof stub>, start: string) =>
   fn.mock.calls.filter(([u, i]) => `${(i as RequestInit | undefined)?.method ?? 'GET'} ${u}`.startsWith(start))
-const open = () => render(<RunHistory bot="scout" routineId="r1" timezone="Europe/London" />)
+const open = () => render(<RunHistory bot="scout" routineId="r1" timezone="Europe/London" instruction="Reply with exactly: X" />)
 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
 
@@ -127,6 +127,44 @@ describe('RunHistory', () => {
     unmount()
     await tick(120_000)
     expect(callsTo(fn, RUNS)).toHaveLength(4)
+  })
+})
+
+describe('cron scaffolding', () => {
+  const SCAFFOLD = '[IMPORTANT: You are running as a scheduled cron job. DELIVERY: Your final response will be automatically delivered to the user — do not use send_message.]\n\nReply with exactly: X'
+
+  it('replaces the cron preamble with the routine instruction', async () => {
+    const rows = { messages: [{ id: 1, role: 'user', content: SCAFFOLD }, { id: 2, role: 'assistant', content: 'X' }] }
+    stub({ [RUNS]: () => json([run()]), 'GET /api/sessions/sess1/messages*': () => json(rows) })
+    open()
+    fireEvent.click(await screen.findByRole('button', { name: /Daily digest/ }))
+    expect(await screen.findByText('Instruction: Reply with exactly: X')).toBeInTheDocument()
+    expect(screen.queryByText(/scheduled cron job/)).toBeNull()
+    expect(screen.getByText('X')).toBeInTheDocument()
+  })
+
+  it('leaves an ordinary user message alone', async () => {
+    const rows = { messages: [{ id: 1, role: 'user', content: 'hello there' }] }
+    stub({ [RUNS]: () => json([run()]), 'GET /api/sessions/sess1/messages*': () => json(rows) })
+    open()
+    fireEvent.click(await screen.findByRole('button', { name: /Daily digest/ }))
+    expect(await screen.findByText('hello there')).toBeInTheDocument()
+    expect(screen.queryByText(/^Instruction:/)).toBeNull()
+  })
+})
+
+describe('run titles', () => {
+  it('drops the internal bot tag from a run title', async () => {
+    stub({ [RUNS]: () => json([run({ title: '[bot:smoke-runs] Echo · Nov 08 22:57', sessionId: null })]) })
+    open()
+    expect(await screen.findByText('Echo · Nov 08 22:57')).toBeInTheDocument()
+    expect(screen.queryByText(/\[bot:/)).toBeNull()
+  })
+
+  it('drops the tag from a clickable run too', async () => {
+    stub({ [RUNS]: () => json([run({ title: '[bot:smoke] Echo' })]) })
+    open()
+    expect(await screen.findByRole('button', { name: /^Echo/ })).toBeInTheDocument()
   })
 })
 

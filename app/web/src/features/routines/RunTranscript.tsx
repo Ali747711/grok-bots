@@ -5,6 +5,16 @@ import type { ChatItem } from '@/chat/types'
 import { MessageList } from '@/features/chat/MessageList'
 
 const BLOCKED = /^\s*BLOCKED:/
+const CRON_PREAMBLE = '[IMPORTANT: You are running as a scheduled cron job'
+
+/** Hermes stores its own cron preamble plus the prompt as the user message; show the routine's instruction instead. */
+export function tidyCronItems(items: readonly ChatItem[], instruction: string): ChatItem[] {
+  return items.map(item =>
+    item.kind === 'user' && item.text.trimStart().startsWith(CRON_PREAMBLE)
+      ? { kind: 'notice', id: item.id, text: `Instruction: ${instruction}` }
+      : item
+  )
+}
 
 /** A tool result that starts with BLOCKED: (plain text, or in the `error` / `output` field of a JSON result). */
 function isBlockedResult(detail: string): boolean {
@@ -24,7 +34,7 @@ export const hasBlockedStep = (items: readonly ChatItem[]): boolean =>
   items.some(item => item.kind === 'work' && item.steps.some(s => s.detail !== undefined && isBlockedResult(s.detail)))
 
 /** Read-only transcript of one routine run (a cron session of the bot). */
-export function RunTranscript({ bot, sessionId }: { bot: string; sessionId: string }) {
+export function RunTranscript({ bot, sessionId, instruction }: { bot: string; sessionId: string; instruction: string }) {
   const [items, setItems] = useState<ChatItem[] | null>(null)
   const [failed, setFailed] = useState(false)
 
@@ -33,13 +43,13 @@ export function RunTranscript({ bot, sessionId }: { bot: string; sessionId: stri
     setItems(null)
     setFailed(false)
     fetchHistory(bot, sessionId).then(
-      result => active && setItems(result.items),
+      result => active && setItems(tidyCronItems(result.items, instruction)),
       () => active && setFailed(true)
     )
     return () => {
       active = false
     }
-  }, [bot, sessionId])
+  }, [bot, sessionId, instruction])
 
   if (failed) return <p className="p-3 text-sm text-muted-foreground">Couldn't load this run.</p>
   if (!items) return <p className="p-3 text-sm text-muted-foreground">Loading…</p>

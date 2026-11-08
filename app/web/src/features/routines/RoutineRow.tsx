@@ -88,7 +88,7 @@ export function RoutineRow({ routine, onChanged, onEdit, historyOpen, onToggleHi
           <Button type="button" size="sm" variant="ghost" onClick={() => setConfirming(true)}>Delete</Button>
         </div>
       )}
-      {historyOpen && <RunHistory bot={routine.bot} routineId={routine.id} timezone={routine.timezone} refreshKey={runTick} />}
+      {historyOpen && <RunHistory bot={routine.bot} routineId={routine.id} timezone={routine.timezone} instruction={routine.instruction} refreshKey={runTick} />}
     </li>
   )
 }
