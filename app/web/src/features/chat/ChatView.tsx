@@ -1,3 +1,4 @@
+import type { PanelTab } from '@/features/panel/BotPanel'
 import { submitAnswer } from '@/features/requests/answer-request'
 import { RequestCard } from '@/features/requests/RequestCard'
 import { useChatSession } from '@/features/chat/use-chat-session'
@@ -13,10 +14,12 @@ interface ChatViewProps {
   state: CrewState
   /** Browser-to-Crew stream is up. */
   crewConnected: boolean
+  panel?: PanelTab | null
+  onPanel?: (tab: PanelTab) => void
 }
 
 /** One bot's chat: header, transcript, composer. */
-export function ChatView({ bot, state, crewConnected }: ChatViewProps) {
+export function ChatView({ bot, state, crewConnected, panel, onPanel }: ChatViewProps) {
   const { session, items, canSend, connected, running, notice } = useChatSession(bot)
   const stale = state.hermes !== 'connected' || !crewConnected
   const othersWorking = state.bots.filter(b => b.name !== bot.name && b.status === 'working').length
@@ -29,7 +32,7 @@ export function ChatView({ bot, state, crewConnected }: ChatViewProps) {
 
   return (
     <>
-      <ChatHeader bot={bot} stale={stale} />
+      <ChatHeader bot={bot} stale={stale} panel={panel} onPanel={onPanel} />
       <MessageList items={items} onRetry={id => void session?.retry(id).catch(() => undefined)} />
       {notice && <p role="status" className="px-6 text-center text-xs text-muted-foreground">{notice}</p>}
       {requests.length > 0 && (

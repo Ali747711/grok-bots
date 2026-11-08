@@ -1,0 +1,75 @@
+import { useState } from 'react'
+
+import { CrewApiError, updateBot } from './bots-api'
+import { fromDetail, rebase, type ProfileForm } from './profile-form'
+import type { BotDetail, BotPatch } from './types'
+
+interface Pending {
+  readonly patch: BotPatch
+}
+export interface Conflict extends Pending {
+  readonly fields: readonly string[]
+  readonly current: BotDetail
+}
+export interface Confirm extends Pending {
+  readonly message: string
+}
+
+interface Deps {
+  name: string
+  setDetail: (d: BotDetail) => void
+  setForm: (f: ProfileForm) => void
+  /** Re-read the bot to re-baseline after a failed save (a partial save may have written earlier sections). */
+  reload: () => Promise<BotDetail | null>
+}
+
+const failureText = (e: unknown): string =>
+  e instanceof CrewApiError && e.status === 400 && typeof e.body?.message === 'string'
+    ? `Hermes refused it: ${e.body.message}`
+    : e instanceof CrewApiError && e.status === 503
+      ? 'Hermes is offline'
+      : 'Could not save. Some changes may have been applied; the form was re-read, your edits are kept.'
+
+/** Save a patch and keep the three non-success outcomes (conflict, confirm, failure) as state. */
+export function useProfileSave({ name, setDetail, setForm, reload }: Deps) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [conflict, setConflict] = useState<Conflict | null>(null)
+  const [confirm, setConfirm] = useState<Confirm | null>(null)
+
+  const send = async (patch: BotPatch) => {
+    setBusy(true)
+    setError(null)
+    try {
+      const out = await updateBot(name, patch)
+      if (out.status === 'saved') {
+        setDetail(out.detail)
+        setForm(fromDetail(out.detail))
+        setConflict(null)
+        setConfirm(null)
+      } else if (out.status === 'conflict') {
+        setConflict({ patch, fields: out.fields, current: out.current })
+      } else {
+        setConfirm({ patch, message: out.message })
+      }
+    } catch (e) {
+      setError(failureText(e))
+      void reload()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return {
+    busy, error, conflict, confirm, send,
+    saveAnyway: () => conflict && void send(rebase(conflict.patch, conflict.current)),
+    useConfirmed: () => confirm && void send({ ...confirm.patch, confirmExpensiveModel: true }),
+    cancelConfirm: () => setConfirm(null),
+    takeTheirs: () => {
+      if (!conflict) return
+      setDetail(conflict.current)
+      setForm(fromDetail(conflict.current))
+      setConflict(null)
+    }
+  }
+}
