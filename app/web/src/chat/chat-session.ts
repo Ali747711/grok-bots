@@ -1,4 +1,5 @@
 import type { BotView } from '@/state/types'
+import type { GatewayEvent } from '@/vendor/hermes/gateway-events'
 
 import { fetchHistory, openBotChat, type OpenedChat, type RpcClient } from './open-bot-chat'
 import { applyFrame, initialTurnState, type TurnFrame, type TurnState } from './turn-reducer'
@@ -8,7 +9,7 @@ export type AdmissionResult = 'queued' | 'started' | 'duplicate' | 'lost'
 
 /** What ChatSession needs from the vendored gateway client. */
 export interface ChatClient extends RpcClient {
-  onAny(handler: (event: never) => void): () => void
+  onAny(handler: (event: GatewayEvent) => void): () => void
   onState(handler: (state: string) => void): () => void
 }
 
@@ -106,7 +107,7 @@ export class ChatSession {
     if (this.attached) return
     this.attached = true
     this.detach = [
-      this.client.onAny(event => this.onEvent(event as unknown as TurnFrame)),
+      this.client.onAny(event => this.onEvent(event)),
       this.client.onState(state => this.onState(state))
     ]
   }

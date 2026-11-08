@@ -1,4 +1,5 @@
 import type { ChatClient } from '@/chat/chat-session'
+import type { GatewayEvent } from '@/vendor/hermes/gateway-events'
 
 type Handler = (params: Record<string, unknown>) => unknown
 
@@ -7,7 +8,7 @@ export class FakeClient implements ChatClient {
   calls: { method: string; params: Record<string, unknown>; timeoutMs?: number }[] = []
   handlers: Record<string, Handler> = {}
   state = 'open'
-  private anyHandlers = new Set<(event: unknown) => void>()
+  private anyHandlers = new Set<(event: GatewayEvent) => void>()
   private stateHandlers = new Set<(state: string) => void>()
 
   request<T>(method: string, params: Record<string, unknown> = {}, timeoutMs?: number): Promise<T> {
@@ -19,10 +20,9 @@ export class FakeClient implements ChatClient {
     }
   }
 
-  onAny(handler: (event: never) => void): () => void {
-    const h = handler as (event: unknown) => void
-    this.anyHandlers.add(h)
-    return () => this.anyHandlers.delete(h)
+  onAny(handler: (event: GatewayEvent) => void): () => void {
+    this.anyHandlers.add(handler)
+    return () => this.anyHandlers.delete(handler)
   }
 
   onState(handler: (state: string) => void): () => void {
@@ -32,7 +32,7 @@ export class FakeClient implements ChatClient {
   }
 
   emit(event: Record<string, unknown>): void {
-    for (const h of [...this.anyHandlers]) h(event)
+    for (const h of [...this.anyHandlers]) h(event as unknown as GatewayEvent)
   }
 
   setState(state: string): void {
