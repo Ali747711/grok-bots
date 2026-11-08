@@ -2,6 +2,8 @@ import { execFileSync } from 'node:child_process'
 
 import { type Page, expect } from '@playwright/test'
 
+import { hermesRest, testBotNames } from './hermes-rpc.js'
+
 export const VM = 'ali@192.168.64.16'
 export const CREW = 'http://127.0.0.1:7070'
 
@@ -49,4 +51,13 @@ export async function crewState(page: Page): Promise<{ hermes: string; bots: { n
 
 export async function waitIdle(page: Page, bot: string, timeoutMs = 120_000): Promise<void> {
   await expect.poll(async () => (await crewState(page)).bots.find(b => b.name === bot)?.status, { timeout: timeoutMs }).toBe('idle')
+}
+
+/** Delete every profile whose handle is `e2e<digits>` (test-owned bots, incl. leftovers of a failed run). Nothing else is touched. */
+export async function deleteTestBots(): Promise<string[]> {
+  const list = await hermesRest('GET', '/api/profiles')
+  const rows = (list.body as { profiles?: { name: string }[] } | null)?.profiles ?? []
+  const names = testBotNames(rows.map(r => r.name))
+  for (const name of names) await hermesRest('DELETE', `/api/profiles/${encodeURIComponent(name)}`)
+  return names
 }

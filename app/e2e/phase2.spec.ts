@@ -1,0 +1,201 @@
+import { type Browser, type Page, expect, test } from '@playwright/test'
+
+import { CREW, crewState, deleteTestBots, webappLoginUrl } from './helpers.js'
+import { hermesRest, pinFromOtherUi, profileRow, profileRows } from './hermes-rpc.js'
+
+test.describe.configure({ mode: 'serial' })
+
+// Test-owned bots: handle e2e<6 digits>. Everything below writes to these (and nothing else in Hermes).
+const run = String(Math.floor(100000 + Math.random() * 800000))
+const handle = `e2e${run}`
+const title = `E2E Scout ${run}`
+const handle2 = `e2e${Number(run) + 1}`
+const ROUTINE_MARK = `ROUTINE-${run}`
+
+const NAMESPACE = 'hermes-bots'
+const metaOf = async (name: string) => (await profileRow(name))?.ui_meta?.[NAMESPACE]
+const cronJobs = async (bot: string) => {
+  const res = await hermesRest('GET', `/api/cron/jobs?profile=${encodeURIComponent(bot)}`)
+  return res.status === 200 && Array.isArray(res.body) ? (res.body as { name?: string; deliver?: string }[]) : []
+}
+const soulOf = async (bot: string) => ((await hermesRest('GET', `/api/profiles/${bot}/soul`)).body as { content: string }).content
+
+/** A real 8x8 PNG (valid for the browser's image decoder). */
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR4nGP4z9CAFTEMLQkAibNfwVYq284AAAAASUVORK5CYII=', 'base64')
+const GIF_DATA_URL = 'data:image/png;base64,R0lGODlhAQABAAAAACw='
+
+test.beforeAll(async () => {
+  await deleteTestBots()
+})
+test.afterAll(async () => {
+  await deleteTestBots()
+})
+
+async function createBotInDialog(page: Page, name: string, botHandle: string, job: string): Promise<void> {
+  await page.goto(CREW)
+  await page.getByRole('button', { name: '+ New bot' }).click()
+  await page.getByLabel('Name', { exact: true }).fill(name)
+  await page.getByRole('button', { name: 'Change handle' }).click()
+  await page.getByLabel('Handle').fill(botHandle)
+  await page.getByLabel('Job & personality').fill(job)
+}
+
+async function webappBots(browser: Browser): Promise<Page> {
+  const ctx = await browser.newContext({ storageState: undefined })
+  const page = await ctx.newPage()
+  await page.goto(webappLoginUrl())
+  await page.getByRole('tab', { name: 'Bots' }).click()
+  return page
+}
+
+test('a bot created in Crew appears identically in the official Webapp', async ({ page, browser }) => {
+  await createBotInDialog(page, title, handle, 'Find papers')
+  await page.getByRole('button', { name: 'Violet' }).click()
+  await page.getByRole('button', { name: 'Create' }).click()
+  await expect(page).toHaveURL(new RegExp(`/bots/${handle}$`), { timeout: 120_000 })
+  await expect(page.getByRole('complementary').getByText(title, { exact: true })).toBeVisible()
+
+  const webapp = await webappBots(browser)
+  await expect(webapp.getByRole('button', { name: new RegExp(`^${title} · @${handle}`) })).toBeVisible({ timeout: 30_000 })
+  await webapp.context().close()
+
+  const row = await profileRow(handle)
+  expect(row).toBeDefined()
+  expect(row?.ui_meta?.[NAMESPACE]).toMatchObject({ title, shape: 'squircle', color: '#7c3aed', imageKind: 'shape' })
+  expect(typeof row?.ui_meta?.[NAMESPACE]?.created).toBe('number')
+  expect(row?.description).toBe(`${title} — Find papers`)
+  expect(row?.canonical_session?.title).toBe('Bot Chat')
+})
+
+test('concurrent edits keep both changes', async ({ page }) => {
+  await page.goto(`${CREW}/bots/${handle}?panel=profile`)
+  const name = page.getByLabel('Name', { exact: true })
+  await expect(name).toHaveValue(title)
+  await expect(page.getByLabel('Persona (SOUL.md)')).not.toHaveValue('')
+
+  // The other UI pins the bot (whole-object compare-and-swap write, as the Webapp does).
+  await pinFromOtherUi(handle)
+  // Crew then saves a new name: its read-modify-write must keep `pinned`.
+  const renamed = `${title} B`
+  await name.fill(renamed)
+  await page.getByRole('button', { name: 'Save' }).click()
+  await expect.poll(async () => (await metaOf(handle))?.title, { timeout: 30_000 }).toBe(renamed)
+  expect(await metaOf(handle)).toMatchObject({ title: renamed, pinned: true })
+
+  // Another app rewrites the persona; Crew's stale baseline must produce a conflict, not an overwrite.
+  const theirs = `Their persona ${run}`
+  expect((await hermesRest('PUT', `/api/profiles/${handle}/soul`, { content: theirs })).status).toBeLessThan(300)
+  await page.getByText('Advanced').click()
+  const ours = `Our persona ${run}`
+  await page.getByLabel('Persona (SOUL.md)').fill(ours)
+  await page.getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByText(/Changed in another app: soul/)).toBeVisible({ timeout: 30_000 })
+  expect(await soulOf(handle)).toBe(theirs)
+  await page.getByRole('button', { name: 'Save anyway' }).click()
+  await expect.poll(() => soulOf(handle), { timeout: 30_000 }).toBe(ours)
+})
+
+test('a failed creation step can be finished', async ({ page }) => {
+  await createBotInDialog(page, `E2E Pic ${run}`, handle2, 'Has a photo')
+  await page.getByLabel('Upload photo').setInputFiles({ name: 'pic.png', mimeType: 'image/png', buffer: PNG })
+  await expect(page.getByRole('img', { name: 'Photo preview' })).toBeVisible()
+
+  // Make only the first create carry an image Hermes refuses (GIF bytes, error 4070).
+  let rewritten = false
+  await page.route('**/crew/bots', async route => {
+    const request = route.request()
+    if (request.method() !== 'POST' || rewritten) return route.continue()
+    rewritten = true
+    const body = JSON.parse(request.postData() ?? '{}') as Record<string, unknown>
+    await route.continue({ postData: JSON.stringify({ ...body, image: GIF_DATA_URL }) })
+  })
+  await page.getByRole('button', { name: 'Create' }).click()
+  await expect(page.getByText(new RegExp(`Created @${handle2}, but avatar failed`))).toBeVisible({ timeout: 120_000 })
+  expect((await profileRow(handle2))?.has_avatar).toBeFalsy()
+
+  await page.getByRole('button', { name: 'Finish setup' }).click()
+  await expect(page).toHaveURL(new RegExp(`/bots/${handle2}$`), { timeout: 120_000 })
+  await expect.poll(async () => (await profileRow(handle2))?.has_avatar, { timeout: 30_000 }).toBe(true)
+})
+
+const routineRow = (page: Page, routineTitle: string) => page.getByRole('listitem').filter({ hasText: routineTitle })
+
+async function addRoutine(page: Page, routineTitle: string, instruction: string): Promise<void> {
+  await page.getByRole('button', { name: 'New routine' }).click()
+  await page.getByLabel('Title').fill(routineTitle)
+  await page.getByLabel('What should it do?').fill(instruction)
+}
+
+test('a routine runs on schedule and via Run now, shows in history and in Hermes cron list', async ({ page }) => {
+  await page.goto(`${CREW}/bots/${handle}?panel=routines`)
+  const pingTitle = `Ping ${run}`
+
+  // One-shot after 1 minute, results kept in run history only.
+  await addRoutine(page, pingTitle, `Reply with exactly: ${ROUTINE_MARK}`)
+  await page.getByLabel('When').selectOption('once_in')
+  await page.getByLabel('Amount').fill('1')
+  await page.getByLabel('Unit').selectOption('m')
+  await page.getByRole('button', { name: 'Save' }).click()
+  await expect(routineRow(page, pingTitle)).toBeVisible({ timeout: 60_000 })
+
+  // Check Hermes right away: a one-shot may be removed once it has run.
+  const jobs = await cronJobs(handle)
+  const job = jobs.find(j => j.name === `[bot:${handle}] ${pingTitle}`)
+  expect(job, 'cron job in the bot\'s own store').toBeDefined()
+  expect(job?.deliver).toBe('local')
+
+  // A completed run appears within 180 s, and the bot's reply (not just the instruction) holds the marker.
+  const ping = routineRow(page, pingTitle)
+  await ping.getByRole('button', { name: 'History' }).click()
+  await expect(ping.getByText('Done')).toBeVisible({ timeout: 180_000 })
+  await ping.getByRole('button', { name: /Ping/ }).first().click()
+  const transcript = ping.getByTestId('transcript')
+  await expect(transcript).toContainText(`Instruction: Reply with exactly: ${ROUTINE_MARK}`)
+  await expect.poll(async () => ((await transcript.textContent()) ?? '').split(ROUTINE_MARK).length - 1, { timeout: 30_000 }).toBeGreaterThanOrEqual(2)
+
+  // A daily routine started with Run now.
+  const dailyTitle = `Daily ${run}`
+  await addRoutine(page, dailyTitle, `Reply with exactly: ${ROUTINE_MARK}-NOW`)
+  await page.getByRole('button', { name: 'Save' }).click()
+  const daily = routineRow(page, dailyTitle)
+  await expect(daily).toBeVisible({ timeout: 60_000 })
+  await daily.getByRole('button', { name: 'History' }).click()
+  await daily.getByRole('button', { name: 'Run now' }).click()
+  await expect(daily.getByText('Done')).toBeVisible({ timeout: 120_000 })
+  expect((await cronJobs(handle)).some(j => j.name === `[bot:${handle}] ${dailyTitle}`)).toBe(true)
+})
+
+test('deleting the bot removes it everywhere', async ({ page }) => {
+  await page.goto(`${CREW}/bots/${handle}?panel=profile`)
+  await page.getByRole('button', { name: 'Delete bot' }).click()
+  await page.getByLabel(`Type ${handle} to confirm`).fill(handle)
+  await page.getByRole('button', { name: 'Delete', exact: true }).click()
+  await expect(page).toHaveURL(/\/bots\/default$/, { timeout: 60_000 })
+  await expect.poll(async () => (await crewState(page)).bots.some(b => b.name === handle), { timeout: 30_000 }).toBe(false)
+  expect((await profileRows()).some(p => p.name === handle)).toBe(false)
+  expect(await cronJobs(handle)).toEqual([])
+})
+
+test('the working-bot limit setting persists', async ({ page }) => {
+  await page.goto(CREW)
+  const openSettings = async () => {
+    await page.getByRole('button', { name: 'Settings' }).click()
+    return page.getByLabel('Bots working at the same time')
+  }
+  let select = await openSettings()
+  const original = await select.inputValue()
+  try {
+    await select.selectOption('none')
+    await page.getByRole('button', { name: 'Save' }).click()
+    await page.reload()
+    select = await openSettings()
+    await expect(select).toHaveValue('none')
+  } finally {
+    await page.reload()
+    select = await openSettings()
+    await select.selectOption(original)
+    await page.getByRole('button', { name: 'Save' }).click()
+  }
+  await page.reload()
+  await expect(await openSettings()).toHaveValue(original)
+})
