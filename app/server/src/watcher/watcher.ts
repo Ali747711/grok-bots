@@ -100,7 +100,7 @@ export function startWatcher(deps: WatcherDeps): Watcher {
   let timer: NodeJS.Timeout | null = null
   let stopped = false
   let syncing: Promise<void> | null = null
-  let resyncWanted = false
+  let trailing: Promise<void> | null = null
 
   const note = (kind: DebugEntry['kind'], detail: string) => {
     log = [...log.slice(-(DEBUG_MAX - 1)), { at: deps.now(), kind, detail }]
@@ -190,11 +190,17 @@ export function startWatcher(deps: WatcherDeps): Watcher {
     }, delay)
   }
 
-  /** Serialized: a sessions.changed during a sync triggers exactly one more pass afterwards. */
+  /**
+   * Serialized, and the returned promise always resolves after a sync that STARTED after this call:
+   * while one runs, every caller shares exactly one trailing sync that begins when it finishes.
+   */
   function sync(): Promise<void> {
     if (syncing) {
-      resyncWanted = true
-      return syncing
+      trailing ??= syncing.then(() => {
+        trailing = null
+        return stopped ? undefined : sync()
+      })
+      return trailing
     }
     syncing = syncOnce()
       .then(ok => {
@@ -207,10 +213,6 @@ export function startWatcher(deps: WatcherDeps): Watcher {
       })
       .finally(() => {
         syncing = null
-        if (resyncWanted && !stopped) {
-          resyncWanted = false
-          void sync()
-        }
       })
     return syncing
   }
@@ -366,7 +368,7 @@ export function startWatcher(deps: WatcherDeps): Watcher {
         throw error
       }
     },
-    refresh: () => syncing ?? sync(),
+    refresh: sync,
     debug: () => log,
     stop: () => {
       stopped = true

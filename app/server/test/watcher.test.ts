@@ -363,13 +363,19 @@ describe('watcher request and refresh', () => {
     watcher.stop()
   })
 
-  it('refresh coalesces with an in-flight sync', async () => {
+  it('refresh during an in-flight sync waits for a fresh sync', async () => {
     const client = new FakeClient()
     const watcher = make(client)
     await flush(); await flush()
-    const before = client.calls.filter(c => c.method === 'profiles.list').length
-    await Promise.all([watcher.refresh(), watcher.refresh()])
-    expect(client.calls.filter(c => c.method === 'profiles.list').length - before).toBe(1)
+    const lists = () => client.calls.filter(c => c.method === 'profiles.list').length
+    const before = lists()
+    const inFlight = watcher.refresh()
+    const seenAtResolve: number[] = []
+    const first = watcher.refresh().then(() => seenAtResolve.push(lists()))
+    const second = watcher.refresh().then(() => seenAtResolve.push(lists()))
+    await Promise.all([inFlight, first, second])
+    expect(lists() - before).toBe(2)
+    expect(seenAtResolve).toEqual([before + 2, before + 2])
     watcher.stop()
   })
 })
