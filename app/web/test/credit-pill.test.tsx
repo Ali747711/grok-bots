@@ -62,7 +62,7 @@ describe('ChatHeader spend estimate', () => {
   const dev = bot({ name: 'dev', title: 'Dev', sessionId: 'tip-1' })
 
   it('shows the estimate from the session, fetched with the profile', async () => {
-    const fetchMock = vi.fn((_url: string) => json({ estimated_cost_usd: 0.0412, actual_cost_usd: 1 }))
+    const fetchMock = vi.fn((_url: string) => json({ estimated_cost_usd: 1, actual_cost_usd: 0.0412 }))
     vi.stubGlobal('fetch', fetchMock)
     render(<ChatHeader bot={dev} stale={false} />)
     await settle()
@@ -70,8 +70,8 @@ describe('ChatHeader spend estimate', () => {
     expect(fetchMock.mock.calls[0]![0]).toBe('/api/sessions/tip-1?profile=dev')
   })
 
-  it('falls back to the actual cost, and shows nothing without a number', async () => {
-    vi.stubGlobal('fetch', vi.fn(() => json({ estimated_cost_usd: null, actual_cost_usd: 0.5 })))
+  it('prefers the actual cost, falls back to the estimate, and shows nothing without a number', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => json({ estimated_cost_usd: 0.5, actual_cost_usd: null })))
     const a = render(<ChatHeader bot={dev} stale={false} />)
     await settle()
     expect(screen.getByText('≈ $0.50 (estimate)')).toBeInTheDocument()

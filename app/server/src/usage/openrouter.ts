@@ -79,7 +79,9 @@ export function createUsageSource(deps: UsageDeps): UsageSource {
     } catch (error) {
       // Class only: a message from fetch or a parse error could echo request details.
       log.warn('openrouter usage refresh failed', { error: error instanceof Error ? error.name : 'Error' })
-      return last ? { ...last, state: 'stale' } : unavailable
+      // Store the stale view so cached reads in this window don't serve the old figures as ok.
+      last = last ? { ...last, state: 'stale' } : null
+      return last ?? unavailable
     }
   }
 

@@ -69,7 +69,15 @@ describe('usage source', () => {
     await s.get()
     fail = true
     now += 61_000
-    expect(await s.get()).toEqual({ state: 'stale', limit: 5, used: 3.18, remaining: 1.82, checkedAt: 1_000_000 })
+    const stale = { state: 'stale', limit: 5, used: 3.18, remaining: 1.82, checkedAt: 1_000_000 }
+    expect(await s.get()).toEqual(stale)
+    // cached reads inside the window keep reporting stale, not the old ok view
+    now += 10_000
+    expect(await s.get()).toEqual(stale)
+    expect(fetchFn).toHaveBeenCalledTimes(2)
+    fail = false
+    now += 61_000
+    expect(await s.get()).toMatchObject({ state: 'ok', checkedAt: now })
   })
 
   it('returns unavailable with nulls when it never succeeded', async () => {

@@ -17,7 +17,7 @@ export function useSessionCost(sessionId: string | null, profile: string, status
     crewFetch(`/api/sessions/${encodeURIComponent(sessionId)}?profile=${encodeURIComponent(profile)}`)
       .then(res => (res.ok ? res.json() : null))
       .then((body: Record<string, unknown> | null) => {
-        if (active) setCost(body ? (num(body.estimated_cost_usd) ?? num(body.actual_cost_usd)) : null)
+        if (active) setCost(body ? (num(body.actual_cost_usd) ?? num(body.estimated_cost_usd)) : null)
       })
       .catch(() => {
         if (active) setCost(null)
