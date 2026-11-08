@@ -1,6 +1,7 @@
 import { matchPath, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 
 import { ChatView } from '@/features/chat/ChatView'
+import { NeedsYouPage } from '@/features/needs-you/NeedsYouPage'
 import { Sidebar } from '@/features/roster/Sidebar'
 import { Shell } from '@/layout/Shell'
 import type { CrewState } from '@/state/types'
@@ -42,7 +43,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<HomeRedirect state={state} />} />
           <Route path="/bots/:name" element={<BotRoute state={state} crewConnected={connected} name={selected ?? ''} />} />
-          <Route path="/needs-you" element={<div className={centered}>Coming soon</div>} />
+          <Route path="/needs-you" element={state ? <NeedsYouPage state={state} /> : <div className={centered}>Loading…</div>} />
           <Route path="*" element={<Navigate replace to="/" />} />
         </Routes>
       }

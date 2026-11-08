@@ -1,3 +1,5 @@
+import { submitAnswer } from '@/features/requests/answer-request'
+import { RequestCard } from '@/features/requests/RequestCard'
 import { useChatSession } from '@/features/chat/use-chat-session'
 import type { BotView, CrewState } from '@/state/types'
 
@@ -18,6 +20,8 @@ export function ChatView({ bot, state, crewConnected }: ChatViewProps) {
   const { session, items, canSend, running, notice } = useChatSession(bot)
   const stale = state.hermes !== 'connected' || !crewConnected
   const othersWorking = state.bots.filter(b => b.name !== bot.name && b.status === 'working').length
+  // Oldest first; they leave when Hermes settles them (they drop out of state.pending).
+  const requests = state.pending.filter(p => p.profile === bot.name).sort((a, b) => a.receivedAt - b.receivedAt)
   const reason = composerDisabledReason({ hermes: state.hermes, crewConnected, canSend, othersWorking })
 
   return (
@@ -25,6 +29,13 @@ export function ChatView({ bot, state, crewConnected }: ChatViewProps) {
       <ChatHeader bot={bot} stale={stale} />
       <MessageList items={items} />
       {notice && <p role="status" className="px-6 text-center text-xs text-muted-foreground">{notice}</p>}
+      {requests.length > 0 && (
+        <div className="max-h-[40vh] flex-none overflow-y-auto px-6 pt-2">
+          <div className="mx-auto flex max-w-[720px] flex-col gap-2">
+            {requests.map(entry => <RequestCard key={entry.id} entry={entry} onAnswer={(e, body) => submitAnswer(e.id, body)} />)}
+          </div>
+        </div>
+      )}
       <Composer
         disabledReason={reason}
         running={running}

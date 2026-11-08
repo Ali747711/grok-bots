@@ -1,0 +1,143 @@
+import { useState } from 'react'
+
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import type { PendingView } from '@/state/types'
+
+import type { AnswerBody } from './answer-request'
+import { choiceCopy } from './choice-copy'
+
+interface RequestCardProps {
+  entry: PendingView
+  /** Sends the answer; resolves null on success or a message to show. */
+  onAnswer: (entry: PendingView, body: AnswerBody) => Promise<string | null>
+}
+
+const FAILURES: Record<string, string> = {
+  not_connected: 'Hermes was offline',
+  stale_generation: 'This request is no longer current'
+}
+const SCOPED = new Set(['session', 'always'])
+
+function ApprovalControls({ entry, disabled, send }: { entry: PendingView; disabled: boolean; send: (b: AnswerBody) => void }) {
+  const choices = entry.choices ?? []
+  return (
+    <>
+      <div className="flex flex-wrap gap-2">
+        {choices.map(choice => {
+          const { label, hint } = choiceCopy(choice)
+          return (
+            <Button
+              key={choice}
+              type="button"
+              size="sm"
+              variant={choice === 'deny' ? 'destructive' : choice === 'once' ? 'default' : 'outline'}
+              title={hint || undefined}
+              disabled={disabled}
+              onClick={() => send({ choice })}
+            >
+              {label}
+            </Button>
+          )
+        })}
+      </div>
+      {choices.filter(c => SCOPED.has(c)).map(c => (
+        <p key={c} className="mt-2 text-xs text-muted-foreground">{choiceCopy(c).label} — {choiceCopy(c).hint}</p>
+      ))}
+    </>
+  )
+}
+
+function ClarifyControls({ entry, disabled, retry, send }: { entry: PendingView; disabled: boolean; retry: boolean; send: (b: AnswerBody) => void }) {
+  const [text, setText] = useState('')
+  const submit = () => { if (text.trim()) { send({ answer: text.trim() }); setText('') } }
+  return (
+    <div className="space-y-2">
+      {entry.choices && entry.choices.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {entry.choices.map(c => (
+            <Button key={c} type="button" size="sm" variant="outline" disabled={disabled} onClick={() => send({ answer: c })}>{c}</Button>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-2">
+        <Input
+          aria-label="Your answer"
+          value={text}
+          disabled={disabled}
+          onChange={e => setText(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') submit() }}
+        />
+        <Button type="button" size="sm" disabled={disabled || !text.trim()} onClick={submit}>{retry ? 'Try again' : 'Send'}</Button>
+        <Button type="button" size="sm" variant="ghost" disabled={disabled} onClick={() => send({ answer: '' })}>Skip</Button>
+      </div>
+    </div>
+  )
+}
+
+function SecretControls({ entry, disabled, retry, send }: { entry: PendingView; disabled: boolean; retry: boolean; send: (b: AnswerBody) => void }) {
+  // Local state only: cleared the moment it is submitted, whatever the outcome.
+  const [value, setValue] = useState('')
+  const inputId = `secret-${entry.id}`
+  const label = entry.kind === 'sudo' ? `Password needed to run: ${entry.summary}` : entry.summary
+  const submit = () => {
+    if (!value) return
+    const submitted = value
+    setValue('')
+    send({ value: submitted })
+  }
+  return (
+    <div className="space-y-2">
+      <label htmlFor={inputId} className="block text-sm">{label}</label>
+      <div className="flex gap-2">
+        <Input
+          id={inputId}
+          type="password"
+          autoComplete="off"
+          value={value}
+          disabled={disabled}
+          onChange={e => setValue(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') submit() }}
+        />
+        <Button type="button" size="sm" disabled={disabled || !value} onClick={submit}>{retry ? 'Try again' : 'Send'}</Button>
+      </div>
+    </div>
+  )
+}
+
+/** One request waiting for the user: approval, question, or secret/sudo prompt. Shows only what Hermes sent. */
+export function RequestCard({ entry, onAnswer }: RequestCardProps) {
+  const [sending, setSending] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+  const disabled = sending || entry.state === 'answering'
+  const retry = entry.state === 'failed'
+  const secret = entry.kind === 'secret' || entry.kind === 'sudo'
+
+  const send = async (body: AnswerBody) => {
+    setSending(true)
+    setMessage(null)
+    try {
+      setMessage(await onAnswer(entry, body))
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div data-testid="request-card" className="rounded-xl border border-amber-300 bg-amber-50 p-3.5 text-sm dark:border-amber-800 dark:bg-amber-950">
+      {!secret && <p className="mb-2 font-medium break-words">{entry.summary}</p>}
+      {!entry.answerable ? (
+        <p className="text-xs text-muted-foreground">Answer this in the app that asked</p>
+      ) : (
+        <>
+          {entry.kind === 'approval' && <ApprovalControls entry={entry} disabled={disabled} send={send} />}
+          {entry.kind === 'clarify' && <ClarifyControls entry={entry} disabled={disabled} retry={retry} send={send} />}
+          {secret && <SecretControls entry={entry} disabled={disabled} retry={retry} send={send} />}
+        </>
+      )}
+      {disabled && <p role="status" className="mt-2 text-xs text-muted-foreground">Sending…</p>}
+      {retry && entry.answerable && <p className="mt-2 text-xs text-red-600 dark:text-red-400">Couldn’t send: {FAILURES[entry.error ?? ''] ?? entry.error ?? 'unknown error'}. Try again.</p>}
+      {message && <p className="mt-2 text-xs text-muted-foreground">{message}</p>}
+    </div>
+  )
+}
