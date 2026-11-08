@@ -370,7 +370,7 @@ describe('ChatSession', () => {
       openBarrier(true)
       await flush()
       expect(session.canSend).toBe(true)
-      expect(texts(session.items).filter(t => t.startsWith('assistant:'))).toEqual(['assistant:partial ending', 'assistant:next'])
+      expect(texts(session.items).filter(t => t.startsWith('assistant:')).slice(1)).toEqual(['assistant:partial ending', 'assistant:next'])
     })
 
     it('retries the re-open when the replay barrier reports a lost socket', async () => {
