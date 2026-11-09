@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 import { createApp } from '../src/app.js'
 import { signSession } from '../src/auth/session-cookie.js'
-import { isAllowedUpgrade } from '../src/http/session-guard.js'
+import { isAllowedUpgrade, routeMatches } from '../src/http/session-guard.js'
 import { HOST, ORIGIN, makeDeps } from './helpers.js'
 
 const deps = makeDeps()
@@ -103,5 +103,19 @@ describe('isAllowedUpgrade', () => {
     ['foreign Host', { ...ok, host: 'evil.example:7070' }]
   ])('refuses %s', (_name, headers) => {
     expect(isAllowedUpgrade(req(headers as Record<string, string>), deps.config, deps.secrets.cookie, deps.now())).toBe(false)
+  })
+})
+
+describe('routeMatches', () => {
+  it('matches one segment after /*', () => {
+    const entries = ['POST /hooks/*', 'GET /crew/health']
+    expect(routeMatches(entries, 'POST', '/hooks/x')).toBe(true)
+    expect(routeMatches(entries, 'POST', '/hooks/')).toBe(false)
+    expect(routeMatches(entries, 'POST', '/hooks/x/y')).toBe(false)
+    expect(routeMatches(entries, 'POST', '/hooks/x/')).toBe(false)
+    expect(routeMatches(entries, 'GET', '/hooks/x')).toBe(false)
+    expect(routeMatches(entries, 'POST', '/hooks')).toBe(false)
+    expect(routeMatches(entries, 'GET', '/crew/health')).toBe(true)
+    expect(routeMatches(entries, 'GET', '/crew/health/x')).toBe(false)
   })
 })

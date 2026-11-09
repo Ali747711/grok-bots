@@ -17,15 +17,29 @@ function isBrowserNavigation(c: Context): boolean {
   return (c.req.header('accept') ?? '').includes('text/html')
 }
 
+/**
+ * Does `METHOD path` match one of the `"METHOD /path"` entries? An exact entry matches as is. An entry
+ * ending in `/*` matches exactly one more non-empty segment (`POST /hooks/*` matches `POST /hooks/x`, not
+ * `/hooks/`, `/hooks/x/y` or `GET /hooks/x`).
+ */
+export function routeMatches(entries: readonly string[], method: string, path: string): boolean {
+  const route = `${method} ${path}`
+  return entries.some(entry => {
+    if (!entry.endsWith('/*')) return entry === route
+    const prefix = entry.slice(0, -1)
+    const rest = route.startsWith(prefix) ? route.slice(prefix.length) : ''
+    return rest !== '' && !rest.includes('/')
+  })
+}
+
 /** Require a valid Crew session cookie, except for `"METHOD /path"` entries in `publicPaths`. */
 export function sessionGuard(
   key: Buffer,
   now: () => number,
   publicPaths: readonly string[]
 ): MiddlewareHandler<CrewEnv> {
-  const open = new Set(publicPaths)
   return async (c, next) => {
-    if (open.has(`${c.req.method} ${c.req.path}`)) return next()
+    if (routeMatches(publicPaths, c.req.method, c.req.path)) return next()
     const cookies = parseCookieHeader(c.req.header('cookie'))
     const session = verifySession(key, cookies[SESSION_COOKIE], now())
     if (!session) return isBrowserNavigation(c) ? c.redirect('/login', 302) : c.json({ error: 'login_required' }, 401)
