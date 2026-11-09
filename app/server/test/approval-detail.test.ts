@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { PendingStore } from '../src/watcher/pending-store.js'
 import { applyGatewayEvent, routeServerRequest } from '../src/watcher/request-router.js'
+import { fakeSettings } from './helpers.js'
 import { startWatcher, type WatcherClient } from '../src/watcher/watcher.js'
 
 const ctx = { profileForSession: () => 'crew-test', now: () => 1 }
@@ -63,7 +64,7 @@ describe('approval detail', () => {
         return { session_id: 'run', stored_session_id: 'stored', prompts: [{ kind: 'approval', prompt_id: 'p-1', execution_generation: 1, choices: ['once'], description, command }] }
       }
     } as unknown as WatcherClient
-    const watcher = startWatcher({ client, connect: async () => undefined, now: () => 1, reconnectDelayMs: () => 60_000 })
+    const watcher = startWatcher({ client, connect: async () => undefined, settings: fakeSettings, now: () => 1, reconnectDelayMs: () => 60_000 })
     await new Promise(r => setTimeout(r, 0)); await new Promise(r => setTimeout(r, 0))
     const view = watcher.state().pending[0]!
     expect(view).toMatchObject({ command, description })

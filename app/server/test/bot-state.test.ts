@@ -78,4 +78,19 @@ describe('BotStateTracker', () => {
     t.applyEvent({ type: 'message.start', session_id: 'nobody' })
     expect(status(t)).toBe('idle')
   })
+
+  it('derives hidden, setupIncomplete and created for the roster', () => {
+    const t = new BotStateTracker()
+    t.applyProfiles([
+      { name: 'default', ui_meta: null, ui_meta_revisions: {} },
+      { name: 'fresh', ui_meta: null, ui_meta_revisions: {} },
+      { name: 'noRevisions', ui_meta: null },
+      { name: 'done', ui_meta: { 'hermes-bots': { title: 'D', hidden: true, created: 99 } }, ui_meta_revisions: { 'hermes-bots': 2 } }
+    ])
+    const by = Object.fromEntries(t.view([]).map(b => [b.name, b]))
+    expect(by.default).toMatchObject({ setupIncomplete: false, hidden: false, created: null })
+    expect(by.fresh).toMatchObject({ setupIncomplete: true, hidden: false, created: null })
+    expect(by.noRevisions!.setupIncomplete).toBe(true)
+    expect(by.done).toMatchObject({ setupIncomplete: false, hidden: true, created: 99 })
+  })
 })

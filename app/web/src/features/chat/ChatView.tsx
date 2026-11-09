@@ -1,3 +1,4 @@
+import type { PanelTab } from '@/features/panel/BotPanel'
 import { submitAnswer } from '@/features/requests/answer-request'
 import { RequestCard } from '@/features/requests/RequestCard'
 import { useChatSession } from '@/features/chat/use-chat-session'
@@ -5,7 +6,7 @@ import type { BotView, CrewState } from '@/state/types'
 
 import { ChatHeader } from './ChatHeader'
 import { Composer } from './Composer'
-import { composerDisabledReason } from './disabled-reason'
+import { composerDisabledReason, DEFAULT_MAX_WORKING_BOTS } from './disabled-reason'
 import { MessageList } from './MessageList'
 
 interface ChatViewProps {
@@ -13,20 +14,25 @@ interface ChatViewProps {
   state: CrewState
   /** Browser-to-Crew stream is up. */
   crewConnected: boolean
+  panel?: PanelTab | null
+  onPanel?: (tab: PanelTab) => void
 }
 
 /** One bot's chat: header, transcript, composer. */
-export function ChatView({ bot, state, crewConnected }: ChatViewProps) {
+export function ChatView({ bot, state, crewConnected, panel, onPanel }: ChatViewProps) {
   const { session, items, canSend, connected, running, notice } = useChatSession(bot)
   const stale = state.hermes !== 'connected' || !crewConnected
   const othersWorking = state.bots.filter(b => b.name !== bot.name && b.status === 'working').length
   // Oldest first; they leave when Hermes settles them (they drop out of state.pending).
   const requests = state.pending.filter(p => p.profile === bot.name).sort((a, b) => a.receivedAt - b.receivedAt)
-  const reason = composerDisabledReason({ hermes: state.hermes, crewConnected, canSend, othersWorking })
+  const reason = composerDisabledReason({ hermes: state.hermes, crewConnected, canSend,
+    othersWorking,
+    maxWorkingBots: state.settings ? state.settings.maxWorkingBots : DEFAULT_MAX_WORKING_BOTS
+  })
 
   return (
     <>
-      <ChatHeader bot={bot} stale={stale} />
+      <ChatHeader bot={bot} stale={stale} panel={panel} onPanel={onPanel} />
       <MessageList items={items} onRetry={id => void session?.retry(id).catch(() => undefined)} />
       {notice && <p role="status" className="px-6 text-center text-xs text-muted-foreground">{notice}</p>}
       {requests.length > 0 && (

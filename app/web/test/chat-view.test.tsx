@@ -135,7 +135,7 @@ describe('ChatView', () => {
     ] })
     render(<ChatView bot={dev} state={state} crewConnected />)
     await flush()
-    expect(screen.getByText('2 bots are working — wait or stop one')).toBeInTheDocument()
+    expect(screen.getByText('2 bots are working — wait, stop one, or raise the limit in Settings')).toBeInTheDocument()
   })
 
   it('shows the live reply, a Stop button while running, and interrupts with the generation', async () => {

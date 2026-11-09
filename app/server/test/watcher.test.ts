@@ -2,6 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { PendingStore } from '../src/watcher/pending-store.js'
 import { applyGatewayEvent, routeServerRequest } from '../src/watcher/request-router.js'
+import { HermesRpcError, HermesUnavailableError } from '../src/hermes/errors.js'
+import { JsonRpcGatewayError } from '../src/vendor/hermes/json-rpc-channel.js'
+import { fakeSettings } from './helpers.js'
 import { startWatcher, type WatcherClient } from '../src/watcher/watcher.js'
 
 const ctx = { profileForSession: (sid: string) => (sid === 's1' ? 'crew-test' : undefined), now: () => 5_000 }
@@ -142,7 +145,7 @@ describe('applyGatewayEvent generation', () => {
 describe('startWatcher', () => {
   it('subscribes to every bot chat and records snapshot prompts', async () => {
     const client = new FakeClient()
-    const watcher = startWatcher({ client, connect: c => c.connect(), now: () => 1, reconnectDelayMs: () => 0 })
+    const watcher = startWatcher({ client, connect: c => c.connect(), settings: fakeSettings, now: () => 1, reconnectDelayMs: () => 0 })
     await flush(); await flush()
     const resumes = client.calls.filter(c => c.method === 'session.resume')
     expect(resumes.map(r => [r.params.profile, r.params.session_id])).toEqual([['default', 'stored-default'], ['crew-test', 'stored-fixture']])
@@ -156,7 +159,7 @@ describe('startWatcher', () => {
 
   it('resubscribes after reconnect without duplicating pending prompts', async () => {
     const client = new FakeClient()
-    const watcher = startWatcher({ client, connect: c => c.connect(), now: () => 1, reconnectDelayMs: () => 0 })
+    const watcher = startWatcher({ client, connect: c => c.connect(), settings: fakeSettings, now: () => 1, reconnectDelayMs: () => 0 })
     await flush(); await flush()
     client.emitState('closed')
     await flush(); await flush(); await flush()
@@ -168,7 +171,7 @@ describe('startWatcher', () => {
 
   it('refreshes subscriptions when sessions change', async () => {
     const client = new FakeClient()
-    const watcher = startWatcher({ client, connect: c => c.connect(), now: () => 1, reconnectDelayMs: () => 0 })
+    const watcher = startWatcher({ client, connect: c => c.connect(), settings: fakeSettings, now: () => 1, reconnectDelayMs: () => 0 })
     await flush(); await flush()
     client.emitEvent({ type: 'sessions.changed' })
     await flush(); await flush()
@@ -179,7 +182,7 @@ describe('startWatcher', () => {
   it('drops pending prompts that a fresh snapshot no longer lists (missed settled event)', async () => {
     const client = new FakeClient()
     let clock = 0
-    const watcher = startWatcher({ client, connect: c => c.connect(), now: () => ++clock, reconnectDelayMs: () => 0 })
+    const watcher = startWatcher({ client, connect: c => c.connect(), settings: fakeSettings, now: () => ++clock, reconnectDelayMs: () => 0 })
     await flush(); await flush()
     client.emitEvent({ type: 'approval.request', session_id: 'run-fixture', payload: { prompt_id: 'p-2', command: 'rm -r /tmp/y' } })
     client.emitEvent({ type: 'approval.request', session_id: 'run-other', payload: { prompt_id: 'p-3', command: 'ls' } })
@@ -197,7 +200,7 @@ describe('startWatcher', () => {
 
 describe('watcher live state', () => {
   const make = (client: FakeClient, extra: Partial<Parameters<typeof startWatcher>[0]> = {}) =>
-    startWatcher({ client, connect: c => c.connect(), now: () => 1, reconnectDelayMs: () => 0, ...extra })
+    startWatcher({ client, connect: c => c.connect(), settings: fakeSettings, now: () => 1, reconnectDelayMs: () => 0, ...extra })
 
   it('reports the roster, status and connection', async () => {
     const client = new FakeClient()
@@ -327,5 +330,52 @@ describe('watcher live state', () => {
       expect(client.calls.filter(c => c.method === 'profiles.list').length).toBeGreaterThan(before)
       watcher.stop()
     })
+  })
+})
+
+describe('watcher request and refresh', () => {
+  const make = (client: FakeClient) =>
+    startWatcher({ client, connect: c => c.connect(), settings: fakeSettings, now: () => 1, reconnectDelayMs: () => 0 })
+
+  it('request rejects while disconnected and sends no frame', async () => {
+    const client = new FakeClient()
+    const watcher = startWatcher({ client, connect: () => new Promise(() => undefined), settings: fakeSettings, now: () => 1, reconnectDelayMs: () => 0 })
+    expect(watcher.state().hermes).toBe('connecting')
+    await expect(watcher.request('profiles.list', {})).rejects.toBeInstanceOf(HermesUnavailableError)
+    expect(client.calls).toEqual([])
+    watcher.stop()
+  })
+
+  it('request passes through, defaults to 60 s, and maps JSON-RPC errors', async () => {
+    const client = new FakeClient()
+    const watcher = make(client)
+    await flush(); await flush()
+    const timeouts: (number | undefined)[] = []
+    const original = client.request.bind(client)
+    client.request = (async (method: string, params: Record<string, unknown> = {}, timeoutMs?: number) => {
+      timeouts.push(timeoutMs)
+      if (method === 'profiles.create') throw new JsonRpcGatewayError('name taken', { code: 4062 })
+      return original(method, params)
+    }) as typeof client.request
+    await watcher.request('profiles.describe', { name: 'x' })
+    await expect(watcher.request('profiles.create', { name: 'x' }, 5000)).rejects.toEqual(new HermesRpcError(4062, 'name taken'))
+    expect(timeouts).toEqual([60_000, 5000])
+    watcher.stop()
+  })
+
+  it('refresh during an in-flight sync waits for a fresh sync', async () => {
+    const client = new FakeClient()
+    const watcher = make(client)
+    await flush(); await flush()
+    const lists = () => client.calls.filter(c => c.method === 'profiles.list').length
+    const before = lists()
+    const inFlight = watcher.refresh()
+    const seenAtResolve: number[] = []
+    const first = watcher.refresh().then(() => seenAtResolve.push(lists()))
+    const second = watcher.refresh().then(() => seenAtResolve.push(lists()))
+    await Promise.all([inFlight, first, second])
+    expect(lists() - before).toBe(2)
+    expect(seenAtResolve).toEqual([before + 2, before + 2])
+    watcher.stop()
   })
 })

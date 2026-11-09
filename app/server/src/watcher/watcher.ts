@@ -1,5 +1,7 @@
+import { HermesRpcError, HermesUnavailableError, type Rpc } from '../hermes/errors.js'
 import { log as logger } from '../log.js'
-import type { ServerRequest } from '../vendor/hermes/json-rpc-channel.js'
+import type { SettingsStore } from '../settings/settings-store.js'
+import { JsonRpcGatewayError, type ServerRequest } from '../vendor/hermes/json-rpc-channel.js'
 import { type AnswerInput, answerRequest } from './answer.js'
 import { BotStateTracker, type CrewState, type ProfileInput } from './bot-state.js'
 import { type PendingKind, type PendingRequest, PendingStore } from './pending-store.js'
@@ -17,6 +19,7 @@ export interface WatcherClient {
 export interface WatcherDeps {
   readonly client: WatcherClient
   readonly connect: (client: WatcherClient) => Promise<void>
+  readonly settings: Pick<SettingsStore, 'get' | 'onChange'>
   readonly now: () => number
   readonly reconnectDelayMs: (attempt: number) => number
   /** Observe WebSocket close codes (4401 = Hermes says our token is no longer valid). */
@@ -39,6 +42,10 @@ export interface Watcher {
   answer(id: string, input: AnswerInput): 'sent' | 'not_found' | 'already_resolved' | 'answering' | 'offline' | 'unsupported'
   /** The bot's avatar as a `data:` URL via `profiles.get_asset`; `found: false` when it has none. */
   getAvatar(name: string): Promise<{ found: boolean; mime?: string; data?: string }>
+  /** JSON-RPC to Hermes over the watcher's connection. Rejects HermesUnavailableError when not connected. */
+  request: Rpc
+  /** Re-read the roster now. Resolves only after a sync that started after the call (a running one gets one shared trailing sync). */
+  refresh(): Promise<void>
   debug(): readonly DebugEntry[]
   stop(): void
 }
@@ -54,11 +61,12 @@ interface Snapshot {
   open_requests?: { id: string; method: string; params: Record<string, unknown> }[] | null
 }
 
+const REQUEST_TIMEOUT_MS = 60_000
 const DEBUG_MAX = 200
 const DEBOUNCE_MS = 100
 const SYNC_RETRY_BASE_MS = 1000
 const SYNC_RETRY_MAX_MS = 30_000
-const REFRESH_MS = 30_000
+const REFRESH_MS = 10_000
 const SETTLED_TTL_MS = 10 * 60_000
 const AUTH_CLOSE_CODES = new Set([4401, 4403])
 const AUTH_ERROR = /\b(4401|4403|401|403)\b/
@@ -92,7 +100,7 @@ export function startWatcher(deps: WatcherDeps): Watcher {
   let timer: NodeJS.Timeout | null = null
   let stopped = false
   let syncing: Promise<void> | null = null
-  let resyncWanted = false
+  let trailing: Promise<void> | null = null
 
   const note = (kind: DebugEntry['kind'], detail: string) => {
     log = [...log.slice(-(DEBUG_MAX - 1)), { at: deps.now(), kind, detail }]
@@ -182,11 +190,17 @@ export function startWatcher(deps: WatcherDeps): Watcher {
     }, delay)
   }
 
-  /** Serialized: a sessions.changed during a sync triggers exactly one more pass afterwards. */
+  /**
+   * Serialized, and the returned promise always resolves after a sync that STARTED after this call:
+   * while one runs, every caller shares exactly one trailing sync that begins when it finishes.
+   */
   function sync(): Promise<void> {
     if (syncing) {
-      resyncWanted = true
-      return syncing
+      trailing ??= syncing.then(() => {
+        trailing = null
+        return stopped ? undefined : sync()
+      })
+      return trailing
     }
     syncing = syncOnce()
       .then(ok => {
@@ -199,10 +213,6 @@ export function startWatcher(deps: WatcherDeps): Watcher {
       })
       .finally(() => {
         syncing = null
-        if (resyncWanted && !stopped) {
-          resyncWanted = false
-          void sync()
-        }
       })
     return syncing
   }
@@ -292,6 +302,7 @@ export function startWatcher(deps: WatcherDeps): Watcher {
         id: entry.id, kind: entry.kind, profile: entry.profile, reason: entry.settled, answeredByCrew: sentByCrew.has(entry.id)
       })
     }),
+    deps.settings.onChange(changed),
     store.onChange(() => {
       for (const id of held.keys()) if (!store.list().some(p => p.id === id)) held.delete(id)
       changed()
@@ -314,6 +325,7 @@ export function startWatcher(deps: WatcherDeps): Watcher {
       return {
         hermes,
         bots: tracker.view(open),
+        settings: deps.settings.get(),
         pending: open.map(({ settled: _s, settledAt: _t, answerState, answerError, ...rest }) => ({
           ...rest,
           state: answerState ?? ('open' as const),
@@ -347,6 +359,16 @@ export function startWatcher(deps: WatcherDeps): Watcher {
       const r = await client.request<{ found: boolean; mime?: string | null; data?: string | null }>('profiles.get_asset', { name, asset: 'avatar' })
       return { found: r.found, ...(r.mime ? { mime: r.mime } : {}), ...(r.data ? { data: r.data } : {}) }
     },
+    request: async <T>(method: string, params: Record<string, unknown>, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> => {
+      if (hermes !== 'connected') throw new HermesUnavailableError()
+      try {
+        return await client.request<T>(method, params, timeoutMs)
+      } catch (error) {
+        if (error instanceof JsonRpcGatewayError) throw new HermesRpcError(error.code ?? -1, error.message)
+        throw error
+      }
+    },
+    refresh: sync,
     debug: () => log,
     stop: () => {
       stopped = true

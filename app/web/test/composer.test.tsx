@@ -45,16 +45,28 @@ describe('Composer', () => {
 })
 
 describe('composerDisabledReason', () => {
-  const ok = { hermes: 'connected' as const, crewConnected: true, canSend: true, othersWorking: 0 }
+  const ok = { hermes: 'connected' as const, crewConnected: true, canSend: true, othersWorking: 0, maxWorkingBots: 2 as number | null }
   it('is null when everything is fine, and one other bot working is allowed', () => {
     expect(composerDisabledReason(ok)).toBeNull()
     expect(composerDisabledReason({ ...ok, othersWorking: 1 })).toBeNull()
   })
+  it('allows any number of working bots when the limit is off', () => {
+    expect(composerDisabledReason({ ...ok, othersWorking: 9, maxWorkingBots: null })).toBeNull()
+  })
+  it('holds the composer at the configured limit', () => {
+    const reason = composerDisabledReason({ ...ok, othersWorking: 3, maxWorkingBots: 3 })
+    expect(reason).toContain('3 bots are working')
+    expect(reason).toContain('Settings')
+    expect(composerDisabledReason({ ...ok, othersWorking: 2, maxWorkingBots: 3 })).toBeNull()
+  })
+  it('uses the singular for a limit of one', () => {
+    expect(composerDisabledReason({ ...ok, othersWorking: 1, maxWorkingBots: 1 })).toMatch(/^1 bot is working/)
+  })
   it('follows the priority order', () => {
-    const all = { hermes: 'offline' as const, crewConnected: false, canSend: false, othersWorking: 2 }
+    const all = { hermes: 'offline' as const, crewConnected: false, canSend: false, othersWorking: 2, maxWorkingBots: 2 }
     expect(composerDisabledReason(all)).toBe('Hermes is offline')
     expect(composerDisabledReason({ ...all, hermes: 'connected' })).toBe('Reconnecting to Crew…')
     expect(composerDisabledReason({ ...all, hermes: 'connected', crewConnected: true })).toBe('Connecting to the chat…')
-    expect(composerDisabledReason({ ...all, hermes: 'connected', crewConnected: true, canSend: true })).toBe('2 bots are working — wait or stop one')
+    expect(composerDisabledReason({ ...all, hermes: 'connected', crewConnected: true, canSend: true })).toBe('2 bots are working — wait, stop one, or raise the limit in Settings')
   })
 })
