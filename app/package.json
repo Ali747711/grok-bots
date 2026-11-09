@@ -2,6 +2,6 @@
   "name": "crew",
   "private": true,
   "type": "module",
-  "workspaces": ["server"],
+  "workspaces": ["server", "web"],
   "engines": { "node": ">=24" }
 }

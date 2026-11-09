@@ -1,0 +1,12 @@
+{
+  "name": "crew-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Phase 1 acceptance tests. Run on the Mac through the SSH tunnels (7070 Crew, 9120 Hermes Webapp).",
+  "scripts": {
+    "test": "playwright test -c playwright.config.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.0"
+  }
+}

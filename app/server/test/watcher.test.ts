@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { PendingStore } from '../src/watcher/pending-store.js'
 import { applyGatewayEvent, routeServerRequest } from '../src/watcher/request-router.js'
@@ -37,11 +37,12 @@ describe('routeServerRequest', () => {
     expect(JSON.stringify(store.list())).not.toContain('sk-live-123')
   })
 
-  it('declines unknown methods instead of failing them', () => {
+  it('accepts and ignores unknown methods: any error reply (even a decline) would skip them for everyone', () => {
     const store = new PendingStore()
     const req = fakeRequest('theme.pick', {})
     expect(routeServerRequest(req, store, ctx)).toBe(true)
-    expect(req.decline).toHaveBeenCalled()
+    expect(req.respond).not.toHaveBeenCalled()
+    expect(req.decline).not.toHaveBeenCalled()
     expect(req.fail).not.toHaveBeenCalled()
     expect(store.list()).toEqual([])
   })
@@ -61,7 +62,7 @@ describe('applyGatewayEvent', () => {
     expect(store.list()[0]!.summary).toContain('rm -r /tmp/crew-fixture/victim')
     applyGatewayEvent({ type: 'approval.settled', session_id: 's1', payload: { prompt_id: 'p-9' } }, store, ctx)
     expect(store.list()).toEqual([])
-    expect(store.get('p-9')?.settled).toBe('answered')
+    expect(store.get('p-9')?.settled).toBe('settled')
   })
 
   it('holds clarify.request events as questions', () => {
@@ -130,6 +131,14 @@ class FakeClient implements WatcherClient {
 
 const flush = () => new Promise(resolve => setTimeout(resolve, 0))
 
+describe('applyGatewayEvent generation', () => {
+  it('reads execution_generation from the top level of the event when the payload lacks it', () => {
+    const store = new PendingStore()
+    applyGatewayEvent({ type: 'approval.request', session_id: 's1', execution_generation: 7, payload: { prompt_id: 'p-1' } }, store, ctx)
+    expect(store.list()[0]?.executionGeneration).toBe(7)
+  })
+})
+
 describe('startWatcher', () => {
   it('subscribes to every bot chat and records snapshot prompts', async () => {
     const client = new FakeClient()
@@ -185,3 +194,138 @@ describe('startWatcher', () => {
   })
 })
 
+
+describe('watcher live state', () => {
+  const make = (client: FakeClient, extra: Partial<Parameters<typeof startWatcher>[0]> = {}) =>
+    startWatcher({ client, connect: c => c.connect(), now: () => 1, reconnectDelayMs: () => 0, ...extra })
+
+  it('reports the roster, status and connection', async () => {
+    const client = new FakeClient()
+    const watcher = make(client)
+    expect(watcher.state().hermes).toBe('connecting')
+    await flush(); await flush()
+    const state = watcher.state()
+    expect(state.hermes).toBe('connected')
+    expect(state.bots.map(b => [b.name, b.status])).toEqual([['default', 'idle'], ['crew-test', 'needs_you'], ['no-chat', 'idle']])
+    expect(state.pending).toEqual([expect.objectContaining({ id: 'p-1', state: 'open' })])
+    expect(state.pending[0]).not.toHaveProperty('settled')
+    watcher.stop()
+  })
+
+  it('marks a bot working from live events with top-level stamps', async () => {
+    const client = new FakeClient()
+    client.fixturePrompts = []
+    const watcher = make(client)
+    await flush(); await flush()
+    client.emitEvent({ type: 'message.start', session_id: 'run-default', execution_generation: 5 } as never)
+    expect(watcher.state().bots.find(b => b.name === 'default')?.status).toBe('working')
+    watcher.stop()
+  })
+
+  it('goes offline on a plain close and signed_out on close code 4401', async () => {
+    const client = new FakeClient()
+    let closeHandler: (code: number) => void = () => undefined
+    const watcher = make(client, { reconnectDelayMs: () => 60_000, onSocketClose: h => { closeHandler = h; return () => undefined } })
+    await flush(); await flush()
+    client.emitState('closed')
+    expect(watcher.state().hermes).toBe('offline')
+    closeHandler(4401)
+    client.emitState('closed')
+    expect(watcher.state().hermes).toBe('signed_out')
+    watcher.stop()
+  })
+
+  it('reports signed_out when the connect fails with an auth status, offline otherwise', async () => {
+    const client = new FakeClient()
+    const fail = (message: string) => make(client, { connect: async () => { throw new Error(message) }, reconnectDelayMs: () => 60_000 })
+    const a = fail('WebSocket closed during handshake: code 4401')
+    await flush(); await flush()
+    expect(a.state().hermes).toBe('signed_out')
+    a.stop()
+    const b = fail('Unexpected server response: 403')
+    await flush(); await flush()
+    expect(b.state().hermes).toBe('signed_out')
+    b.stop()
+    const c = fail('connect ECONNREFUSED')
+    await flush(); await flush()
+    expect(c.state().hermes).toBe('offline')
+    c.stop()
+  })
+
+  describe('with fake timers', () => {
+    beforeEach(() => { vi.useFakeTimers() })
+    afterEach(() => { vi.useRealTimers() })
+    const settle = async () => { await vi.advanceTimersByTimeAsync(0); await vi.advanceTimersByTimeAsync(0) }
+
+    it('debounces onChange by 100 ms', async () => {
+      const client = new FakeClient()
+      const watcher = make(client)
+      await settle()
+      await vi.advanceTimersByTimeAsync(200)
+      const listener = vi.fn()
+      const off = watcher.onChange(listener)
+      client.emitEvent({ type: 'message.start', session_id: 'run-default' })
+      client.emitEvent({ type: 'message.complete', session_id: 'run-default' })
+      expect(listener).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(100)
+      expect(listener).toHaveBeenCalledTimes(1)
+      off()
+      client.emitEvent({ type: 'message.start', session_id: 'run-default' })
+      await vi.advanceTimersByTimeAsync(100)
+      expect(listener).toHaveBeenCalledTimes(1)
+      watcher.stop()
+    })
+
+    it('retries a failed profiles.list with backoff', async () => {
+      const client = new FakeClient()
+      const original = client.request.bind(client)
+      let failures = 2
+      client.request = (async (method: string, params?: Record<string, unknown>) => {
+        if (method === 'profiles.list' && failures-- > 0) throw new Error('boom')
+        return original(method, params)
+      }) as typeof client.request
+      const watcher = make(client)
+      await settle()
+      expect(client.calls.filter(c => c.method === 'profiles.list').length).toBe(0)
+      await vi.advanceTimersByTimeAsync(1000)
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(watcher.state().bots.length).toBe(3)
+      watcher.stop()
+    })
+
+    it('retries a failed session.resume', async () => {
+      const client = new FakeClient()
+      const original = client.request.bind(client)
+      let failures = 1
+      client.request = (async (method: string, params?: Record<string, unknown>) => {
+        if (method === 'session.resume' && failures-- > 0) throw new Error('boom')
+        return original(method, params)
+      }) as typeof client.request
+      const watcher = make(client)
+      await settle()
+      expect(watcher.debug().some(d => d.kind === 'error' && d.detail.startsWith('resume default'))).toBe(true)
+      expect(watcher.debug().some(d => d.kind === 'subscribed' && d.detail.startsWith('default'))).toBe(false)
+      await vi.advanceTimersByTimeAsync(1000)
+      await settle()
+      // the failed attempt never reached the fake's call log, so one recorded call = the successful retry
+      expect(client.calls.filter(c => c.method === 'session.resume' && c.params.profile === 'default').length).toBe(1)
+      expect(watcher.debug().some(d => d.kind === 'subscribed' && d.detail.startsWith('default'))).toBe(true)
+      watcher.stop()
+    })
+
+    it('prunes settled entries after 10 minutes and re-reads profiles every 30 s', async () => {
+      const client = new FakeClient()
+      let clock = 0
+      const watcher = make(client, { now: () => clock })
+      await settle()
+      client.emitEvent({ type: 'approval.settled', session_id: 'run-fixture', payload: { prompt_id: 'p-1' } })
+      expect(watcher.store.get('p-1')?.settled).toBe('settled')
+      const before = client.calls.filter(c => c.method === 'profiles.list').length
+      clock = 10 * 60_000 + 1
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(watcher.store.get('p-1')).toBeUndefined()
+      expect(client.calls.filter(c => c.method === 'profiles.list').length).toBeGreaterThan(before)
+      watcher.stop()
+    })
+  })
+})

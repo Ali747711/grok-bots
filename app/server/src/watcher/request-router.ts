@@ -3,6 +3,7 @@ import type { PendingKind, PendingSource, PendingStore } from './pending-store.j
 
 const HELD: ReadonlySet<string> = new Set<PendingKind>(['approval', 'clarify', 'sudo', 'secret'])
 const SUMMARY_MAX = 300
+export const DETAIL_MAX = 16_384
 
 export interface RouteContext {
   profileForSession(sessionId: string): string | undefined
@@ -13,6 +14,8 @@ export interface WatcherEvent {
   readonly type: string
   readonly session_id?: string
   readonly payload?: unknown
+  /** Owner stamp, at the top level of the event params (not inside `payload`). */
+  readonly execution_generation?: number
 }
 
 type Params = Readonly<Record<string, unknown>>
@@ -30,14 +33,34 @@ export function summarize(kind: PendingKind, params: Params): string {
   return parts.filter(Boolean).join(' — ').slice(0, SUMMARY_MAX)
 }
 
+export interface ApprovalDetail {
+  readonly command?: string
+  readonly description?: string
+  readonly detailTruncated?: true
+}
+
+/** Full command/description of an approval (each capped at DETAIL_MAX); empty for every other kind. */
+export function approvalDetail(kind: PendingKind, params: Params): ApprovalDetail {
+  if (kind !== 'approval') return {}
+  const command = text(params.command)
+  const description = text(params.description)
+  const truncated = (command?.length ?? 0) > DETAIL_MAX || (description?.length ?? 0) > DETAIL_MAX
+  return {
+    ...(command ? { command: command.slice(0, DETAIL_MAX) } : {}),
+    ...(description ? { description: description.slice(0, DETAIL_MAX) } : {}),
+    ...(truncated ? { detailTruncated: true as const } : {})
+  }
+}
+
 function stringList(value: unknown): readonly string[] | undefined {
   return Array.isArray(value) && value.every(v => typeof v === 'string') ? value : undefined
 }
 
 /**
- * Hold approval/clarify/sudo/secret requests for the user (never answered here), and politely decline
- * everything else with "not shown" (4404) — never an error reply, which could cancel the request for
- * other clients (tui_gateway/server_requests.py:281-315). Always returns true so nothing falls through to -32601.
+ * Hold approval/clarify/sudo/secret requests for the user (never answered here). Everything else is
+ * accepted and ignored: Hermes treats ANY error reply to a server request (even the 4404 decline) as
+ * "skipped" for every client, so we must not reply at all. Always returns true so nothing falls
+ * through to the channel's -32601 reply.
  */
 export function routeServerRequest(
   req: ServerRequest,
@@ -46,8 +69,6 @@ export function routeServerRequest(
   source: PendingSource = 'server_request'
 ): true {
   if (!HELD.has(req.method)) {
-    // Optional in the vendored type; without it we stay silent rather than send an error reply.
-    req.decline?.('not shown in Crew')
     return true
   }
   const kind = req.method as PendingKind
@@ -60,6 +81,7 @@ export function routeServerRequest(
     profile: ctx.profileForSession(sessionId) ?? 'unknown',
     sessionId,
     summary: summarize(kind, params),
+    ...approvalDetail(kind, params),
     ...(choices ? { choices } : {}),
     receivedAt: ctx.now(),
     source
@@ -81,13 +103,14 @@ export function applyGatewayEvent(event: WatcherEvent, store: PendingStore, ctx:
   if (promptKind && typeof payload.prompt_id === 'string') {
     const sessionId = event.session_id ?? ''
     const choices = stringList(payload.choices)
-    const generation = payload.execution_generation
+    const generation = payload.execution_generation ?? event.execution_generation
     store.add({
       id: payload.prompt_id,
       kind: promptKind,
       profile: ctx.profileForSession(sessionId) ?? 'unknown',
       sessionId,
       summary: summarize(promptKind, payload),
+      ...approvalDetail(promptKind, payload),
       ...(choices ? { choices } : {}),
       receivedAt: ctx.now(),
       source: 'event',
@@ -96,7 +119,7 @@ export function applyGatewayEvent(event: WatcherEvent, store: PendingStore, ctx:
     })
   }
   if (PROMPT_SETTLED.has(event.type) && typeof payload.prompt_id === 'string') {
-    store.settle(payload.prompt_id, 'answered')
+    store.settle(payload.prompt_id, 'settled')
   }
   if (event.type === 'request.cancel' && typeof payload.id === 'string') {
     store.settle(payload.id, 'cancelled')

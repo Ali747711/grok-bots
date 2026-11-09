@@ -15,6 +15,9 @@ const HERMES_REPO = join(homedir(), '.hermes', 'hermes-agent')
 const SOURCE_DIR = 'apps/shared/src'
 const ENTRY = 'json-rpc-gateway.ts'
 const OUT_DIR = fileURLToPath(new URL('../server/src/vendor/hermes/', import.meta.url))
+// The browser bundle gets its own byte-identical copy so web never imports from server.
+const WEB_OUT_DIR = fileURLToPath(new URL('../web/src/vendor/hermes/', import.meta.url))
+const OUT_DIRS = [OUT_DIR, WEB_OUT_DIR]
 const MANIFEST = 'VENDORED_FROM.json'
 
 const sha256 = data => createHash('sha256').update(data).digest('hex')
@@ -39,15 +42,18 @@ async function vendor() {
     files.set(file, source)
     queue.push(...relativeImports(source, file))
   }
-  await rm(OUT_DIR, { recursive: true, force: true })
   const hashes = {}
-  for (const [file, source] of [...files].sort()) {
-    await mkdir(dirname(join(OUT_DIR, file)), { recursive: true })
-    await writeFile(join(OUT_DIR, file), source)
-    hashes[file] = sha256(source)
+  for (const [file, source] of files) hashes[file] = sha256(source)
+  const manifest = JSON.stringify({ commit: PINNED_COMMIT, source: SOURCE_DIR, files: Object.fromEntries(Object.entries(hashes).sort()) }, null, 2) + '\n'
+  for (const outDir of OUT_DIRS) {
+    await rm(outDir, { recursive: true, force: true })
+    for (const [file, source] of [...files].sort()) {
+      await mkdir(dirname(join(outDir, file)), { recursive: true })
+      await writeFile(join(outDir, file), source)
+    }
+    await writeFile(join(outDir, MANIFEST), manifest)
   }
-  await writeFile(join(OUT_DIR, MANIFEST), JSON.stringify({ commit: PINNED_COMMIT, source: SOURCE_DIR, files: hashes }, null, 2) + '\n')
-  return Object.keys(hashes)
+  return Object.keys(hashes).sort()
 }
 
 /** Compare every vendored file to its recorded hash. */
@@ -61,10 +67,20 @@ export async function checkVendored(dir = OUT_DIR) {
   return { ok: mismatches.length === 0, mismatches }
 }
 
+/** Check every output copy; mismatches are prefixed with the copy they belong to. */
+export async function checkAllVendored(dirs = OUT_DIRS) {
+  const mismatches = []
+  for (const dir of dirs) {
+    const r = await checkVendored(dir).catch(() => ({ ok: false, mismatches: [MANIFEST] }))
+    mismatches.push(...r.mismatches.map(f => `${dir}${f}`))
+  }
+  return { ok: mismatches.length === 0, mismatches }
+}
+
 const invokedDirectly = process.argv[1] && fileURLToPath(import.meta.url) === normalize(process.argv[1])
 if (invokedDirectly) {
   const run = process.argv.includes('--check')
-    ? checkVendored().then(r => {
+    ? checkAllVendored().then(r => {
       process.stdout.write(r.ok ? 'vendored files match\n' : `vendored files changed: ${r.mismatches.join(', ')}\n`)
       process.exit(r.ok ? 0 : 1)
     })
