@@ -8,7 +8,7 @@ import { memberTitle } from './group-titles'
 const STATUS_TEXT: Record<BotStatus, string> = { idle: 'Idle', working: 'Working', needs_you: 'Needs you' }
 
 /** Fixed members: avatar, title, @handle, status and a link to the bot's chat. A deleted bot is a plain row. */
-export function MembersList({ group, bots }: { group: GroupView; bots: readonly BotView[] }) {
+export function MembersList({ group, bots, stale }: { group: GroupView; bots: readonly BotView[]; stale: boolean }) {
   return (
     <div className="flex flex-col gap-2">
       <h3 className="text-sm font-medium">Members</h3>
@@ -17,12 +17,12 @@ export function MembersList({ group, bots }: { group: GroupView; bots: readonly 
           const bot = bots.find(b => b.name === m.profile)
           const body = (
             <>
-              {bot ? <CrewAvatar bot={bot} size={28} decorative /> : <span aria-hidden="true" className="size-7 rounded-xl bg-muted" />}
+              {bot ? <CrewAvatar bot={stale ? { ...bot, status: 'idle' } : bot} size={28} decorative /> : <span aria-hidden="true" className="size-7 rounded-xl bg-muted" />}
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium">{bot ? memberTitle(group, bots, m.memberId) : 'Deleted bot'}</span>
                 <span className="block truncate text-xs text-muted-foreground">{`@${m.handle}`}</span>
               </span>
-              {bot && <span className="text-xs text-muted-foreground">{STATUS_TEXT[bot.status]}</span>}
+              {bot && !stale && <span className="text-xs text-muted-foreground">{STATUS_TEXT[bot.status]}</span>}
             </>
           )
           return (

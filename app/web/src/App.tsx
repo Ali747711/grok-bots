@@ -167,7 +167,7 @@ export default function App() {
         }
         panel={panelGroup ? (
           <PanelBoundary key={`group-${panelGroup.id}`}>
-            <GroupPanel view={panelGroup} bots={state?.bots ?? []} onDeleted={() => navigate('/', { replace: true })} onClose={closePanel} />
+            <GroupPanel view={panelGroup} bots={state?.bots ?? []} stale={state === null || state.hermes !== 'connected' || !connected} onDeleted={() => navigate('/', { replace: true })} onClose={closePanel} />
           </PanelBoundary>
         ) : panelBot && panel ? <PanelBoundary key={`${panelBot.name}-${panel}`}><BotPanel bot={panelBot} tab={panel} onTab={selectPanel} onClose={closePanel} /></PanelBoundary> : null}
         panelOpen={panelBot !== undefined || panelGroup !== undefined}

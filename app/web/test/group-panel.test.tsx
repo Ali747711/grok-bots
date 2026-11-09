@@ -9,7 +9,7 @@ import { pickOption } from './select-helpers'
 
 vi.mock('bot-avatars', async () => {
   const actual = await vi.importActual<typeof import('bot-avatars')>('bot-avatars')
-  return { ...actual, BotAvatar: () => <div data-testid="stub" /> }
+  return { ...actual, BotAvatar: (props: Record<string, unknown>) => <div data-testid="stub" data-state={String(props.state)} /> }
 })
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
 vi.mock('sonner', () => ({ toast }))
@@ -21,9 +21,9 @@ const { GroupApiError } = await import('@/features/groups/groups-api')
 
 const bots = [bot({ name: 'reese', title: 'Reese', status: 'working' }), bot({ name: 'x', title: 'X' })]
 const view = (over: Partial<GroupView> = {}) => group({ id: 'r1', name: 'Launch', members: [gm('reese'), gm('x'), gm('gone')], purpose: 'old purpose', notes: 'old notes', ...over })
-const setup = (v = view()) => {
+const setup = (v = view(), stale = false) => {
   const onDeleted = vi.fn()
-  const ui = (g: GroupView) => <MemoryRouter><GroupPanel view={g} bots={bots} onDeleted={onDeleted} /></MemoryRouter>
+  const ui = (g: GroupView) => <MemoryRouter><GroupPanel view={g} bots={bots} stale={stale} onDeleted={onDeleted} /></MemoryRouter>
   const r = render(ui(v))
   return { onDeleted, rerender: (g: GroupView) => r.rerender(ui(g)) }
 }
@@ -88,6 +88,19 @@ describe('GroupPanel', () => {
     expect(screen.getByRole('link', { name: /Reese/ })).toHaveTextContent('@reese')
     expect(screen.getByText('Deleted bot')).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /Deleted bot/ })).toBeNull()
+  })
+
+  it('shows member status while connected', () => {
+    setup()
+    expect(screen.getByText('Working')).toBeInTheDocument()
+    expect(screen.getAllByTestId('stub').some(s => s.getAttribute('data-state') === 'working')).toBe(true)
+  })
+
+  it('keeps member statuses neutral while stale', () => {
+    setup(view(), true)
+    expect(screen.queryByText('Working')).toBeNull()
+    expect(screen.queryByText('Idle')).toBeNull()
+    for (const s of screen.getAllByTestId('stub')) expect(s).not.toHaveAttribute('data-state', 'working')
   })
 
   it('re-reads the view only while there are no unsaved edits', () => {

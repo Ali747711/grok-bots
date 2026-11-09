@@ -52,7 +52,7 @@ function Counter({ value, max }: { value: string; max: number }) {
 }
 
 /** Right panel for a group: rename, fixed members, reply rule, purpose and notes, delete. */
-export function GroupPanel({ view, bots, onDeleted, onClose }: { view: GroupView; bots: readonly BotView[]; onDeleted: () => void; onClose?: () => void }) {
+export function GroupPanel({ view, bots, stale, onDeleted, onClose }: { view: GroupView; bots: readonly BotView[]; /** Hermes or the Crew stream is down: statuses may be out of date. */ stale: boolean; onDeleted: () => void; onClose?: () => void }) {
   const { form, setBase, nameDirty, ctxDirty, edit } = useGroupForm(view)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -98,7 +98,7 @@ export function GroupPanel({ view, bots, onDeleted, onClose }: { view: GroupView
             <Button type="button" disabled={busy || !nameDirty || form.name.trim() === ''} onClick={() => void rename()}>Rename</Button>
           </div>
         </div>
-        <MembersList group={view} bots={bots} />
+        <MembersList group={view} bots={bots} stale={stale} />
         <ReplyRule group={view} bots={bots} routing={form.routing} lead={form.lead} onRouting={routing => edit({ routing })} onLead={lead => edit({ lead })} />
         <div className="flex flex-col gap-1.5">
           <label htmlFor="group-purpose" className={LABEL}>What this group is for</label>
