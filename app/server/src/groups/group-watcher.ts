@@ -159,7 +159,8 @@ export function startGroupWatcher(deps: GroupWatcherDeps): GroupWatcher {
   const listTimer = setIv(() => {
     if (stopped || !deps.connected()) return
     if (!capsLoaded) void connect()
-    else if (available) void refreshList()
+    // Capabilities are re-read every tick: a bot created after Crew connected becomes seatable without a restart.
+    else void loadCapabilities().then(() => (available ? refreshList() : emitIfChanged()))
   }, LIST_MS)
   const activeTimer = setIv(() => {
     if (stopped || !deps.connected()) return

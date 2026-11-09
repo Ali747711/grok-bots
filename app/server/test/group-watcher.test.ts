@@ -53,6 +53,15 @@ beforeEach(() => {
 afterEach(() => { watcher?.stop(); watcher = undefined; vi.useRealTimers() })
 
 describe('group watcher', () => {
+  it('picks up a newly seatable profile on the next list tick', async () => {
+    const w = start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(w.state().seatable).toEqual(['a', 'b'])
+    caps = { driver: true, seatable_profiles: ['a', 'b', 'c'] }
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(w.state().seatable).toEqual(['a', 'b', 'c'])
+  })
+
   it('marks groups unavailable when the driver is off', async () => {
     caps = { driver: false, seatable_profiles: [] }
     const w = start()
