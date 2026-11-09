@@ -1,6 +1,7 @@
 import { cn } from '@/lib/utils'
 import type { BotView, GroupView } from '@/state/types'
 
+import { memberTitle } from './group-titles'
 import { StackedAvatars } from './StackedAvatars'
 
 interface GroupRowProps {
@@ -11,22 +12,15 @@ interface GroupRowProps {
   onSelect: (roomId: string) => void
 }
 
-/** Crew title, else the Hermes display name, else the handle. */
-function titleFor(group: GroupView, bots: readonly BotView[], memberId: string): string {
-  const member = group.members.find(m => m.memberId === memberId)
-  const bot = member ? bots.find(b => b.name === member.profile) : undefined
-  return bot?.title ?? member?.displayName ?? member?.handle ?? memberId
-}
-
 function previewText(group: GroupView, bots: readonly BotView[], stale: boolean): string {
   const runner = group.activity.find(a => a.status !== 'queued')
-  if (runner && !stale) return `${titleFor(group, bots, runner.memberId)} is working…`
+  if (runner && !stale) return `${memberTitle(group, bots, runner.memberId)} is working…`
   const p = group.preview
   if (p) {
-    const who = p.speaker.kind === 'user' ? 'You' : p.speaker.kind === 'member' ? titleFor(group, bots, p.speaker.memberId) : p.speaker.label
+    const who = p.speaker.kind === 'user' ? 'You' : p.speaker.kind === 'member' ? memberTitle(group, bots, p.speaker.memberId) : p.speaker.label
     return `${who}: ${p.text}`
   }
-  return group.members.map(m => titleFor(group, bots, m.memberId)).join(', ')
+  return group.members.map(m => memberTitle(group, bots, m.memberId)).join(', ')
 }
 
 /** One group in the sidebar: stacked member avatars, name, one-line preview. Matches RosterRow. */

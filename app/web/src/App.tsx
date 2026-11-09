@@ -72,12 +72,20 @@ function BotRoute({ state, crewConnected, name, panel, onPanel }: BotRouteProps)
 }
 
 /** A group just created can be opened before the state stream delivers it: same grace as a bot, then home. */
-function GroupRoute({ state, roomId }: { state: CrewState | null; roomId: string }) {
+function GroupRoute({ state, crewConnected, roomId }: { state: CrewState | null; crewConnected: boolean; roomId: string }) {
+  const [params, setParams] = useSearchParams()
+  const panelOpen = params.get('panel') === 'group'
+  const onPanel = () => setParams(prev => {
+    const next = new URLSearchParams(prev)
+    if (next.get('panel') === 'group') next.delete('panel')
+    else next.set('panel', 'group')
+    return next
+  })
   const waiting = useMissingGrace(state)
   if (!state) return <Loading />
   const group = state.groups?.rooms.find(r => r.id === roomId)
   if (!group) return waiting ? <Loading /> : <Navigate replace to="/" />
-  return <GroupChatView key={group.id} group={group} />
+  return <GroupChatView key={group.id} state={state} crewConnected={crewConnected} roomId={group.id} panelOpen={panelOpen} onPanel={onPanel} />
 }
 
 /** Go home when the open bot was in the roster and is gone (deleted in another app); never for one that has not appeared yet. */
@@ -149,7 +157,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<HomeRedirect state={state} />} />
             <Route path="/bots/:name" element={<BotRoute key={selected} state={state} crewConnected={connected} name={selected ?? ''} panel={panel} onPanel={togglePanel} />} />
-            <Route path="/groups/:roomId" element={<GroupRoute key={selectedGroupId} state={state} roomId={selectedGroupId ?? ''} />} />
+            <Route path="/groups/:roomId" element={<GroupRoute key={selectedGroupId} state={state} crewConnected={connected} roomId={selectedGroupId ?? ''} />} />
             <Route path="/needs-you" element={state ? <NeedsYouPage state={state} crewConnected={connected} /> : <Loading />} />
             <Route path="*" element={<Navigate replace to="/" />} />
           </Routes>
