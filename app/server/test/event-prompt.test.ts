@@ -100,6 +100,37 @@ describe('buildEventPrompt', () => {
     expect(buildEventPrompt({ instruction: 'x', source: 'generic', eventType: 'e', action: null, payload: { kind: 'json', value: deep } })).toContain('nested too deeply')
   })
 
+  const LONE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/
+  const gh = (value: unknown) => buildEventPrompt({ instruction: 'x', source: 'github', eventType: 'issues', action: null, payload: { kind: 'json', value } })
+
+  it('never splits a surrogate pair at a cut boundary', () => {
+    const emoji = '😀'
+    // summary line: 299 chars then an emoji straddling the 300 limit
+    expect(gh({ issue: { number: 1, title: `${'a'.repeat(299)}${emoji}tail` } })).not.toMatch(LONE)
+    // body: emoji straddling 2000
+    const withBody = gh({ issue: { number: 1, title: 't', body: `${'b'.repeat(1999)}${emoji}tail` } })
+    expect(withBody).not.toMatch(LONE)
+    expect(withBody).toContain(`${'b'.repeat(1999)}…`)
+    // payload: emoji straddling 6000 (text payload)
+    const text = `${'p'.repeat(5999)}${emoji}tail`
+    const prompt = buildEventPrompt({ instruction: 'x', source: 'generic', eventType: 'e', action: null, payload: { kind: 'text', text } })
+    expect(prompt).not.toMatch(LONE)
+    expect(prompt).toContain('\n… (cut)')
+    // an emoji that fits exactly stays whole
+    expect(gh({ issue: { number: 1, title: `${'a'.repeat(298)}${emoji}tail` } })).toContain(`${'a'.repeat(298)}${emoji}`)
+  })
+
+  it('strips invisible characters from event text but keeps ZWJ inside emoji and the routine instruction as is', () => {
+    const value = { issue: { number: 1, title: 'Fix\u200b the\ufeff bug\u202e', body: 'bo\u2060dy\u200d', html_url: 'https://x' }, note: 'a\u200bb' }
+    const prompt = buildEventPrompt({ instruction: 'Keep\u200b this', source: 'github', eventType: 'issues', action: null, payload: { kind: 'json', value } })
+    const event = prompt.slice(prompt.indexOf('## Event'))
+    expect(event).not.toMatch(/[\u200b\u200c\u2060\u2062-\u2064\ufeff\u202a-\u202e\u2066-\u2069]/)
+    expect(event).toContain('- Title: Fix the bug')
+    expect(prompt.startsWith('Keep\u200b this')).toBe(true)
+    const family = '\u{1F468}\u200d\u{1F469}'
+    expect(gh({ issue: { number: 1, title: family } })).toContain(`- Title: ${family}`)
+  })
+
   // The strict cron threat patterns of Hermes (~/.hermes/hermes-agent/tools/cronjob_prompt_scan.py:27-35).
   const THREAT = [
     /ignore\s+(?:\w+\s+)*(?:previous|all|above|prior)\s+(?:\w+\s+)*instructions/i, /do\s+not\s+tell\s+the\s+user/i, /system\s+prompt\s+override/i,

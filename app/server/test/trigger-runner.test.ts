@@ -265,6 +265,38 @@ describe('polling', () => {
   })
 })
 
+describe('review fixes', () => {
+  it('copies no_agent when true, with the script', async () => {
+    const base = happy()
+    handler = call => (call.method === 'GET' && call.path === '/api/cron/jobs/rt1' ? routine({ no_agent: true, script: 'run.sh' }) : base(call))
+    await runner.start(trigger(), input(1))
+    expect(oneShots.get('os1')).toMatchObject({ no_agent: true, script: 'run.sh' })
+    handler = call => (call.method === 'GET' && call.path === '/api/cron/jobs/rt1' ? routine({ no_agent: false }) : base(call))
+    await runner.start(trigger(), input(2))
+    expect(Object.keys(oneShots.get('os2')!)).not.toContain('no_agent')
+  })
+
+  it('does not record a session another event already uses (recovery)', async () => {
+    const title = `[trigger:${TID}] Triage · issues · Nov 09 18:06`
+    await store.logEvent(TID, { id: 'prev', at: NOW - 1000, deliveryId: null, eventType: 'issues', action: null, outcome: 'finished', jobId: 'old', runId: 's-used', endedAt: null, detail: null })
+    const base = happy(() => { throw new HermesRestError(404, 'Job not found') })
+    handler = call => (call.method === 'GET' && call.path === '/api/sessions' ? { sessions: [{ id: 's-used', title, started_at: NOW / 1000 + 3 }] } : base(call))
+    await runner.start(trigger(), input(1))
+    await poll()
+    await until(() => expect(events()[0]).toMatchObject({ id: 'ev1', outcome: 'failed', detail: 'lost on restart' }))
+  })
+
+  it('keeps the hourly stamp after an ambiguous create failure but gives it back after an HTTP error', async () => {
+    const base = happy()
+    handler = call => { if (call.method === 'POST' && call.path === '/api/cron/jobs') throw new HermesRestError(500, 'boom'); return base(call) }
+    for (let i = 0; i < 12; i++) expect(await runner.start(trigger(), input(i))).toMatchObject({ ok: false, status: 503 })
+    handler = call => { if (call.method === 'POST' && call.path === '/api/cron/jobs') throw new Error('socket hang up'); return base(call) }
+    for (let i = 20; i < 30; i++) expect(await runner.start(trigger(), input(i))).toMatchObject({ ok: false, status: 503 })
+    handler = base
+    expect(await runner.start(trigger(), input(99))).toMatchObject({ ok: false, status: 429, event: { detail: '10 runs in the last hour' } })
+  })
+})
+
 describe('resume', () => {
   it('resumes started events after a restart and counts them against the limits', async () => {
     const started = (n: number): TriggerEvent => ({ id: `old${n}`, at: NOW - 60_000, deliveryId: null, eventType: 'issues', action: null, outcome: 'started', jobId: `os${n}`, runId: null, endedAt: null, detail: null })

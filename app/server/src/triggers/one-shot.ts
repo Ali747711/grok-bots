@@ -2,7 +2,7 @@ import { type Job, isFinished } from '../routines/mapping.js'
 import { titleOf } from '../routines/mapping.js'
 import { cutDetail, jobNameFor, type Trigger } from './types.js'
 
-export const COPY_FIELDS = ['deliver', 'model', 'provider', 'base_url', 'skills', 'enabled_toolsets', 'workdir', 'script', 'context_from', 'timezone'] as const
+export const COPY_FIELDS = ['deliver', 'model', 'provider', 'base_url', 'skills', 'enabled_toolsets', 'workdir', 'script', 'context_from', 'timezone', 'no_agent'] as const
 
 /** `YYYY-MM-DDTHH:MM:SS+00:00`: an instant already due, so triggering it fires it exactly once. */
 export const isoSeconds = (ms: number): string => `${new Date(ms).toISOString().slice(0, 19)}+00:00`
@@ -17,7 +17,10 @@ export function oneShotBody(trigger: Trigger, routine: Job, eventType: string, p
     deliver: routine.deliver ?? 'local'
   }
   for (const field of COPY_FIELDS) {
-    if (field !== 'deliver' && source[field] !== null && source[field] !== undefined) body[field] = source[field]
+    if (field === 'deliver') continue
+    // A script-only routine must stay one: `no_agent` is copied only when set.
+    const value = source[field]
+    if (field === 'no_agent' ? value === true : value !== null && value !== undefined) body[field] = value
   }
   return body
 }

@@ -32,7 +32,7 @@ export type StartResult =
 
 export interface TriggerRunner {
   start(trigger: Trigger, input: EventInput): Promise<StartResult>
-  /** After a restart: re-adopt the limiter state from the log and poll every unfinished run. */
+  /** Call exactly once, before hooks are served. After a restart: re-adopt the limiter state from the log and poll every unfinished run. */
   resume(): void
   stop(): void
 }
@@ -113,9 +113,11 @@ export function createTriggerRunner(deps: RunnerDeps): TriggerRunner {
     try {
       const reply = await rest.request<{ sessions?: { id?: unknown; title?: unknown; started_at?: unknown }[] }>('GET', '/api/sessions', { query: { source: 'cron', profile: ref.bot, limit: '50' } })
       const prefix = `[trigger:${ref.triggerId}]`
+      // A session another event already recorded cannot be this event's run (R8).
+      const used = new Set(store.events(ref.triggerId).flatMap(e => (e.runId ? [e.runId] : [])))
       const matches = (reply.sessions ?? []).filter(s => {
         const startedMs = typeof s.started_at === 'number' ? (s.started_at < 1e12 ? s.started_at * 1000 : s.started_at) : 0
-        return typeof s.id === 'string' && typeof s.title === 'string' && s.title.startsWith(prefix) && s.title.includes(` · ${ref.eventType}`) &&
+        return typeof s.id === 'string' && !used.has(s.id) && typeof s.title === 'string' && s.title.startsWith(prefix) && s.title.includes(` · ${ref.eventType}`) &&
           startedMs >= ref.at - RECOVERY_SLACK_MS && startedMs <= ref.at + maxPollMs
       })
       if (matches.length === 1) sessionId = String(matches[0]?.id)
@@ -166,8 +168,8 @@ export function createTriggerRunner(deps: RunnerDeps): TriggerRunner {
     timers.add(timer)
   }
 
-  async function fail(trigger: Trigger, event: TriggerEvent, handle: Held, status: 409 | 410 | 502 | 503, error: StartError): Promise<StartResult> {
-    handle.release(false)
+  async function fail(trigger: Trigger, event: TriggerEvent, handle: Held, status: 409 | 410 | 502 | 503, error: StartError, mayHaveRun = false): Promise<StartResult> {
+    handle.release(mayHaveRun)
     await safe('logEvent', store.logEvent(trigger.id, event))
     return { ok: false, status, error, event }
   }
@@ -200,7 +202,8 @@ export function createTriggerRunner(deps: RunnerDeps): TriggerRunner {
       jobId = typeof created?.id === 'string' && created.id ? created.id : undefined
     } catch (error) {
       if (isStatus(error, 400, 422)) return fail(trigger, event('failed', (error as HermesRestError).detail), acquired, 502, 'hermes_refused')
-      return fail(trigger, event('failed', 'Hermes offline'), acquired, 503, 'hermes_offline')
+      // No HTTP answer (timeout, reset): the job may exist and fire anyway, so the hourly stamp stays.
+      return fail(trigger, event('failed', 'Hermes offline'), acquired, 503, 'hermes_offline', !(error instanceof HermesRestError))
     }
     if (!jobId) return fail(trigger, event('failed', 'unexpected Hermes reply'), acquired, 502, 'hermes_refused')
     const started = event('started', null, jobId)
