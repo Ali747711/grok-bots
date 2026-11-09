@@ -130,6 +130,15 @@ describe('GroupComposer line', () => {
   })
 })
 
+describe('GroupComposer long topics', () => {
+  it('says long topics start fresh when the topic is full, unless New topic is armed', () => {
+    setup({ topicFull: true, firstInTopic: false })
+    expect(line()).toBe('New topic · Auto will pick who replies — long topics start fresh (Hermes keeps 24 messages per topic)')
+    fireEvent.click(screen.getByRole('button', { name: 'New topic' }))
+    expect(line()).toBe('New topic · Auto will pick who replies')
+  })
+})
+
 describe('GroupComposer topics and running', () => {
   it('arms New topic, says so in the line, and sends with newTopic true once', () => {
     const { onSend } = setup({ firstInTopic: false })

@@ -16,6 +16,13 @@ export type GroupItem =
   | { kind: 'member'; key: string; seq: number; memberId: string; text: string; threadId: string }
   | { kind: 'notice'; key: string; seq: number; text: string; tone: 'info' | 'warn'; action?: { kind: 'continue'; discussionEventId: string } }
 
+/** Hermes's planner keeps only the last 24 user+member events per thread; past that, preparing a turn fails. */
+export const HERMES_TOPIC_LIMIT = 24
+/** One user message can draw up to 10 visible replies. */
+export const MAX_REPLIES_PER_MESSAGE = 10
+/** A topic this long starts fresh: one more message plus its replies still fits in Hermes's 24. */
+export const TOPIC_ROTATE_AT = HERMES_TOPIC_LIMIT - MAX_REPLIES_PER_MESSAGE
+
 export interface RoomLog {
   epoch: number
   cursor: number
@@ -43,6 +50,25 @@ export function appendEvents(log: RoomLog, page: { events: readonly GroupEvent[]
   for (const e of page.events) if (!bySeq.has(e.seq)) bySeq.set(e.seq, e)
   const events = [...bySeq.values()].sort((a, b) => a.seq - b.seq)
   return { ...log, events, cursor: Math.max(log.cursor, page.cursor) }
+}
+
+const threadOfEvent = (e: GroupEvent): string => e.threadId ?? e.eventId
+const isMessage = (e: GroupEvent): boolean => e.kind === 'message.user' || e.kind === 'message.member'
+
+/** Messages (user + member) in one thread of the loaded log. */
+export function topicMessageCount(log: RoomLog, threadId: string): number {
+  return log.events.filter(e => isMessage(e) && threadOfEvent(e) === threadId).length
+}
+
+/**
+ * False when the loaded log may be missing the start of the thread (it was cut), so its length is unknown
+ * and the safe move is a new topic.
+ */
+export function topicStartKnown(log: RoomLog, threadId: string): boolean {
+  const first = log.events.find(e => isMessage(e) && threadOfEvent(e) === threadId)
+  if (!first) return true
+  if (first.kind !== 'message.user') return false
+  return !(log.cut && first.seq === log.events[0]?.seq)
 }
 
 /** The topic is the thread of the latest user message, so Crew stores nothing of its own. */
@@ -99,7 +125,7 @@ function noticeText(e: GroupEvent, view: GroupView, titleOf: Titles): { text: st
 }
 
 /** The latest bounded event gets Keep going while its discussion has continues left and nothing newer ended it. */
-function continueTarget(log: RoomLog, view: GroupView): GroupEvent | null {
+function continueTarget(log: RoomLog, view: GroupView): { event: GroupEvent; tooLong: boolean } | null {
   const events = log.events
   let latest = -1
   for (let i = 0; i < events.length; i++) if (events[i]!.kind === 'room.activity' && events[i]!.status === 'bounded') latest = i
@@ -109,7 +135,9 @@ function continueTarget(log: RoomLog, view: GroupView): GroupEvent | null {
   const later = events.slice(latest + 1)
   if (later.some(e => e.kind === 'room.stop_requested' || e.kind === 'message.user')) return null
   const used = events.filter(e => e.kind === 'room.continued' && e.discussionEventId === bounded.discussionEventId).length
-  return used < view.maxContinues ? bounded : null
+  if (used >= view.maxContinues) return null
+  const thread = bounded.threadId ?? events.find(e => e.eventId === bounded.discussionEventId)?.threadId ?? bounded.discussionEventId
+  return { event: bounded, tooLong: topicMessageCount(log, thread) > TOPIC_ROTATE_AT }
 }
 
 export function toItems(log: RoomLog, view: GroupView, titleOf: Titles, optimistic: readonly OptimisticSend[]): GroupItem[] {
@@ -128,8 +156,11 @@ export function toItems(log: RoomLog, view: GroupView, titleOf: Titles, optimist
     } else {
       const notice = noticeText(e, view, titleOf)
       if (!notice) continue
-      const action = e === resumable && e.discussionEventId ? { kind: 'continue' as const, discussionEventId: e.discussionEventId } : undefined
-      items.push({ kind: 'notice', key: `e${e.seq}`, seq: e.seq, ...notice, ...(action ? { action } : {}) })
+      const mine = resumable?.event === e
+      const action = mine && !resumable.tooLong && e.discussionEventId ? { kind: 'continue' as const, discussionEventId: e.discussionEventId } : undefined
+      // Hermes cannot plan a thread this long, so Keep going would fail; point at a new topic instead.
+      const text = mine && resumable.tooLong ? `${notice.text}. Start a new topic to continue.` : notice.text
+      items.push({ kind: 'notice', key: `e${e.seq}`, seq: e.seq, ...notice, text, ...(action ? { action } : {}) })
     }
   }
   for (const o of optimistic) {

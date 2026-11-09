@@ -158,3 +158,36 @@ describe('useGroupRoom topic and recovery', () => {
     expect(result.current.error).toBeNull()
   })
 })
+
+describe('useGroupRoom topic rotation', () => {
+  const threadOf = (n: number, withFirst = true): GroupEvent[] =>
+    Array.from({ length: n }, (_, i) => ev(i + 1, i === 0 && withFirst ? {} : { kind: 'message.member', eventId: `m${i}` }))
+  const sendOnce = async (events: GroupEvent[]) => {
+    api.fetchGroupEvents.mockResolvedValue(page(events))
+    api.sendGroupMessage.mockResolvedValue({ kind: 'accepted', seq: 99 })
+    const { result } = setup(view({ latestSeq: events.length }))
+    await waitFor(() => expect(result.current.items.length).toBeGreaterThan(0))
+    const fullBefore = result.current.topicFull
+    await act(() => result.current.send('next', { newTopic: false }))
+    return { result, fullBefore, body: api.sendGroupMessage.mock.calls[0]![1] }
+  }
+  it('continues a topic with 13 messages', async () => {
+    const { fullBefore, body } = await sendOnce(threadOf(13))
+    expect(body.threadId).toBe('t1')
+    expect(fullBefore).toBe(false)
+  })
+  it('starts a new topic at 14 messages', async () => {
+    const { body } = await sendOnce(threadOf(14))
+    expect(body.threadId).toBeUndefined()
+  })
+  it('starts a new topic when the first message of the topic is not in the loaded log', async () => {
+    const cutLog = [...threadOf(4, false), ev(5, { eventId: 'later-user' })]
+    const { body } = await sendOnce(cutLog)
+    expect(body.threadId).toBeUndefined()
+  })
+  it('reports topicFull', async () => {
+    api.fetchGroupEvents.mockResolvedValue(page(threadOf(14)))
+    const { result } = setup(view({ latestSeq: 14 }))
+    await waitFor(() => expect(result.current.topicFull).toBe(true))
+  })
+})

@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { appendEvents, currentTopic, hashEventId, toItems } from '@/features/groups/room-reducer'
+import { appendEvents, currentTopic, hashEventId, toItems, topicMessageCount } from '@/features/groups/room-reducer'
 import type { RoomLog } from '@/features/groups/room-reducer'
 import type { GroupEvent, GroupView } from '@/state/types'
 
 const view: GroupView = {
   id: 'r1', name: 'Team', routing: 'auto', leadMemberId: 'e2e1', purpose: '', notes: '', latestSeq: 0, epoch: 1, updatedAt: 0,
-  working: false, activity: [], turnActions: [], maxContinues: 5, maxRounds: 3, preview: null,
+  working: false, stuck: false, activity: [], turnActions: [], maxContinues: 5, maxRounds: 3, preview: null,
   members: ['reese', 'e2e1'].map(h => ({ memberId: h, profile: h, handle: h, displayName: null }))
 }
 const titleOf = (id: string): string => (id === 'e2e1' ? 'E2E One' : 'Reese')
@@ -108,5 +108,25 @@ describe('currentTopic', () => {
   it('is the thread of the latest user message', () => {
     expect(currentTopic(log([]))).toBeNull()
     expect(currentTopic(log([ev('message.user', { threadId: 't1' }), ev('message.member', { threadId: 'x' }), ev('message.user', { threadId: 't2' })]))).toBe('t2')
+  })
+})
+
+describe('topic length', () => {
+  const thread = (n: number, id = 'tt'): GroupEvent[] => [
+    ev('message.user', { threadId: id, text: 'q' }),
+    ...Array.from({ length: n - 1 }, () => ev('message.member', { threadId: id, memberId: 'reese' }))
+  ]
+  it('counts user and member messages of one thread', () => {
+    const events = [...thread(5), ...thread(3, 'other'), ev('room.stop_requested')]
+    expect(topicMessageCount(log(events), 'tt')).toBe(5)
+    expect(topicMessageCount(log(events), 'other')).toBe(3)
+  })
+  it('offers Keep going at 12 messages and not at 15, adding a hint instead', () => {
+    const bounded = (): GroupEvent => ev('room.activity', { status: 'bounded', reasonCode: 'max_rounds', discussionEventId: 'd1', threadId: 'tt' })
+    const short = items([...thread(12), bounded()]).filter(i => i.kind === 'notice')
+    expect(short[0]).toMatchObject({ text: 'Paused after 3 rounds', action: { kind: 'continue' } })
+    const long = items([...thread(15), bounded()]).filter(i => i.kind === 'notice')
+    expect(long[0]).not.toHaveProperty('action')
+    expect(long[0]).toMatchObject({ text: 'Paused after 3 rounds. Start a new topic to continue.' })
   })
 })

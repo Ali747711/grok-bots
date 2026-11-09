@@ -4,7 +4,7 @@ import type { GroupTurnAction, GroupView } from '@/state/types'
 
 import { continueGroup, discardTurn, fetchGroupEvents, retryTurn, sendGroupMessage, stopGroup } from './groups-api'
 import type { GroupEventsPage } from './groups-api'
-import { appendEvents, currentTopic, hashEventId, toItems } from './room-reducer'
+import { appendEvents, currentTopic, hashEventId, toItems, topicMessageCount, topicStartKnown, TOPIC_ROTATE_AT } from './room-reducer'
 import type { GroupItem, OptimisticSend, RoomLog } from './room-reducer'
 
 const HISTORY_WINDOW = 300
@@ -17,6 +17,8 @@ export interface GroupRoom {
   cut: boolean
   /** Current thread id; null before any message. */
   topic: string | null
+  /** The current topic is too long for Hermes to plan (or its start is unknown): the next send opens a new one. */
+  topicFull: boolean
   send(text: string, opts: { newTopic: boolean }): Promise<void>
   retrySend(eventId: string): Promise<void>
   stop(): Promise<void>
@@ -137,7 +139,14 @@ export function useGroupRoom(view: GroupView | undefined, titleOf: (memberId: st
     await deliver(roomId, o, text)
   }
 
-  const send = (text: string, opts: { newTopic: boolean }) => start(text, opts.newTopic ? undefined : (topic ?? undefined))
+  const pendingInTopic = topic === null ? [] : optimistic.filter(o => o.status !== 'refused' && !landed.has(o.eventIdHash) && o.threadId === topic)
+  // Hermes keeps 24 messages per thread; a longer thread makes every later turn fail to prepare.
+  const topicFull = topic !== null && (
+    topicMessageCount(log, topic) + pendingInTopic.length >= TOPIC_ROTATE_AT ||
+    (!topicStartKnown(log, topic) && !pendingInTopic.some(o => o.eventId === topic))
+  )
+
+  const send = (text: string, opts: { newTopic: boolean }) => start(text, opts.newTopic || topicFull ? undefined : (topic ?? undefined))
 
   const retrySend = async (eventId: string) => {
     const roomId = viewRef.current?.id
@@ -179,6 +188,6 @@ export function useGroupRoom(view: GroupView | undefined, titleOf: (memberId: st
     () => (view ? toItems(log, view, titleOf, optimistic) : []),
     [log, view, titleOf, optimistic]
   )
-  return { items, loading, error, cut: log.cut, topic, send, retrySend, stop, keepGoing, retry: sync, retryTurn: turn(retryTurn), discardTurn: turn(discardTurn) }
+  return { items, loading, error, cut: log.cut, topic, topicFull, send, retrySend, stop, keepGoing, retry: sync, retryTurn: turn(retryTurn), discardTurn: turn(discardTurn) }
 }
 

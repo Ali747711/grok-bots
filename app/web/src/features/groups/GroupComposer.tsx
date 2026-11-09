@@ -21,6 +21,11 @@ interface GroupComposerProps {
   disabledReason: string | null
   onSend: (text: string, opts: { newTopic: boolean }) => void
   onStop: () => void
+  /** The current topic is too long for Hermes: the next message opens a new one. */
+  topicFull?: boolean
+  /** Controlled New topic state; without them the composer keeps its own. */
+  armed?: boolean
+  onArmed?: (armed: boolean) => void
 }
 
 const LIST_ID = 'group-mentions'
@@ -35,12 +40,14 @@ function optionsFor(view: GroupView, bots: readonly BotView[], titleOf: (id: str
 }
 
 /** Message box for a group: Enter sends, "@" lists members, a line says who will answer, New topic starts a thread. */
-export function GroupComposer({ view, members, titleOf, firstInTopic, running, disabledReason, onSend, onStop }: GroupComposerProps) {
+export function GroupComposer({ view, members, titleOf, firstInTopic, running, disabledReason, onSend, onStop, topicFull = false, armed: armedProp, onArmed }: GroupComposerProps) {
   const [text, setText] = useState('')
   const [caret, setCaret] = useState(0)
   const [active, setActive] = useState(0)
   const [dismissed, setDismissed] = useState<number | null>(null)
-  const [armed, setArmed] = useState(false)
+  const [innerArmed, setInnerArmed] = useState(false)
+  const armed = armedProp ?? innerArmed
+  const setArmed = onArmed ?? setInnerArmed
   const ref = useRef<HTMLTextAreaElement>(null)
   const pendingCaret = useRef<number | null>(null)
   const disabled = disabledReason !== null
@@ -104,7 +111,8 @@ export function GroupComposer({ view, members, titleOf, firstInTopic, running, d
     submit()
   }
 
-  const line = whoWillAnswer({ text, members: view.members, routing: view.routing, leadMemberId: view.leadMemberId, firstInTopic: firstInTopic || armed, titleOf })
+  const line = whoWillAnswer({ text, members: view.members, routing: view.routing, leadMemberId: view.leadMemberId, firstInTopic: firstInTopic || armed || topicFull, titleOf })
+  const fresh = topicFull && !armed
 
   return (
     <div className="px-6 pt-3 pb-5">
@@ -137,7 +145,7 @@ export function GroupComposer({ view, members, titleOf, firstInTopic, running, d
           </div>
         </div>
         <div className="mt-1.5 flex items-center gap-2">
-          <p data-testid="who-will-answer" className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{armed ? `New topic · ${line}` : line}</p>
+          <p data-testid="who-will-answer" className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{armed ? `New topic · ${line}` : fresh ? `New topic · ${line} — long topics start fresh (Hermes keeps 24 messages per topic)` : line}</p>
           <Button type="button" size="xs" variant={armed ? 'default' : 'outline'} aria-pressed={armed} disabled={disabled} onClick={() => setArmed(!armed)} className="rounded-full">
             New topic
           </Button>
