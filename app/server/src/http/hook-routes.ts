@@ -36,6 +36,11 @@ export function hookRoutes(handler: HookHandler | undefined): Hono<CrewEnv> {
     if (!handler) return c.json({ error: 'triggers_unavailable' }, 503)
     const id = c.req.param('id')
     try {
+      if (!handler.known(id)) {
+        // An unknown id costs nothing: no body is read. Close the connection so the unread body is not parsed as a request.
+        const result = await handler.handle(id, Buffer.alloc(0), c.req.raw.headers)
+        return c.json(result.body, result.status, { Connection: 'close' })
+      }
       const raw = await readLimited(c.req.raw, MAX_HOOK_BYTES)
       const result = await handler.handle(id, raw, c.req.raw.headers)
       // After a refused oversized body the unread rest must not be parsed as the next request.

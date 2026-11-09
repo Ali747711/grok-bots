@@ -179,7 +179,7 @@ describe('send test event', () => {
     expect(await res.json()).toMatchObject({ httpStatus: 202, event: { outcome: 'started' } })
     const call = handled[0]!
     expect(call.id).toBe(json.trigger.id)
-    expect(verifyGithub(call.raw!, call.headers, json.secret)).toEqual({ ok: true, eventType: 'issues', deliveryId: 'delivery-1' })
+    expect(verifyGithub(call.raw!, call.headers, json.secret)).toMatchObject({ ok: true, eventType: 'issues', deliveryId: 'delivery-1' })
     expect(JSON.parse(call.raw!.toString())).toMatchObject({ action: 'reopened', issue: { number: 1, title: 'Test event from Crew' }, repository: { full_name: 'example/repo' } })
   })
 
@@ -187,8 +187,8 @@ describe('send test event', () => {
     const { json } = await create({ source: 'generic', events: [], actions: [] })
     await send('POST', `/crew/triggers/${json.trigger.id}/test`)
     const call = handled[0]!
-    expect(verifyGeneric(call.raw!, call.headers, json.secret, 1_762_680_000_000)).toEqual({ ok: true, eventType: 'test', deliveryId: 'delivery-1' })
-    expect(JSON.parse(call.raw!.toString())).toEqual({ message: 'Test event from Crew' })
+    expect(verifyGeneric(call.raw!, call.headers, json.secret, 1_762_680_000_000)).toMatchObject({ ok: true, eventType: 'test', deliveryId: 'delivery-1' })
+    expect(JSON.parse(call.raw!.toString())).toEqual({ message: 'Test event from Crew', id: 'delivery-1' })
     const gh = await create({ events: [], actions: [] })
     await send('POST', `/crew/triggers/${gh.json.trigger.id}/test`)
     expect(JSON.parse(handled[1]!.raw!.toString())).toMatchObject({ action: 'opened' })
@@ -296,5 +296,17 @@ describe('send test event details', () => {
     expect(await (await test()).json()).toMatchObject({ httpStatus: 202 })
     expect(await (await test()).json()).toMatchObject({ httpStatus: 429, event: { outcome: 'too_many' } })
     expect(starts).toEqual([{ eventType: 'pull_request', action: 'reopened' }, { eventType: 'pull_request', action: 'reopened' }])
+  })
+})
+
+describe('sample events are never replays of each other', () => {
+  it('differs in body and signature per delivery id', async () => {
+    const t: Trigger = { id: 'a'.repeat(32), bot: 'b', routineId: 'r', name: 'n', source: 'github', events: [], actions: [], enabled: true, secret: 's', createdAt: 1 }
+    const one = sampleEvent(t, 1_000, 'd1')
+    const two = sampleEvent(t, 1_000, 'd2')
+    expect(one.headers.get('x-hub-signature-256')).not.toBe(two.headers.get('x-hub-signature-256'))
+    const g = sampleEvent({ ...t, source: 'generic' }, 1_000, 'd1')
+    const g2 = sampleEvent({ ...t, source: 'generic' }, 1_000, 'd2')
+    expect(g.headers.get('x-crew-signature')).not.toBe(g2.headers.get('x-crew-signature'))
   })
 })

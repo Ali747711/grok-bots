@@ -24,6 +24,8 @@ export interface HookDeps {
 }
 
 export interface HookHandler {
+  /** Is this a trigger id Crew has? The route asks before reading a body. */
+  known(triggerId: string): boolean
   /** `raw` is null when the body was over 1 MiB (the route stopped reading). */
   handle(triggerId: string, raw: Buffer | null, headers: HeaderGetter): Promise<HookResult>
 }
@@ -38,6 +40,7 @@ export function passesFilter(trigger: Trigger, eventType: string, action: string
 }
 
 const short = (id: string): string => id.slice(0, 8)
+const sigKey = (signature: string): string => `sig:${signature}`
 const THROTTLE_MS = 60_000
 const UNKNOWN = ''
 
@@ -69,6 +72,15 @@ export function createHookHandler(deps: HookDeps): HookHandler {
       await store.logEvent(trigger.id, event, deliveryId)
     } catch (error) {
       log.warn('trigger store write failed', { what: 'logEvent', error: error instanceof Error ? error.message.slice(0, 200) : 'unknown' })
+    }
+  }
+
+  /** Remember an accepted or deliberately ignored request by its signature (a bounded list shared with delivery ids). */
+  const remember = async (trigger: Trigger, signature: string): Promise<void> => {
+    try {
+      await store.recordDelivery(trigger.id, sigKey(signature))
+    } catch (error) {
+      log.warn('trigger store write failed', { what: 'recordDelivery', error: error instanceof Error ? error.message.slice(0, 200) : 'unknown' })
     }
   }
 
@@ -115,45 +127,49 @@ export function createHookHandler(deps: HookDeps): HookHandler {
     if (!verified.ok) {
       return unverified(trigger, 401, 'bad_signature', make('bad_signature', verified.reason))
     }
-    const { eventType, deliveryId } = verified
-    const known = { eventType, deliveryId }
+    const { eventType, deliveryId, signature } = verified
+    const known = { eventType, deliveryId, signature }
     if (github && eventType === 'ping') {
       const event = make('ignored', 'GitHub ping', known)
       await record(trigger, event, deliveryId)
+      await remember(trigger, signature)
       return done(trigger, 200, { status: 'pong' }, 'ping', event)
     }
-    const key = deliveryId === null ? null : `${trigger.id}:${deliveryId}`
-    if (deliveryId !== null && (store.seenDelivery(trigger.id, deliveryId) || reserved.has(key!))) {
-      const event = make('duplicate', null, known)
+    // The delivery headers are unsigned, so a replay can change or drop the id: the signature is the other key.
+    const keys = [...(deliveryId === null ? [] : [deliveryId]), sigKey(signature)]
+    if (keys.some(k => store.seenDelivery(trigger.id, k) || reserved.has(`${trigger.id}:${k}`))) {
+      const event = make('duplicate', null, { eventType, deliveryId })
       await record(trigger, event)
       return done(trigger, 200, { status: 'duplicate' }, 'duplicate', event)
     }
-    if (key) reserved.add(key)
+    for (const k of keys) reserved.add(`${trigger.id}:${k}`)
     try {
       return await accept(trigger, raw, headers, known, make)
     } finally {
-      if (key) reserved.delete(key)
+      for (const k of keys) reserved.delete(`${trigger.id}:${k}`)
     }
   }
 
   async function accept(
-    trigger: Trigger, raw: Buffer, headers: HeaderGetter, known: { eventType: string; deliveryId: string | null },
+    trigger: Trigger, raw: Buffer, headers: HeaderGetter, known: { eventType: string; deliveryId: string | null; signature: string },
     make: (outcome: TriggerOutcome, detail: string | null, extra?: { eventType?: string; action?: string | null; deliveryId?: string | null }) => TriggerEvent
   ): Promise<HookResult> {
     const payload = parsePayload(raw, headers.get('content-type'))
     const action = trigger.source === 'github' ? payloadAction(payload) : null
     const filter = passesFilter(trigger, known.eventType, action)
     if (!filter.ok) {
-      const event = make('ignored', filter.detail, { ...known, action })
+      const event = make('ignored', filter.detail, { eventType: known.eventType, deliveryId: known.deliveryId, action })
       await record(trigger, event, known.deliveryId)
+      await remember(trigger, known.signature)
       return done(trigger, 200, { status: 'ignored' }, 'ignored', event)
     }
     const eventId = newId()
     const input: EventInput = { eventId, at: now(), deliveryId: known.deliveryId, eventType: known.eventType, action, payload, rawText: raw.toString('utf8') }
     const result = await runner.start(trigger, input)
+    if (result.ok) await remember(trigger, known.signature)
     if (result.ok) return done(trigger, 202, { status: 'accepted', event: known.eventType, eventId }, 'started', result.event)
     return done(trigger, result.status, { error: result.error }, result.event.outcome, result.event)
   }
 
-  return { handle }
+  return { handle, known: id => store.get(id) !== undefined }
 }

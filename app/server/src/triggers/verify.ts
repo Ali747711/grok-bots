@@ -4,7 +4,8 @@ export interface HeaderGetter {
   get(name: string): string | null
 }
 
-export type VerifyResult = { ok: true; eventType: string; deliveryId: string | null } | { ok: false; reason: string }
+/** `signature` is the verified digest in lower-case hex: the delivery headers are unsigned, so replays are caught on it. */
+export type VerifyResult = { ok: true; eventType: string; deliveryId: string | null; signature: string } | { ok: false; reason: string }
 
 export const MAX_SKEW_S = 300
 const SIG_RE = /^sha256=([0-9a-f]{64})$/i
@@ -44,10 +45,12 @@ export const signGithub = (raw: Buffer, secret: string): string => `sha256=${hma
 export const signGeneric = (raw: Buffer, secret: string, timestamp: string): string => `sha256=${hmac(secret, [`${timestamp}.`, raw]).toString('hex')}`
 
 export function verifyGithub(raw: Buffer, headers: HeaderGetter, secret: string): VerifyResult {
-  const ok = matches(headers.get('x-hub-signature-256'), hmac(secret, [raw]))
+  const expected = hmac(secret, [raw])
+  const expectedHex = expected.toString('hex')
+  const ok = matches(headers.get('x-hub-signature-256'), expected)
   if (ok === null) return { ok: false, reason: 'missing signature' }
   if (!ok) return { ok: false, reason: 'signature does not match' }
-  return { ok: true, eventType: eventNameOf(headers.get('x-github-event')) ?? 'unknown', deliveryId: deliveryIdOf(headers.get('x-github-delivery')) }
+  return { ok: true, eventType: eventNameOf(headers.get('x-github-event')) ?? 'unknown', deliveryId: deliveryIdOf(headers.get('x-github-delivery')), signature: expectedHex }
 }
 
 export function verifyGeneric(raw: Buffer, headers: HeaderGetter, secret: string, nowMs: number): VerifyResult {
@@ -56,6 +59,7 @@ export function verifyGeneric(raw: Buffer, headers: HeaderGetter, secret: string
   const ts = headers.get('x-crew-timestamp')?.trim() ?? ''
   if (!TIMESTAMP_RE.test(ts)) return { ok: false, reason: 'missing or malformed timestamp' }
   if (Math.abs(nowMs - Number(ts) * 1000) > MAX_SKEW_S * 1000) return { ok: false, reason: 'timestamp too old or too new' }
-  if (!matches(signature, hmac(secret, [`${ts}.`, raw]))) return { ok: false, reason: 'signature does not match' }
-  return { ok: true, eventType: eventNameOf(headers.get('x-crew-event')) ?? 'event', deliveryId: deliveryIdOf(headers.get('x-crew-delivery')) }
+  const expected = hmac(secret, [`${ts}.`, raw])
+  if (!matches(signature, expected)) return { ok: false, reason: 'signature does not match' }
+  return { ok: true, eventType: eventNameOf(headers.get('x-crew-event')) ?? 'event', deliveryId: deliveryIdOf(headers.get('x-crew-delivery')), signature: expected.toString('hex') }
 }

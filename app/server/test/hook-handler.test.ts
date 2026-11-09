@@ -64,6 +64,11 @@ afterEach(async () => {
 const logged = () => lines.map(l => JSON.parse(l) as Record<string, unknown>)
 
 describe('hook handler', () => {
+  it('knows its triggers', () => {
+    expect(handler.known(TID)).toBe(true)
+    expect(handler.known('e'.repeat(32))).toBe(false)
+  })
+
   it('answers 404 for an unknown trigger and logs no id', async () => {
     const r = await handler.handle('d'.repeat(32), body, gh())
     expect(r).toMatchObject({ status: 404, body: { error: 'not_found' } })
@@ -106,7 +111,8 @@ describe('hook handler', () => {
     expect(events()[0]).toMatchObject({ outcome: 'ignored', detail: 'not in the event filter', eventType: 'push' })
     expect(store.seenDelivery(TID, 'p1')).toBe(true)
     await store.update(TID, { actions: ['closed'] })
-    r = await handler.handle(TID, body, gh({ 'x-github-delivery': 'p2' }))
+    const second = Buffer.from(JSON.stringify({ action: 'opened', issue: { number: 2 } }))
+    r = await handler.handle(TID, second, gh({ 'x-github-delivery': 'p2' }, second))
     expect(events()[0]).toMatchObject({ outcome: 'ignored', detail: 'action not in the filter', action: 'opened' })
     expect(starts).toEqual([])
     await store.update(TID, { events: [], actions: ['opened'] })
@@ -166,6 +172,28 @@ describe('hook handler', () => {
     expect(r).toMatchObject({ status: 202, body: { status: 'accepted', event: 'issues', eventId: 'id1' } })
     expect(starts[0]?.input).toMatchObject({ eventId: 'id1', at: NOW, deliveryId: 'd1', eventType: 'issues', action: 'opened', rawText: body.toString('utf8'), payload: { kind: 'json' } })
     expect(store.seenDelivery(TID, 'd1')).toBe(true)
+  })
+
+  it('treats a replay of the same body and signature as a duplicate whatever its delivery id says', async () => {
+    expect((await handler.handle(TID, body, gh())).status).toBe(202)
+    for (const delivery of ['forged-1', undefined]) {
+      expect(await handler.handle(TID, body, gh({ 'x-github-delivery': delivery }))).toMatchObject({ status: 200, body: { status: 'duplicate' } })
+    }
+    expect(starts).toHaveLength(1)
+    // a deliberately ignored event is remembered by signature too
+    await store.update(TID, { events: ['issues'] })
+    const push = Buffer.from('{"ref":"main"}')
+    const pushHeaders = (d?: string) => gh({ 'x-github-event': 'push', 'x-github-delivery': d, 'x-hub-signature-256': signGithub(push, SECRET) }, push)
+    expect((await handler.handle(TID, push, pushHeaders('a'))).body).toEqual({ status: 'ignored' })
+    expect((await handler.handle(TID, push, pushHeaders(undefined))).body).toEqual({ status: 'duplicate' })
+    // refusals do not remember the signature
+    await store.update(TID, { events: [] })
+    startReply = async () => ({ ok: false, status: 503, error: 'hermes_offline', event: { id: 'x', at: NOW, deliveryId: null, eventType: 'e', action: null, outcome: 'failed', jobId: null, runId: null, endedAt: null, detail: null } })
+    const fresh = Buffer.from('{"fresh":1}')
+    const freshHeaders = () => gh({ 'x-hub-signature-256': signGithub(fresh, SECRET), 'x-github-delivery': undefined }, fresh)
+    expect((await handler.handle(TID, fresh, freshHeaders())).status).toBe(503)
+    startReply = null
+    expect((await handler.handle(TID, fresh, freshHeaders())).status).toBe(202)
   })
 
   it('answers duplicate for a delivery seen before', async () => {

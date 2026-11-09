@@ -9,6 +9,7 @@ import { HOST, makeDeps, ORIGIN } from './helpers.js'
 
 const seen: { id: string; raw: Buffer | null; sig: string | null }[] = []
 const fake: HookHandler = {
+  known: () => true,
   handle: async (id, raw, headers) => {
     seen.push({ id, raw, sig: headers.get('x-hub-signature-256') })
     return { status: 202, body: { status: 'accepted', event: 'issues', eventId: 'e1' }, event: null }
@@ -71,7 +72,7 @@ describe('errors and 413', () => {
   it('answers 500 JSON and logs one error line when the handler throws', async () => {
     const lines: string[] = []
     const restore = setLogSink(l => { lines.push(l) })
-    const boom = createApp({ ...makeDeps(), triggers: { hooks: { handle: async () => { throw new Error('secret=abc exploded') } } } })
+    const boom = createApp({ ...makeDeps(), triggers: { hooks: { known: () => true, handle: async () => { throw new Error('secret=abc exploded') } } } })
     try {
       const res = await boom.request(`/hooks/${id}`, { method: 'POST', headers: { Host: HOST }, body: '{}' })
       expect(res.status).toBe(500)
@@ -83,10 +84,29 @@ describe('errors and 413', () => {
   })
 
   it('closes the connection on a 413', async () => {
-    const tooBig = createApp({ ...makeDeps(), triggers: { hooks: { handle: async () => ({ status: 413, body: { error: 'too_large' }, event: null }) } } })
+    const tooBig = createApp({ ...makeDeps(), triggers: { hooks: { known: () => true, handle: async () => ({ status: 413, body: { error: 'too_large' }, event: null }) } } })
     const res = await tooBig.request(`/hooks/${id}`, { method: 'POST', headers: { Host: HOST }, body: '{}' })
     expect(res.status).toBe(413)
     expect(res.headers.get('connection')).toBe('close')
+  })
+})
+
+describe('unknown ids', () => {
+  it('answers 404 without reading the body', async () => {
+    let pulled = 0
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled++
+        controller.enqueue(new Uint8Array(512 * 1024))
+        if (pulled >= 4) controller.close()
+      }
+    })
+    const calls: Buffer[] = []
+    const real = createApp({ ...makeDeps(), triggers: { hooks: { known: () => false, handle: async (_id, raw) => { calls.push(raw ?? Buffer.alloc(0)); return { status: 404, body: { error: 'not_found' }, event: null } } } as HookHandler } as never })
+    const res = await real.request(`/hooks/${'b'.repeat(32)}`, { method: 'POST', headers: { Host: HOST }, body: stream, duplex: 'half' } as RequestInit)
+    expect(res.status).toBe(404)
+    expect(calls[0]?.length).toBe(0)
+    expect(pulled).toBeLessThan(3)
   })
 })
 

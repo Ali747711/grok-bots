@@ -13,7 +13,9 @@ export function sampleEvent(trigger: Trigger, nowMs: number, deliveryId: string)
         html_url: 'https://github.com/example/repo/issues/1'
       },
       repository: { full_name: 'example/repo' },
-      sender: { login: 'crew' }
+      sender: { login: 'crew' },
+      // Makes every sample a different request: replays of one signature are refused.
+      crew_test_id: deliveryId
     }))
     return {
       raw,
@@ -25,7 +27,7 @@ export function sampleEvent(trigger: Trigger, nowMs: number, deliveryId: string)
       })
     }
   }
-  const raw = Buffer.from(JSON.stringify({ message: 'Test event from Crew' }))
+  const raw = Buffer.from(JSON.stringify({ message: 'Test event from Crew', id: deliveryId }))
   const timestamp = String(Math.floor(nowMs / 1000))
   return {
     raw,
