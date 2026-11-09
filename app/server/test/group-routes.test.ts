@@ -209,6 +209,15 @@ describe('turn and discussion calls', () => {
     expect(rpc.continueDiscussion).toHaveBeenCalledWith('r1', 'd1')
   })
 
+  it('retries the room-wide prepare action through prepareRetry, but never discards it', async () => {
+    rooms = [view({ turnActions: [], prepareRetry: { memberId: 'a, b', taskId: 'prepare:r1', executionGeneration: 3 } } as Partial<GroupView>)]
+    const prepare = { memberId: 'a, b', taskId: 'prepare:r1', executionGeneration: 3 }
+    expect((await send('POST', '/crew/groups/r1/turns/retry', prepare)).status).toBe(204)
+    expect(rpc.retry).toHaveBeenCalledWith('r1', prepare)
+    expect((await send('POST', '/crew/groups/r1/turns/discard', prepare)).status).toBe(409)
+    expect((await send('POST', '/crew/groups/r1/turns/retry', { ...prepare, executionGeneration: 4 })).status).toBe(409)
+  })
+
   it('only retries a turn the room offers', async () => {
     const ok = { memberId: 'a', taskId: 't1', executionGeneration: 2 }
     expect((await send('POST', '/crew/groups/r1/turns/retry', ok)).status).toBe(204)

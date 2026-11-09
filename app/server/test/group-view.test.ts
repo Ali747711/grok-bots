@@ -63,21 +63,25 @@ describe('toGroupView', () => {
 })
 
 describe('stuck rooms', () => {
-  const prepare = { kind: 'retry' as const, member_id: 'a, b', task_id: 'prepare:r1', execution_generation: 1 }
-  it('is false for a healthy room', () => {
-    expect(toGroupView(room, withStatus(status()), null, 0).stuck).toBe(false)
-    expect(toGroupView(room, undefined, null, 0).stuck).toBe(false)
-  })
-  it('is true for the bound errors and for a prepare action, and skips prepare actions as turn actions', () => {
-    for (const last_error of ['Members could not be woken: turn.settled references no matching user discussion', 'thread transcript exceeded its bound']) {
-      expect(toGroupView(room, withStatus(status({ last_error })), null, 0).stuck).toBe(true)
+  const prepare = { kind: 'retry' as const, member_id: 'a, b', task_id: 'prepare:r1', execution_generation: 3 }
+  it('is not stuck for a healthy room', () => {
+    for (const st of [withStatus(status()), undefined]) {
+      expect(toGroupView(room, st, null, 0)).toMatchObject({ stuck: false, stuckReason: null, prepareRetry: null, lastError: null })
     }
-    const v = toGroupView(room, withStatus(status({ pending_actions: [prepare, { kind: 'retry', member_id: 'a', task_id: 't', execution_generation: 2 }] })), null, 0)
-    expect(v.stuck).toBe(true)
+  })
+  it('names the topic limit from the bound errors', () => {
+    for (const last_error of ['Members could not be woken: turn.settled references no matching user discussion', 'thread transcript exceeded its bound']) {
+      const v = toGroupView(room, withStatus(status({ last_error, pending_actions: [prepare] })), null, 0)
+      expect(v).toMatchObject({ stuck: true, stuckReason: 'topic_limit', lastError: last_error })
+    }
+  })
+  it('names a failed prepare for any other error and keeps its retry coordinates', () => {
+    const v = toGroupView(room, withStatus(status({ last_error: 'profile gone', pending_actions: [prepare, { kind: 'retry', member_id: 'a', task_id: 't', execution_generation: 2 }] })), null, 0)
+    expect(v).toMatchObject({ stuck: true, stuckReason: 'prepare_failed', lastError: 'profile gone', prepareRetry: { memberId: 'a, b', taskId: 'prepare:r1', executionGeneration: 3 } })
     expect(v.turnActions).toEqual([{ memberId: 'a', kind: 'retry', taskId: 't', executionGeneration: 2 }])
   })
-  it('ignores unrelated errors', () => {
-    expect(toGroupView(room, withStatus(status({ last_error: 'model refused' })), null, 0).stuck).toBe(false)
+  it('ignores an unrelated error with no prepare action', () => {
+    expect(toGroupView(room, withStatus(status({ last_error: 'model refused' })), null, 0)).toMatchObject({ stuck: false, stuckReason: null, lastError: 'model refused' })
   })
 })
 

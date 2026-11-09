@@ -112,6 +112,11 @@ export interface GroupView {
   readonly working: boolean
   /** Hermes cannot plan this room any more (a topic grew past its 24-message window). */
   readonly stuck: boolean
+  /** A topic past Hermes's 24-message window, or another stalled prepare. */
+  readonly stuckReason: 'topic_limit' | 'prepare_failed' | null
+  /** Hermes's room-wide retry action, when offered. */
+  readonly prepareRetry: { readonly memberId: string; readonly taskId: string; readonly executionGeneration: number } | null
+  readonly lastError: string | null
   readonly activity: readonly GroupActivityView[]
   readonly turnActions: readonly GroupTurnAction[]
   readonly maxContinues: number

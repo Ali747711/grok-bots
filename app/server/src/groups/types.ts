@@ -133,6 +133,11 @@ export interface GroupView {
   working: boolean
   /** Hermes cannot plan this room any more (a topic grew past its 24-message window). */
   stuck: boolean
+  /** Why Hermes cannot start the room's next turn: a topic past its 24-message window, or another stalled prepare. */
+  stuckReason: 'topic_limit' | 'prepare_failed' | null
+  /** Coordinates of Hermes's room-wide `prepare:` retry action, when one is offered. */
+  prepareRetry: { memberId: string; taskId: string; executionGeneration: number } | null
+  lastError: string | null
   activity: GroupActivityView[]
   turnActions: GroupTurnAction[]
   maxContinues: number

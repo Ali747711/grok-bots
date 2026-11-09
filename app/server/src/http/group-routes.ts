@@ -172,7 +172,10 @@ export function groupRoutes(deps: GroupRouteDeps | undefined): Hono<CrewEnv> {
       const roomId = c.req.param('id')
       const room = roomOf(roomId)
       if (!room) return c.json({ error: 'not_found' }, 404)
-      const offered = room.turnActions.some(a => a.kind === kind && a.memberId === parsed.memberId && a.taskId === parsed.taskId && a.executionGeneration === parsed.executionGeneration)
+      const same = (a: { memberId: string; taskId: string; executionGeneration: number }) =>
+        a.memberId === parsed.memberId && a.taskId === parsed.taskId && a.executionGeneration === parsed.executionGeneration
+      // Retry may also target the room-wide prepare action; discard never does.
+      const offered = room.turnActions.some(a => a.kind === kind && same(a)) || (kind === 'retry' && Boolean(room.prepareRetry) && same(room.prepareRetry!))
       if (!offered) return c.json({ error: 'no_such_action' }, 409)
       return run(c, async () => {
         await deps!.rpc[kind](roomId, parsed)

@@ -6,7 +6,7 @@ import type { GroupEvent, GroupView } from '@/state/types'
 
 const view: GroupView = {
   id: 'r1', name: 'Team', routing: 'auto', leadMemberId: 'e2e1', purpose: '', notes: '', latestSeq: 0, epoch: 1, updatedAt: 0,
-  working: false, stuck: false, activity: [], turnActions: [], maxContinues: 5, maxRounds: 3, preview: null,
+  working: false, stuck: false, stuckReason: null, prepareRetry: null, lastError: null, activity: [], turnActions: [], maxContinues: 5, maxRounds: 3, preview: null,
   members: ['reese', 'e2e1'].map(h => ({ memberId: h, profile: h, handle: h, displayName: null }))
 }
 const titleOf = (id: string): string => (id === 'e2e1' ? 'E2E One' : 'Reese')

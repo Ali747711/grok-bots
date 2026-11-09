@@ -137,7 +137,7 @@ describe('GroupChatView', () => {
   it('shows the stuck banner and recovers with Stop and a new topic', async () => {
     api.sendGroupMessage.mockResolvedValue({ kind: 'accepted', seq: 3 })
     api.fetchGroupEvents.mockResolvedValue({ events: [ev(1, { kind: 'message.user', text: 'start', memberId: undefined, actor: { kind: 'user', id: 'desktop', profile: null, displayName: null } }), ev(2)], cursor: 2, latestSeq: 2, hasMore: false, epoch: 1 })
-    mount(state(room({ stuck: true })))
+    mount(state(room({ stuck: true, stuckReason: 'topic_limit' })))
     expect(await screen.findByText('This group is stuck in Hermes: one topic grew past the 24 messages Hermes can track.')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Stop and start a new topic' }))
     await waitFor(() => expect(api.stopGroup).toHaveBeenCalledWith('r1', expect.any(String)))
@@ -146,6 +146,23 @@ describe('GroupChatView', () => {
     fireEvent.keyDown(screen.getByRole('textbox', { name: 'Message' }), { key: 'Enter' })
     await waitFor(() => expect(api.sendGroupMessage).toHaveBeenCalled())
     expect(api.sendGroupMessage.mock.calls[0]![1].threadId).toBeUndefined()
+  })
+
+  it('shows the prepare banner with the error and retries through prepareRetry', async () => {
+    api.retryTurn.mockResolvedValue(undefined)
+    const prepareRetry = { memberId: 'reese, x', taskId: 'prepare:r1', executionGeneration: 3 }
+    mount(state(room({ stuck: true, stuckReason: 'prepare_failed', lastError: 'profile gone', prepareRetry })))
+    expect(await screen.findByText("Hermes can't start this group's next turn: profile gone")).toBeInTheDocument()
+    expect(screen.queryByText(/24 messages/)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Stop and start a new topic' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    await waitFor(() => expect(api.retryTurn).toHaveBeenCalledWith('r1', prepareRetry))
+  })
+
+  it('disables the prepare retry while the group is working', async () => {
+    const prepareRetry = { memberId: 'reese, x', taskId: 'prepare:r1', executionGeneration: 3 }
+    mount(state(room({ stuck: true, stuckReason: 'prepare_failed', lastError: 'x', prepareRetry, working: true })))
+    expect(await screen.findByRole('button', { name: 'Try again' })).toBeDisabled()
   })
 
   it('hides the stuck banner when the group is healthy', async () => {
