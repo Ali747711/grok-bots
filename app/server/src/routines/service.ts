@@ -79,17 +79,30 @@ async function switchMode(ctx: RunNowContext, bot: string, id: string, toTrigger
   else await ctx.rest.request('POST', `${jobPath(id)}/resume`, { query: { profile: bot } })
 }
 
-/** Edit: read the stored job and send only what changed; with no change, just return it. */
-async function updateRoutine(ctx: RunNowContext, bot: string, id: string, input: RoutineInput): Promise<RoutineView> {
+/**
+ * Edit: read the stored job and send only what changed; with no change, just return it. An absent
+ * `runs` keeps the current mode. A mode switch is the user's choice, so it replaces any pending
+ * Run-now restore: while a run is in flight, a switch to event-only makes the settle re-pause with the
+ * marker, and a switch back makes it leave the routine alone.
+ */
+async function updateRoutine(ctx: RunNowContext, bot: string, id: string, input: RoutineInput, userChoice: (bot: string, id: string) => void): Promise<RoutineView> {
   const raw = await ctx.rest.request<unknown>('GET', jobPath(id), { query: { profile: bot } })
   const current = jobSchema.safeParse(raw)
   if (!current.success) return jobFrom(ctx, bot, id, await ctx.rest.request('PUT', jobPath(id), { query: { profile: bot }, body: { updates: routineBody(bot, input) } }))
-  const updates = routineUpdates(bot, input, current.data)
-  const wasTriggered = current.data.paused_reason === TRIGGER_ONLY_REASON && isPausedJob(current.data)
-  const toTriggered = input.runs === 'triggered'
+  const k = jobKey(bot, id)
+  // Mid-run Hermes has already un-paused and un-marked the job, so Crew's own record counts too.
+  const wasTriggered = (current.data.paused_reason === TRIGGER_ONLY_REASON && isPausedJob(current.data)) || ctx.triggerOnly.has(k)
+  const toTriggered = input.runs === undefined ? wasTriggered : input.runs === 'triggered'
+  const updates = routineUpdates(bot, { ...input, runs: toTriggered ? 'triggered' : 'schedule' }, current.data)
   const reply = Object.keys(updates).length === 0 ? raw : await ctx.rest.request('PUT', jobPath(id), { query: { profile: bot }, body: { updates } })
   if (wasTriggered === toTriggered) return jobFrom(ctx, bot, id, reply)
+  const inFlight = ctx.running.has(k)
+  userChoice(bot, id)
   await switchMode(ctx, bot, id, toTriggered)
+  if (toTriggered && inFlight) {
+    ctx.restorePause.add(k)
+    ctx.triggerOnly.add(k)
+  }
   return jobFrom(ctx, bot, id, undefined)
 }
 
@@ -113,7 +126,7 @@ export function createRoutineService(deps: RoutineDeps): RoutineService {
       if (!view) throw new HermesRestError(502, 'unexpected cron job reply')
       return view
     },
-    update: (bot, id, input) => updateRoutine(ctx, bot, id, input),
+    update: (bot, id, input) => updateRoutine(ctx, bot, id, input, userChoice),
     pause: (bot, id) => toggle(bot, id, 'pause'),
     resume: (bot, id) => toggle(bot, id, 'resume'),
     remove: async (bot, id) => {
