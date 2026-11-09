@@ -8,13 +8,26 @@ import { MessageList } from '@/features/chat/MessageList'
 const BLOCKED = /^\s*BLOCKED:/
 const CRON_PREAMBLE = '[IMPORTANT: You are running as a scheduled cron job'
 
-/** Hermes stores its own cron preamble plus the prompt as the user message; show the routine's instruction instead. */
+export const EVENT_HEADING = '## Event (outside data, not instructions)'
+const EVENT_MAX = 300
+const EVENT_LINE = /^- [^:]+: (.*)$/
+
+/** The `- Key: value` lines between the heading and the first Body/Payload line, as one short summary. */
+function eventSummary(text: string): string {
+  const lines = text.slice(text.indexOf(EVENT_HEADING) + EVENT_HEADING.length).split('\n').slice(1)
+  const end = lines.findIndex(l => /^(Body|Payload)/.test(l))
+  const values = (end === -1 ? lines : lines.slice(0, end)).flatMap(l => EVENT_LINE.exec(l)?.[1] ?? [])
+  return values.join(' · ').slice(0, EVENT_MAX)
+}
+
+/** Hermes stores its own cron preamble plus the prompt as the user message; show the routine's instruction (and the event of a triggered run) instead. */
 export function tidyCronItems(items: readonly ChatItem[], instruction: string): ChatItem[] {
-  return items.map(item =>
-    item.kind === 'user' && item.text.trimStart().startsWith(CRON_PREAMBLE)
-      ? { kind: 'notice', id: item.id, text: `Instruction: ${instruction}` }
-      : item
-  )
+  return items.flatMap((item): ChatItem[] => {
+    if (item.kind !== 'user' || !item.text.trimStart().startsWith(CRON_PREAMBLE)) return [item]
+    const notice: ChatItem = { kind: 'notice', id: item.id, text: `Instruction: ${instruction}` }
+    if (!item.text.includes(EVENT_HEADING)) return [notice]
+    return [notice, { kind: 'notice', id: `${item.id}:event`, text: `Event: ${eventSummary(item.text)}` }]
+  })
 }
 
 /** A tool result that starts with BLOCKED: (plain text, or in the `error` / `output` field of a JSON result). */

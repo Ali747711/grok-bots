@@ -14,7 +14,7 @@ const json = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.
 const routine = (over: Partial<RoutineView> = {}): RoutineView => ({
   id: 'r1', bot: 'dev', title: 'Daily digest', instruction: 'Summarise the news', schedule: { kind: 'daily', time: '09:00' },
   scheduleText: '0 9 * * *', timezone: 'Europe/London', deliverToChat: false, enabled: true, nextRunAt: Date.UTC(2026, 10, 9, 9, 0),
-  lastRunAt: null, lastStatus: null, lastError: null, running: false, state: 'scheduled', finished: false, ...over
+  lastRunAt: null, lastStatus: null, lastError: null, running: false, state: 'scheduled', finished: false, triggerOnly: false, ...over
 })
 
 type Handler = (init: RequestInit) => Promise<Response>
@@ -136,7 +136,7 @@ describe('RoutinesPanel form', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(callsTo(fn, 'POST /crew/routines?bot=dev')).toHaveLength(1))
     expect(body(callsTo(fn, 'POST /crew/routines?bot=dev')[0])).toEqual({
-      title: 'Morning brief', instruction: 'Say hello', schedule: { kind: 'weekdays', time: '09:30' }, timezone: 'Asia/Tokyo', deliverToChat: true
+      title: 'Morning brief', instruction: 'Say hello', schedule: { kind: 'weekdays', time: '09:30' }, timezone: 'Asia/Tokyo', deliverToChat: true, runs: 'schedule'
     })
     await waitFor(() => expect(screen.queryByLabelText('Title')).toBeNull())
   })
@@ -286,5 +286,76 @@ describe('RoutinesPanel finished routines and row errors', () => {
     open()
     fireEvent.click(await screen.findByRole('button', { name: 'Run now' }))
     expect(await screen.findByText('This one-time routine already ran.')).toBeInTheDocument()
+  })
+})
+
+describe('RoutinesPanel event-only routines', () => {
+  const choose = () => fireEvent.click(screen.getByRole('radio', { name: 'Only when triggered' }))
+
+  it('creates an event-only routine without a schedule', async () => {
+    const fn = stub({ [LIST]: () => json([]), 'POST /crew/routines?bot=dev': () => json(routine({ triggerOnly: true }), 201) })
+    open()
+    fireEvent.click(await screen.findByRole('button', { name: 'New routine' }))
+    expect(screen.getByRole('radio', { name: 'On a schedule' })).toBeChecked()
+    choose()
+    expect(screen.queryByRole('combobox', { name: 'When' })).toBeNull()
+    expect(screen.queryByLabelText('Timezone')).toBeNull()
+    expect(screen.queryByText('Next runs')).toBeNull()
+    expect(screen.getByText('Runs only when one of its triggers gets an event. Add triggers after saving.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'On event' } })
+    fireEvent.change(screen.getByLabelText('What should it do?'), { target: { value: 'React' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(callsTo(fn, 'POST /crew/routines?bot=dev')).toHaveLength(1))
+    expect(body(callsTo(fn, 'POST /crew/routines?bot=dev')[0])).toMatchObject({ title: 'On event', runs: 'triggered' })
+  })
+
+  it('always sends runs: schedule for a scheduled routine', async () => {
+    const fn = stub({ [LIST]: () => json([routine()]), 'PUT /crew/routines/r1?bot=dev': () => json(routine()) })
+    open()
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    expect(screen.getByRole('radio', { name: 'On a schedule' })).toBeChecked()
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(callsTo(fn, 'PUT /crew/routines/r1?bot=dev')).toHaveLength(1))
+    expect(body(callsTo(fn, 'PUT /crew/routines/r1?bot=dev')[0])).toMatchObject({ runs: 'schedule' })
+  })
+
+  it('edits an event-only routine starting in Only when triggered', async () => {
+    const fn = stub({ [LIST]: () => json([routine({ triggerOnly: true })]), 'PUT /crew/routines/r1?bot=dev': () => json(routine({ triggerOnly: true })) })
+    open()
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    expect(screen.getByRole('radio', { name: 'Only when triggered' })).toBeChecked()
+    expect(screen.queryByRole('combobox', { name: 'When' })).toBeNull()
+    fireEvent.click(screen.getByRole('radio', { name: 'On a schedule' }))
+    expect(screen.getByRole('combobox', { name: 'When' })).toHaveTextContent('Every day')
+    choose()
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(callsTo(fn, 'PUT /crew/routines/r1?bot=dev')).toHaveLength(1))
+    expect(body(callsTo(fn, 'PUT /crew/routines/r1?bot=dev')[0])).toMatchObject({ runs: 'triggered' })
+  })
+
+  it('shows an event-only routine with no switch and Run now', async () => {
+    stub({ [LIST]: () => json([routine({ triggerOnly: true, enabled: false, nextRunAt: null })]) })
+    open()
+    expect(await screen.findByText('Only when triggered')).toBeInTheDocument()
+    expect(screen.queryByRole('switch')).toBeNull()
+    expect(screen.queryByText('Paused')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Run now' })).toBeInTheDocument()
+  })
+
+  it('warns how many triggers stop working before deleting', async () => {
+    const { RoutineRow } = await import('@/features/routines/RoutineRow')
+    const props = { routine: routine(), onChanged: () => {}, onEdit: () => {}, historyOpen: false, onToggleHistory: () => {} }
+    const { unmount } = render(<ul><RoutineRow {...props} triggerCount={2} /></ul>)
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    expect(screen.getByText('This routine has 2 triggers; they will stop working.')).toBeInTheDocument()
+    unmount()
+    const one = render(<ul><RoutineRow {...props} triggerCount={1} /></ul>)
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    expect(screen.getByText('This routine has 1 trigger; it will stop working.')).toBeInTheDocument()
+    one.unmount()
+    render(<ul><RoutineRow {...props} /></ul>)
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    expect(screen.queryByText(/This routine has/)).toBeNull()
   })
 })

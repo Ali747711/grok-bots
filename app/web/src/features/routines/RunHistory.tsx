@@ -1,3 +1,4 @@
+import { Zap } from 'lucide-react'
 import { useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
@@ -27,6 +28,12 @@ const cleanTitle = (title: string) => title.replace(/^\[bot:[a-z0-9][a-z0-9_-]*\
 function RunSummary({ run, timezone }: { run: RunView; timezone: string | null }) {
   return (
     <>
+      {run.trigger && (
+        <span className="mb-1 flex items-center gap-1 text-xs text-muted-foreground">
+          <Zap aria-hidden className="size-3" />
+          {`${run.trigger.name} · ${run.trigger.eventType}`}
+        </span>
+      )}
       <span className="flex items-center gap-2">
         <Badge className={cn('h-5 px-2 text-xs', RUN_TONE[run.status])}>{STATUS_WORD[run.status]}</Badge>
         <span className="text-xs text-muted-foreground">{formatInZone(run.startedAt, timezone)}</span>

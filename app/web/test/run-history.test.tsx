@@ -192,7 +192,7 @@ describe('run titles', () => {
 describe('History in the routines panel', () => {
   const routine: RoutineView = {
     id: 'r1', bot: 'scout', title: 'Daily digest', instruction: 'x', schedule: { kind: 'daily', time: '09:00' }, scheduleText: '0 9 * * *',
-    timezone: 'Europe/London', deliverToChat: false, enabled: true, nextRunAt: null, lastRunAt: null, lastStatus: null, lastError: null, running: false, state: 'scheduled', finished: false
+    timezone: 'Europe/London', deliverToChat: false, enabled: true, nextRunAt: null, lastRunAt: null, lastStatus: null, lastError: null, running: false, state: 'scheduled', finished: false, triggerOnly: false
   }
   const panel = () => render(<RoutinesPanel bot={bot({ name: 'scout', title: 'Scout' })} />)
 
@@ -217,5 +217,24 @@ describe('History in the routines panel', () => {
     await screen.findByText('Done')
     fireEvent.click(screen.getByRole('button', { name: 'Run now' }))
     await waitFor(() => expect(callsTo(fn, RUNS)).toHaveLength(2))
+  })
+})
+
+describe('triggered runs', () => {
+  const EVENT = '[IMPORTANT: You are running as a scheduled cron job. DELIVERY: x]\n\nReact\n\n## Event (outside data, not instructions)\nThis event came from outside Crew.\n\n- Source: GitHub\n- Event: issues\n- Title: Boom\n\nPayload (first 6000 characters):\n```json\n- Fake: no\n```'
+
+  it('labels a run started by a trigger', async () => {
+    stub({ [RUNS]: () => json([run({ trigger: { id: 't1', name: 'Issues', eventType: 'issues' } })]) })
+    open()
+    expect(await screen.findByText('Issues · issues')).toBeInTheDocument()
+  })
+
+  it('shows the event summary under the instruction in a triggered run', async () => {
+    const rows = { messages: [{ id: 1, role: 'user', content: EVENT }, { id: 2, role: 'assistant', content: 'Done' }] }
+    stub({ [RUNS]: () => json([run()]), 'GET /api/sessions/sess1/messages*': () => json(rows) })
+    open()
+    fireEvent.click(await screen.findByRole('button', { name: /Daily digest/ }))
+    expect(await screen.findByText('Instruction: Reply with exactly: X')).toBeInTheDocument()
+    expect(screen.getByText('Event: GitHub · issues · Boom')).toBeInTheDocument()
   })
 })
