@@ -31,9 +31,10 @@ let generic: Hook
 const secrets: string[] = []
 let accepted = 0
 
-const issueBody = (action: string, title = `E2E issue ${stamp}`) =>
-  JSON.stringify({ action, issue: { number: 7, title, body: 'E2E body' }, repository: { full_name: 'example/e2e' }, sender: { login: 'e2e' } })
-const ghPost = (h: Hook, event: string, delivery: string, body = issueBody('opened')) => postHook(h.url, body, githubHeaders(body, h.secret, event, delivery))
+// Every event body is unique (a nonce): Crew also dedupes on the signature, so identical bodies would be duplicates.
+const issueBody = (action: string, nonce: string, title = `E2E issue ${stamp}`) =>
+  JSON.stringify({ action, issue: { number: 7, title, body: 'E2E body' }, repository: { full_name: 'example/e2e' }, sender: { login: 'e2e' }, nonce })
+const ghPost = (h: Hook, event: string, delivery: string, body = issueBody('opened', delivery)) => postHook(h.url, body, githubHeaders(body, h.secret, event, delivery))
 const eventsOf = async (h: Hook): Promise<Ev[]> => (await crewApi(page, 'GET', `/crew/triggers/${h.id}/events`)).body.events
 const triggerJobs = async (h?: Hook) => (await cronJobsOf(BOT)).filter(j => j.name.startsWith(h ? `[trigger:${h.id}]` : '[trigger:'))
 
@@ -125,23 +126,25 @@ test('an event-only routine and a GitHub trigger; the secret is shown once', asy
 })
 
 test('filters, signatures, duplicates and the off switch; no run', async () => {
-  const bad = issueBody('opened')
+  const bad = issueBody('opened', 'D-bad')
   expect((await postHook(github.url, bad, githubHeaders(bad, 'wrong-secret', 'issues', 'D-bad'))).status).toBe(401)
   const badAt = Date.now()
   const push = await ghPost(github, 'push', 'D-push')
   expect([push.status, push.body.status]).toEqual([200, 'ignored'])
-  const closed = await ghPost(github, 'issues', 'D-closed', issueBody('closed'))
+  const closed = await ghPost(github, 'issues', 'D-closed', issueBody('closed', 'D-closed'))
   expect([closed.status, closed.body.status]).toEqual([200, 'ignored'])
   const ping = await ghPost(github, 'ping', 'D-ping', '{"zen":"ok"}')
   expect([ping.status, ping.body.status]).toEqual([200, 'pong'])
 
-  const first = await ghPost(github, 'issues', 'D1')
+  const d1Body = issueBody('opened', 'D1')
+  const first = await ghPost(github, 'issues', 'D1', d1Body)
   expect(first.status).toBe(202)
   accepted += 1
   expect((await triggerJobs(github)).length, 'the one-shot exists in Hermes while it runs').toBeGreaterThanOrEqual(1)
   const routines = await crewApi(page, 'GET', `/crew/routines?bot=${BOT}`)
   expect((routines.body as { title: string }[]).filter(r => r.title.startsWith('[trigger:'))).toEqual([])
-  const dup = await ghPost(github, 'issues', 'D1')
+  // The same delivery id, and the same body: a true redelivery.
+  const dup = await ghPost(github, 'issues', 'D1', d1Body)
   expect([dup.status, dup.body.status]).toEqual([200, 'duplicate'])
 
   // Credit guard: stop the whole serial suite if Hermes did not block the first run.

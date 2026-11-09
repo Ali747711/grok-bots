@@ -36,9 +36,10 @@ async function soft(name: string, check: () => Promise<void>): Promise<void> {
   }
 }
 const eventsOf = async (h: Hook): Promise<Ev[]> => (await crewApi(page, 'GET', `/crew/triggers/${h.id}/events`)).body.events
-const body = (title: string) => JSON.stringify({ action: 'opened', issue: { number: 9, title, body: 'Please look.' }, repository: { full_name: 'example/e2e' }, sender: { login: 'e2e' } })
+// Unique per event (a nonce): Crew also dedupes on the signature.
+const body = (title: string, nonce: string) => JSON.stringify({ action: 'opened', issue: { number: 9, title, body: 'Please look.' }, repository: { full_name: 'example/e2e' }, sender: { login: 'e2e' }, nonce })
 const send = (title: string, delivery: string) => {
-  const raw = body(title)
+  const raw = body(title, delivery)
   return postHook(github.url, raw, githubHeaders(raw, github.secret, 'issues', delivery))
 }
 const waitFinished = (h: Hook, delivery: string) =>
