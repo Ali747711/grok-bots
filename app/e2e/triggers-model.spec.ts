@@ -26,12 +26,13 @@ let routineId = ''
 let github: Hook
 let finishedRunId = ''
 
-/** A cosmetic check: a failure is reported (soft) but does not skip the remaining paid tests. */
+/** Cosmetic failures, reported by the last test: a failing test here would make serial mode skip the paid ones after it. */
+const problems: string[] = []
 async function soft(name: string, check: () => Promise<void>): Promise<void> {
   try {
     await check()
   } catch (e) {
-    expect.soft(false, `${name}: ${e instanceof Error ? e.message.split('\n')[0] : 'failed'}`).toBe(true)
+    problems.push(`${name}: ${e instanceof Error ? e.message.split('\n')[0] : 'failed'}`)
   }
 }
 const eventsOf = async (h: Hook): Promise<Ev[]> => (await crewApi(page, 'GET', `/crew/triggers/${h.id}/events`)).body.events
@@ -95,7 +96,10 @@ test('@model a signed issue event runs once, the bot names the title, the event 
     await page.getByRole('button', { name: `E2E GitHub ${stamp} actions` }).click()
     await page.getByRole('menuitem', { name: 'Show events' }).click()
     await page.getByRole('button', { name: 'Open run' }).first().click()
-    await expect(page.getByText(String(stamp)).first()).toBeVisible({ timeout: 30_000 })
+    const dialog = page.getByRole('dialog')
+    await expect(dialog.getByRole('button', { name: 'Back to events' })).toBeVisible({ timeout: 30_000 })
+    // Crew's own Event notice in the transcript carries the issue title.
+    await expect(dialog.getByText(ISSUE).first()).toBeVisible({ timeout: 30_000 })
     await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click()
   })
 
@@ -146,4 +150,8 @@ test('@model two signed events at once both run, with different runs', async () 
   const runs = ['M-A', 'M-B'].map(d => events.find(e => e.deliveryId === d)?.runId)
   expect(runs.every(Boolean)).toBe(true)
   expect(new Set(runs).size).toBe(2)
+})
+
+test('cosmetic checks after the paid runs', () => {
+  expect(problems).toEqual([])
 })
