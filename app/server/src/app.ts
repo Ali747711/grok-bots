@@ -12,13 +12,13 @@ import { screenRoutes } from './http/screen-routes.js'
 import { routineRoutes } from './http/routine-routes.js'
 import { groupRoutes, type GroupRouteDeps } from './http/group-routes.js'
 import { hookRoutes } from './http/hook-routes.js'
+import { triggerRoutes, type TriggerRouteDeps } from './http/trigger-routes.js'
 import { hostGuard } from './http/host-guard.js'
 import { originGuard } from './http/origin-guard.js'
 import { type CrewEnv, sessionGuard } from './http/session-guard.js'
 import { settingsRoutes } from './http/settings-routes.js'
 import { stateRoutes } from './http/state-routes.js'
 import { spaRoutes } from './http/spa.js'
-import type { HookHandler } from './triggers/hook-handler.js'
 import type { RoutineService } from './routines/service.js'
 import type { SettingsStore } from './settings/settings-store.js'
 import type { UsageSource } from './usage/openrouter.js'
@@ -42,7 +42,7 @@ export interface AppDeps {
   readonly routines?: RoutineService
   readonly watcher?: CrewStateSource
   /** Absent in tests that don't need it; /hooks/:id then answers 503 triggers_unavailable. */
-  readonly triggers?: { readonly hooks: HookHandler }
+  readonly triggers?: TriggerRouteDeps
   /** Absent in tests that don't need it; /crew/groups then answers 503 hermes_offline. */
   readonly groups?: GroupRouteDeps
 }
@@ -79,6 +79,7 @@ export function createApp(deps: AppDeps): Hono<CrewEnv> {
   app.route('/', hookRoutes(deps.triggers?.hooks))
   app.route('/', routineRoutes(deps.routines, deps.now))
   app.route('/', groupRoutes(deps.groups))
+  app.route('/', triggerRoutes(deps.triggers))
   app.route('/', authRoutes(deps))
   app.route('/', restProxy(deps))
   // Last: the SPA answers every remaining GET, so later-mounted routes would be shadowed.
