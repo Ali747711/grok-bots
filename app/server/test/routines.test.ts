@@ -382,9 +382,22 @@ describe('event-only routines', () => {
     cron.handler = () => job()
     await svc.update('scout', 'abc123', triggered)
     expect(cron.calls.map(c => [c.method, c.path])).toEqual([
-      ['GET', '/api/cron/jobs/abc123'], ['PUT', '/api/cron/jobs/abc123'], ['POST', '/api/cron/jobs/abc123/pause'], ['PUT', '/api/cron/jobs/abc123'], ['GET', '/api/cron/jobs/abc123']
+      ['GET', '/api/cron/jobs/abc123'], ['POST', '/api/cron/jobs/abc123/pause'], ['PUT', '/api/cron/jobs/abc123'], ['PUT', '/api/cron/jobs/abc123'], ['GET', '/api/cron/jobs/abc123']
     ])
-    expect(putBodies()).toEqual([{ updates: { schedule: '0 3 1 1 *' } }, { updates: { paused_reason: MARKER } }])
+    expect(putBodies()).toEqual([{ updates: { paused_reason: MARKER } }, { updates: { schedule: '0 3 1 1 *' } }])
+  })
+
+  it('pauses first, so a failed switch never leaves the routine active on the yearly schedule', async () => {
+    let hermes: Record<string, unknown> = job()
+    cron.handler = call => {
+      if (call.method === 'POST' && call.path.endsWith('/pause')) throw new HermesRestError(502, 'gateway down')
+      if (call.method === 'PUT') hermes = { ...hermes, schedule: { kind: 'cron', expr: (call.body as { updates: { schedule?: string } }).updates.schedule ?? '0 9 * * *' } }
+      return hermes
+    }
+    await expect(svc.update('scout', 'abc123', triggered)).rejects.toMatchObject({ status: 502 })
+    expect(cron.calls.filter(c => c.method === 'PUT')).toEqual([])
+    expect(hermes).toMatchObject({ enabled: true })
+    expect((hermes.schedule as { expr: string }).expr).toBe('0 9 * * *')
   })
 
   it('switches an event-only routine back to a schedule and resumes it', async () => {

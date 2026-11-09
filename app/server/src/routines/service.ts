@@ -94,11 +94,19 @@ async function updateRoutine(ctx: RunNowContext, bot: string, id: string, input:
   const wasTriggered = (current.data.paused_reason === TRIGGER_ONLY_REASON && isPausedJob(current.data)) || ctx.triggerOnly.has(k)
   const toTriggered = input.runs === undefined ? wasTriggered : input.runs === 'triggered'
   const updates = routineUpdates(bot, { ...input, runs: toTriggered ? 'triggered' : 'schedule' }, current.data)
-  const reply = Object.keys(updates).length === 0 ? raw : await ctx.rest.request('PUT', jobPath(id), { query: { profile: bot }, body: { updates } })
-  if (wasTriggered === toTriggered) return jobFrom(ctx, bot, id, reply)
+  const put = (): Promise<unknown> => (Object.keys(updates).length === 0 ? Promise.resolve(raw) : ctx.rest.request('PUT', jobPath(id), { query: { profile: bot }, body: { updates } }))
+  if (wasTriggered === toTriggered) return jobFrom(ctx, bot, id, await put())
   const inFlight = ctx.running.has(k)
   userChoice(bot, id)
-  await switchMode(ctx, bot, id, toTriggered)
+  // To event-only: pause and mark first, so a failure never leaves the routine active on the yearly schedule.
+  // Back to a schedule: change the fields first, so a failure never leaves it resumed on the yearly schedule.
+  if (toTriggered) {
+    await switchMode(ctx, bot, id, true)
+    await put()
+  } else {
+    await put()
+    await switchMode(ctx, bot, id, false)
+  }
   if (toTriggered && inFlight) {
     ctx.restorePause.add(k)
     ctx.triggerOnly.add(k)
