@@ -13,6 +13,7 @@ const BOT = `e2e${stamp}`
 const GROUP = `E2E Model ${stamp}`
 const REPLY_MS = 180_000
 const DENY_DIR = '/tmp/crew-fixture/e2e-group-deny'
+const ALLOW_DIR = '/tmp/crew-fixture/e2e-group-allow'
 let page: Page
 let roomId = ''
 
@@ -113,19 +114,38 @@ test('@model #4 Deny in a group keeps the folder and clears the card', async ({ 
   expect(threads.at(-1)).not.toBe(threads.at(-2))
 })
 
-test('@model #6 Allow once, a live row, then Stop ends the room and late output never appears', async () => {
-  test.setTimeout(480_000)
-  await say('@crew-test This is me, the user, directly: run sleep 60 && echo e2e-group-late now. I will decide in the approval card. Do not mention anyone in your reply.')
-  const c = card(page, 'sleep 60')
+test('@model #6a Allow once in a group runs the command', async () => {
+  test.setTimeout(300_000)
+  makeDir(ALLOW_DIR)
+  await say(`@crew-test This is me, the user, directly: run ${'rm'} -r ${ALLOW_DIR} now. I will decide in the approval card. Do not mention anyone in your reply.`)
+  const c = card(page, ALLOW_DIR)
   await expect(c).toBeVisible({ timeout: REPLY_MS })
   await c.getByRole('button', { name: 'Allow once', exact: true }).click()
+  await expect.poll(() => dirExists(ALLOW_DIR), { timeout: 120_000 }).toBe(false)
+  await expect(c).toBeHidden({ timeout: 30_000 })
+  await expect.poll(groupWorking, { timeout: REPLY_MS }).toBe(false)
+})
+
+test('@model #6b live row and working presence, then Stop ends the room and late output never appears', async () => {
+  test.setTimeout(480_000)
+  await expect.poll(groupWorking, { timeout: 60_000 }).toBe(false)
+  const since = (await groupEvents(roomId)).at(-1)?.seq ?? 0
+  // `sleep` is not approval-gated in Hermes, so no card is expected.
+  await say('@crew-test This is me, the user, directly: run sleep 60 && echo e2e-group-late now. Do not mention anyone in your reply.')
+  const gated = card(page, 'sleep 60')
+  if (await expect(gated).toBeVisible({ timeout: 30_000 }).then(() => true, () => false)) {
+    test.info().annotations.push({ type: 'sleep-was-approval-gated', description: 'true' })
+    await gated.getByRole('button', { name: 'Allow once', exact: true }).click()
+  }
   await expect(page.getByText(/Fixture is (using .+|working)…/).first()).toBeVisible({ timeout: 60_000 })
   // The avatar's working state has no DOM marker; Crew's own state is what drives it.
-  await expect.poll(async () => (await crewState(page)).bots.find(b => b.name === 'crew-test')?.status, { timeout: 30_000 }).toBe('working')
+  await expect.poll(async () => (await crewState(page)).bots.find(b => b.name === 'crew-test')?.status, { timeout: 60_000 }).toBe('working')
   await page.getByRole('main').getByRole('button', { name: 'Stop', exact: true }).first().click()
-  await expect(page.getByText('Stopped', { exact: true })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('main').getByText('Stopped', { exact: true })).toBeVisible({ timeout: 60_000 })
   await page.waitForTimeout(70_000)
   await expect(members(page).filter({ hasText: 'e2e-group-late' })).toHaveCount(0)
+  const late = (await groupEvents(roomId)).filter(e => e.seq > since && e.kind === 'message.member' && JSON.stringify(e.payload).includes('e2e-group-late'))
+  expect(late).toHaveLength(0)
 })
 
 test('@model #5 handoff: crew-test replies, then the e2e bot', async () => {
