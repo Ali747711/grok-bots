@@ -229,3 +229,10 @@ Ways to keep spend low: always @mention exactly one bot; avoid `everyone`/`lead`
 - `groups.log {limit:20}` → `{events:[…], cursor:1, latest_seq:1, has_more:false, authority:{gateway_id, epoch:1}}`.
 - **The official Webapp lists the room** (Bots tab → "e2e p4 probe · 2 bots", screenshot kept out of the repo because it shows the user's bots). Owner `default` over the token socket is shared with the Webapp: confirmed.
 - `groups.disband {cancel_id:'c1'}` on an idle room succeeded at once → tombstone with event `seq 3, kind 'room.disbanded', event_id 'system:room-disbanded'` (seq 2 was the stop fence). `groups.list` is empty afterwards. Profile `e2e9001` deleted via `DELETE /api/profiles/e2e9001` (200).
+
+## Known Hermes limit: 24 messages per topic (Hermes v0.23.0)
+
+- The room planner keeps only the last 24 `message.user` + `message.member` events per thread (`gateway/hosted_room_policy_checkpoint.py:21-27, 160-171`, `MAX_THREAD_TRANSCRIPT_EVENTS = 24`).
+- Past that, a kept member reply can lose its user message, and `_derive_member_watermarks` raises "turn.settled references no matching user discussion" (`hosted_room_discussion.py:550`). Every later prepare fails: the room logs `member.unavailable {reason_code:'prepare_failed'}` on each send, `driver_status.last_error` holds the text, and `pending_actions` holds a `retry` with `task_id: 'prepare:<room_id>'` and a comma list of members.
+- The planner always picks the oldest unfinished thread, so even a message in a new topic fails until the poisoned thread is fenced. A Stop fences every user message up to the stop event (`latest_user_seq > stopped_through_seq` in the checkpoint snapshot); this is from source and was not proven offline.
+- Crew's response: a topic with 14 or more messages (24 minus up to 10 replies per message) or an unknown start (cut history) makes the next send open a new topic; Keep going is withheld on such a topic; a room whose `last_error` or `prepare:` action shows this state is flagged `stuck` and offers "Stop and start a new topic".
