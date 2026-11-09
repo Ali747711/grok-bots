@@ -34,20 +34,22 @@ function turnActionsOf(state: HermesRoomState | undefined): GroupTurnAction[] {
 }
 
 export function toGroupView(room: HermesRoom, state: HermesRoomState | undefined, preview: GroupPreview | null, nowMs: number): GroupView {
+  // The list can lag a rename or a seq bump that `groups.state` already shows; revision orders them.
+  const fresh = state && state.room.revision >= room.revision ? state.room : room
   const ctx = state?.context
   const status = state?.driver_status
   const activity = activityViews(state, nowMs)
   return {
     id: room.room_id,
-    name: room.name,
-    members: room.members.map(m => ({ memberId: m.member_id, profile: m.profile, handle: m.handle, displayName: m.display_name ?? null })),
+    name: fresh.name,
+    members: fresh.members.map(m => ({ memberId: m.member_id, profile: m.profile, handle: m.handle, displayName: m.display_name ?? null })),
     routing: ctx?.routing ?? 'everyone',
     leadMemberId: ctx?.lead_member_id ? ctx.lead_member_id : null,
     purpose: ctx?.purpose ?? '',
     notes: ctx?.notes ?? '',
-    latestSeq: state?.room.latest_seq ?? room.latest_seq ?? 0,
-    epoch: room.authority_epoch,
-    updatedAt: room.updated_at * 1000,
+    latestSeq: fresh.latest_seq ?? room.latest_seq ?? 0,
+    epoch: fresh.authority_epoch,
+    updatedAt: fresh.updated_at * 1000,
     working: Boolean(status?.working) || activity.some(a => a.status === 'running' || a.status === 'stopping'),
     activity,
     turnActions: turnActionsOf(state),

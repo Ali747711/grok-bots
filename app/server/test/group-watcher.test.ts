@@ -98,6 +98,16 @@ describe('group watcher', () => {
     expect(calls).toEqual(['state:r', 'state:r', 'log:r:15:20'])
   })
 
+  it('shows a renamed state room before the next list tick', async () => {
+    rooms = [mkRoom('r', 10, 0)]
+    const w = start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(w.state().rooms[0]?.name).toBe('r')
+    rpc.state = async id => ({ room: { ...mkRoom(id, 11, 0), name: 'New', revision: 2 }, driver_status: idle })
+    await w.refreshRoom('r')
+    expect(w.state().rooms[0]?.name).toBe('New')
+  })
+
   it('uses a zero lower bound for short logs', async () => {
     rooms = [mkRoom('r', 10, 3)]
     start()

@@ -33,6 +33,13 @@ describe('toGroupView', () => {
     expect(toGroupView(room, withStatus(status(), { purpose: '', notes: '', routing: 'lead', lead_member_id: 'a' }), null, 0).leadMemberId).toBe('a')
   })
 
+  it('builds room fields from the fresher of the list room and the state room', () => {
+    const newer: HermesRoomState = { room: { ...room, name: 'New', revision: 2, updated_at: 30, authority_epoch: 3, latest_seq: 9 } }
+    expect(toGroupView({ ...room, name: 'Old' }, newer, null, 0)).toMatchObject({ name: 'New', updatedAt: 30000, epoch: 3, latestSeq: 9 })
+    const older: HermesRoomState = { room: { ...room, name: 'Stale', revision: 0, updated_at: 5 } }
+    expect(toGroupView({ ...room, name: 'Old' }, older, null, 0)).toMatchObject({ name: 'Old', updatedAt: 20500, epoch: 2 })
+  })
+
   it('computes stalled at the 120 s boundary', () => {
     const s = withStatus(status({ member_activity: [{ member_id: 'a', status: 'running', started_at: 100, progress_at: null }] }))
     expect(toGroupView(room, s, null, 100_000 + 119_999).activity[0].stalled).toBe(false)
