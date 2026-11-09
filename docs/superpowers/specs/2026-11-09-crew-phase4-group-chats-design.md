@@ -24,11 +24,11 @@ Original Crew design: §2 goal 8 "Group chats: 2–6 bots, @mention handoffs", �
    - Live rows under the last message while members work: "Reese is working…", "Reese is using browser…", "Reese seems stuck" after 120 s with no progress, and "Up next: X" for queued members.
    - Notices in the stream: "Auto picked @reese", "Auto couldn't decide, so everyone replies", "<Lead> assigned @a, @b", "Paused after 3 rounds" / "Paused after 10 replies" with **Keep going**, "<Bot> couldn't reply: <reason>" with **Try again** / **Dismiss** when Hermes offers them, "Stopped", "Group renamed to “<name>”", "Replies set to Auto".
    - Approval cards for member turns appear inline, labelled with the bot (goal 7).
-4. **Composer with @mentions.** Same composer as a bot chat (Enter sends, Shift+Enter newline, Send becomes Stop while the group works). Typing `@` opens a list of members (avatar, title, `@handle`) plus `@everyone`; arrows/Enter/Tab insert `@handle ` with a trailing space; Esc closes. A line under the composer always says who will answer, computed with Hermes's own mention rule (§6.6):
+   - **Topics.** A group chat is one continuous conversation by default: each message continues the current topic (a Hermes thread), so every bot sees what was said earlier in it (Hermes gives each member all new messages in its thread since that member's last turn, up to 24 lines, `hosted_room_discussion.py:605-640`). A **New topic** button beside the composer starts a fresh topic for the next message. A thin "New topic" divider marks each message that opened a different thread than the previous user message (topics started from the Webapp show the same way).
+4. **Composer with @mentions.** Same composer as a bot chat (Enter sends, Shift+Enter newline, Send becomes Stop while the group works, so you can't send while bots are still replying, as in a bot chat). Typing `@` opens a list of members (avatar, title, `@handle`) plus `@everyone`; arrows/Enter/Tab insert `@handle ` with a trailing space; Esc closes. A line under the composer always says who will answer, computed with Hermes's own mention rule (§6.6):
    - "@reese will reply" / "@reese and @x will reply";
-   - "Everyone (3 bots) will reply";
-   - "Auto will pick who replies";
-   - "<Lead title> will pick who replies".
+   - first message of a topic, no mention: by the reply rule — "Everyone (3 bots) will reply" / "Auto will pick who replies" / "<Lead title> will pick who replies";
+   - a follow-up in a topic, no mention: "Everyone (3 bots) will reply · @mention to ask one bot" — Hermes routes only a topic's first message by the reply rule; an unaddressed follow-up wakes every member (`hosted_room_lead.py:47-60`, facts §9.3).
    Placeholder: "Message the group. Type @ to mention a bot".
 5. **Handoffs.** Nothing to build beyond showing them: when a bot's reply mentions a teammate, Hermes gives that teammate the next turn (facts §3.3). Crew shows the mention highlighted and the teammate's reply after it. Hermes stops a chain after 3 rounds or 10 visible replies per user message (facts §3.3); Crew shows the pause notice with **Keep going** (`groups.continue`, at most 5 per message).
 6. **Reply rule (routing).** In the group panel: "Who answers when nobody is @mentioned":
@@ -44,7 +44,7 @@ Original Crew design: §2 goal 8 "Group chats: 2–6 bots, @mention handoffs", �
 
 ## 3. Non-goals (this phase)
 
-Attachments in groups · reply-to threads (every message starts a new thread, as the Webapp does for a new message) · token-by-token streaming of member replies (the Webapp doesn't have it either; replies appear when the turn settles, facts §4) · routines that post into a group · changing members after creation (Hermes has no verb for it, facts §1.4) · group avatars or colours (Hermes stores none) · changing Hermes's round/reply caps (they live in the primary bot's config and need a gateway restart) · cross-machine rooms (disabled, facts §6) · secret/sudo prompts inside group turns (Hermes surfaces none; clarify is off in rooms, facts §4).
+Attachments in groups · replying to one specific message (the Webapp's reply-to; Crew has topics instead, goal 3) · token-by-token streaming of member replies (the Webapp doesn't have it either; replies appear when the turn settles, facts §4) · routines that post into a group · changing members after creation (Hermes has no verb for it, facts §1.4) · group avatars or colours (Hermes stores none) · changing Hermes's round/reply caps (they live in the primary bot's config and need a gateway restart) · cross-machine rooms (disabled, facts §6) · secret/sudo prompts inside group turns (Hermes surfaces none; clarify is off in rooms, facts §4).
 
 ## 4. Anti-goals (would make this a failure even if it works)
 
@@ -106,7 +106,7 @@ All under the existing guards, Zod-validated, profile pinned inside one `group-r
 |---|---|---|
 | `POST /crew/groups` `{name?, members: string[]}` | validate (2–6, unique, each in the roster and in `seatable_profiles`) → build rows (§5) → `groups.create` with a new UUID → `groups.context {purpose:'', notes:'', routing:'auto'}` | 201 `{room: GroupView-ish, routing}`. If the context write fails after create, still 201 with `routing:'everyone'` and `warning:'routing_not_set'`; the UI toasts "Group made, but Auto replies couldn't be switched on. Set it in the group panel." |
 | `GET /crew/groups/:id/events?since=<seq>&limit=<1–500>` | `groups.log` | Returns `{events: GroupEvent[], cursor, latestSeq, hasMore, epoch}`; events reduced to the fields the UI needs (§6.4), text capped as Hermes caps it. |
-| `POST /crew/groups/:id/messages` `{eventId: uuid, text: 1–65536 bytes}` | `groups.send {room_id, event_id: eventId, payload:{text, thread_id: eventId}}` | 202 `{accepted:true, seq}`. Hermes refusal with `data.admitted === false` → 409 `{admitted:false, reason}` ("not sent"). Transport error/timeout → 502 `{admitted:'unknown'}` so the browser retries with the **same** `eventId` (idempotent, facts §1.3). |
+| `POST /crew/groups/:id/messages` `{eventId: uuid, text: 1–65536 bytes, threadId?}` | `groups.send {room_id, event_id: eventId, payload:{text, thread_id: threadId ?? eventId}}` (`threadId` omitted = a new topic; it must match Hermes's identifier rule `^[A-Za-z0-9][A-Za-z0-9._:-]*$`, ≤ 128) | 202 `{accepted:true, seq}`. Hermes refusal with `data.admitted === false` → 409 `{admitted:false, reason}` ("not sent"). Transport error/timeout → 502 `{admitted:'unknown'}` so the browser retries with the **same** `eventId` (idempotent, facts §1.3). |
 | `POST /crew/groups/:id/stop` | `groups.stop` with a `cancel_id` the browser supplies (kept across retries until confirmed) | Room-wide (facts §5). |
 | `POST /crew/groups/:id/continue` `{discussionEventId}` | `groups.continue` | Only from the pause notice. |
 | `POST /crew/groups/:id/turns/retry` / `…/discard` `{memberId, taskId, executionGeneration}` | `groups.retry` / `groups.discard` | Only for a matching `turnActions` entry. |
@@ -129,6 +129,7 @@ After any mutation the route asks the group watcher to refresh that room now (no
   - `message.member` → bot item (speaker = member; Crew title from the roster by profile, else `actor.display_name`, else `@handle`);
   - `room.routed`, `room.assignment`, `room.activity` with `status:'bounded'`, `turn.failed`, `member.unavailable`, `room.stop_requested`, `room.renamed`, `room.context_set` → notices (§2 goal 3). `room.activity settled`, `turn.settled`, `turn.cancelled` (superseded) and `turn.deferred` produce nothing visible.
   - **Keep going** shows on the latest bounded notice of a discussion while that discussion has fewer than 5 continues and no stop or newer user message.
+- **Topic.** The current topic is the `thread_id` of the latest `message.user` in the loaded log (so Crew and the Webapp agree, and Crew stores nothing). No user message yet, or **New topic** pressed → the next send omits `threadId`. After a send the new message's thread is the current topic.
 - **Send.** The composer creates an optimistic user item with a fresh `eventId` (UUID), POSTs it, retries once automatically with the same `eventId` on `admitted:'unknown'`, then shows **Retry** (same id). `admitted:false` → "Not sent: <reason>" with **Retry** (new id). The optimistic item is replaced when the log row arrives; match it via `sha256(eventId)` against the stored `event_id` `user:<hex>` (facts §1.3), computed with `crypto.subtle`.
 - **Stop** posts once with a `cancel_id` kept until a success, like the official client.
 - **Disabled reasons** reuse the bot chat's: Hermes offline, Crew reconnecting, and the working-bot limit, counting working bots that are not members of this group (a group runs one member at a time, facts §3.3).
@@ -170,14 +171,16 @@ The `/api/ws` frame guard (today it polices `display.*`) also refuses every `gro
 
 Test bots: the fixture `crew-test` and throwaway `e2e<digits>` bots made by the e2e helpers. A cleanup helper disbands rooms whose members are all test bots before and after the run. The user's bots are never members of a test group.
 
+Order of the **[model]** runs, cheapest proof first, stopping when credit is too low: #3 (1 turn) → #4 (Deny) → #6 (Allow once + Stop) → #5 (handoff, only if > $0.12 is left). Every model-run message @mentions exactly one bot (an unaddressed message would wake every member).
+
 Acceptance (each line needs evidence in `docs/phase4/acceptance.md`):
 1. A 2-bot group (crew-test + e2e bot) made in Crew appears in Crew's sidebar and in `groups.list {profile:'default'}`, with routing `auto` per `groups.state`; it also shows in the official Webapp (screenshot).
 2. A group made through Hermes directly (RPC, as the Webapp does) appears in Crew within 5 s; deleting it in Crew removes it from Hermes.
 3. **[model]** `@<e2e bot> reply with exactly: ok` → exactly one bot reply, from that bot, shown with its avatar and title; crew-test does not reply.
 4. **[model]** An approval in a group turn (crew-test, the Phase 1 fixture command) shows in the group view and Needs you with Allow once / Deny; **Deny** → the command did not run; the card clears. Records whether a duplicate `approval.request` reached the watcher.
 5. **[model, if credit remains after 3–4]** Handoff: `@crew-test say hi and ask @<e2e bot> to reply with exactly: ok` → crew-test replies, then the e2e bot replies.
-6. While a member works: its live row shows, its sidebar avatar is working, and Stop stops the room ("Stopped" notice).
-7. Mention autocomplete inserts `@handle `; the "who will answer" line matches §6.6 for: one mention, two mentions, `@everyone`, a trailing-dot mention, no mention (per routing).
+6. **[model]** While a member works: in a group, `@crew-test` runs the Phase 1 slow fixture command; **Allow once** on the card; while the command runs the member's live row shows "… is using <tool>…" and its sidebar avatar is working; **Stop** stops the room ("Stopped" notice) and the command's late output never appears. (This is also the Allow-once proof in a group.)
+7. Mention autocomplete inserts `@handle `; the "who will answer" line matches goal 4 / §6.6 for: one mention, two mentions, `@everyone`, a trailing-dot mention, no mention on a topic's first message (per routing), and no mention on a follow-up (everyone). The topic choice (continue vs **New topic**) is proven by unit tests of the send path and by the `thread_id`s of the [model] runs (#3 opens a topic; #4 sent after **New topic** opens another); no extra unaddressed message is ever sent.
 8. Rename, reply rule and purpose/notes changes persist (visible in `groups.state`).
 9. Security: a browser `groups.*` frame is refused; group routes refuse a missing CSRF token and a foreign Origin; CSP header unchanged.
 10. Unit suites green; full no-model e2e green; real browser at 1440 and 1000 px, light and dark, 0 console errors and 0 CSP violations.
@@ -187,7 +190,7 @@ Acceptance (each line needs evidence in `docs/phase4/acceptance.md`):
 1. Use Hermes's own rooms (not a Crew-side group engine), so groups match the Webapp.
 2. Owner = the primary bot (`profile:"default"`), as the Webapp does.
 3. Groups made in Crew default to **Auto** replies (cheap: one small check), not Everyone; Lead is available.
-4. Every message starts a new thread; no reply-to in this phase.
+4. Topics: messages continue the current Hermes thread so bots keep context; **New topic** starts a fresh one; no reply-to-a-message (builder check, §12).
 5. No token streaming: bot replies appear whole, with live "working / using <tool>" rows — the same as the Webapp.
 6. The server is the single poller (5 s list, 2 s per active room) and pushes through the existing SSE; the browser fetches the log only when the sequence number moves.
 7. The browser never calls `groups.*` directly; Crew routes do, behind the existing guards.
@@ -200,3 +203,10 @@ Acceptance (each line needs evidence in `docs/phase4/acceptance.md`):
 ## 11. Left to the builder
 
 File split inside `groups/` and `features/groups/`; exact component structure; how the mention popover is positioned; skeletons and empty states following the UI rebuild's patterns; test structure; how the cleanup helper identifies test rooms (members all test bots is the rule); whether `latest_seq` comes from `groups.list` or `groups.state` (use whichever Hermes fills).
+
+## 12. Builder-check rulings (2026-11-09)
+
+A fresh reviewer read this design as a builder. Two questions changed it; both are my calls under the user's "decide everything yourself":
+
+1. **Context across messages.** Hermes shows a member only the new messages *in its thread* since its last turn (`hosted_room_discussion.py:605-640, 707-727`), and its hidden session holds only its own turns. A new thread per message (the first draft) would mean "@x improve Reese's tagline" fails because X never saw Reese's reply. Ruling: messages continue the current topic (thread) by default, with a **New topic** button (goal 3, §6.4). Cost of the ruling: Auto/Lead route only a topic's first message; an unaddressed follow-up wakes every member (`hosted_room_lead.py:47-60`). The composer line says so before sending. If this turns out to cost too much, the next step would be a setting that makes follow-ups without a mention go to the bots that answered last — not in this phase.
+2. **Proof of the working state** needs a real running turn. Ruling: a dedicated **[model]** run (#6) that also proves Allow once and Stop in a group, ordered after #3 and #4; the handoff run (#5) is last and only if credit remains.
