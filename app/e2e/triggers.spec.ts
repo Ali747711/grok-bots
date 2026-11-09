@@ -184,8 +184,19 @@ test('Send test event, Run now and a new secret', async () => {
   await page.getByRole('dialog', { name: `Events · ${GH_NAME}` }).getByRole('button', { name: 'Close' }).click()
 
   // R2: Hermes clears the marker while it force-runs a paused job; Crew puts it back.
+  const routineJob = async () => (await cronJobsOf(BOT)).find(j => j.name === `[bot:${BOT}] ${TITLE}`)
+  const before = (await routineJob())?.last_run_at
   await row().getByRole('button', { name: 'Run now' }).click()
-  await expect.poll(async () => (await cronJobsOf(BOT)).find(j => j.name === `[bot:${BOT}] ${TITLE}`)?.paused_reason, { timeout: 60_000, intervals: [2000] }).toBe('crew:trigger-only')
+  // First the force-run must be seen (marker cleared, or last_run_at moved) ...
+  await expect.poll(async () => {
+    const job = await routineJob()
+    return job?.paused_reason !== 'crew:trigger-only' || job?.last_run_at !== before
+  }, { timeout: 60_000, intervals: [500] }).toBe(true)
+  // ... then Crew must have put the marker back and re-paused the job.
+  await expect.poll(async () => {
+    const job = await routineJob()
+    return job?.paused_reason === 'crew:trigger-only' && (job.enabled === false || job.state === 'paused')
+  }, { timeout: 60_000, intervals: [1000] }).toBe(true)
   await expect(row().getByText('Only when triggered')).toBeVisible()
 
   const oldSecret = github.secret

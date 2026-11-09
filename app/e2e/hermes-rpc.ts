@@ -234,6 +234,8 @@ export interface CronJob {
   paused_reason?: string | null
   schedule?: unknown
   enabled?: boolean
+  state?: string | null
+  last_run_at?: unknown
 }
 
 export async function cronJobsOf(bot: string): Promise<CronJob[]> {
