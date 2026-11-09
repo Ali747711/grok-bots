@@ -65,7 +65,7 @@ function NewGroupForm({ onOpenChange, bots, onCreated }: Omit<NewGroupDialogProp
     <>
       <div className="flex flex-col gap-1.5">
         <label htmlFor="group-name" className="text-sm font-medium">Group name</label>
-        <Input id="group-name" value={name} maxLength={64} placeholder={titles.join(', ') || 'Name this group'} onChange={e => setName(e.target.value)} />
+        <Input id="group-name" value={name} maxLength={64} placeholder={titles.join(', ')} onChange={e => setName(e.target.value)} />
       </div>
       <ul className="m-0 flex max-h-64 list-none flex-col gap-0.5 overflow-y-auto p-0">
         {bots.map(bot => {
@@ -88,10 +88,11 @@ function NewGroupForm({ onOpenChange, bots, onCreated }: Omit<NewGroupDialogProp
           )
         })}
       </ul>
+      <p className="text-xs text-muted-foreground">Members are set when the group is created.</p>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-        <Button type="button" disabled={busy || picked.length < MIN_MEMBERS} onClick={() => void submit()}>Create</Button>
+        <Button type="button" disabled={busy || picked.length < MIN_MEMBERS} onClick={() => void submit()}>Create group</Button>
       </div>
     </>
   )
@@ -104,7 +105,7 @@ export function NewGroupDialog({ open, onOpenChange, bots, onCreated }: NewGroup
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>New group</DialogTitle>
-          <DialogDescription>Pick 2 to 6 bots that will talk together.</DialogDescription>
+          <DialogDescription>Pick 2–6 bots</DialogDescription>
         </DialogHeader>
         <NewGroupForm onOpenChange={onOpenChange} bots={bots} onCreated={onCreated} />
       </DialogContent>

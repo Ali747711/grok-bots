@@ -24,7 +24,7 @@ const setup = (create: () => Promise<Response>) => {
   return { fn, onCreated, onOpenChange }
 }
 const pick = (title: string) => fireEvent.click(screen.getByRole('checkbox', { name: title }))
-const create = () => screen.getByRole('button', { name: 'Create' })
+const create = () => screen.getByRole('button', { name: 'Create group' })
 afterEach(() => { vi.unstubAllGlobals(); toast.success.mockReset() })
 
 describe('NewGroupDialog', () => {
@@ -37,6 +37,14 @@ describe('NewGroupDialog', () => {
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith('r1', undefined))
     expect(JSON.parse(fn.mock.calls[0]![1]!.body as string)).toEqual({ members: ['crew-test', 'e2e1'] })
     expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  it('uses the spec copy', () => {
+    setup(() => json({}))
+    expect(screen.getByText('Members are set when the group is created.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Create group' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Group name' })).toHaveAttribute('placeholder', '')
+    expect(screen.queryByText('Pick 2 to 6 bots that will talk together.')).toBeNull()
   })
 
   it('sends a typed name and toasts the routing warning', async () => {
