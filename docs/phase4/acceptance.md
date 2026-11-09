@@ -42,3 +42,16 @@ Crew read `groups.capabilities` only on connect, so a bot created after Crew con
 ## Cleanup
 
 `deleteTestGroups()` (in `hermes-rpc.ts`) disbands only rooms whose members are all `crew-test` or `e2e<digits>`; it runs in global setup before `deleteTestBots()` and in each groups spec's afterAll. User bots' rooms are never touched.
+
+## Bug found after hand-over: Hermes's 24-message topic limit (2026-11-09)
+
+The user's group "Talk free" stopped answering after about 24 messages in one topic. Every send got `member.unavailable {prepare_failed: "Members could not be woken: turn.settled references no matching user discussion"}`.
+- **Root cause:** Hermes v0.23.0 keeps only the last 24 user and bot messages per thread for planning, and fails its own check once a kept reply has lost its user message. See `hermes-facts.md` "Known Hermes limit". Read-only check of `hosted_room_policy_transcript`: the stuck thread held exactly 24 messages, and its oldest were bot replies whose user message had been dropped.
+- **Fix** (commits `49307c9`, `cfebbc1`):
+  - Crew starts a new topic once the current one has 14 messages (24 − up to 10 replies).
+  - Keep going is hidden when it could pass the limit.
+  - Stuck groups show a banner with **Stop and start a new topic**.
+- **Live proof on a throwaway test group** (controller, about $0.04):
+  - 12 sends in one thread worked. The 13th, the thread's 25th message, broke the group with the same error.
+  - Crew reported `stuck: true`.
+  - Crew's `POST …/stop` (200), then a message in a new topic (`POST …/messages` without `threadId`, 202), got the reply "recovered", and `stuck` went back to `false`.
