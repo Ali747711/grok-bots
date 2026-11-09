@@ -8,14 +8,15 @@ const POLL_MS = 20_000
 /** One bot's triggers: loaded on mount and bot change, re-read every 20 s while mounted and after `reload()`. */
 export function useTriggers(bot: string) {
   const [triggers, setTriggers] = useState<TriggerView[] | null>(null)
-  const [error, setError] = useState(false)
+  /** The last list failure (a CrewApiError carries the server's reason), or null. */
+  const [error, setError] = useState<unknown>(null)
 
   const reload = useCallback(async () => {
     try {
       setTriggers(await listTriggers(bot))
-      setError(false)
-    } catch {
-      setError(true)
+      setError(null)
+    } catch (e) {
+      setError(e ?? new Error('list failed'))
     }
   }, [bot])
 

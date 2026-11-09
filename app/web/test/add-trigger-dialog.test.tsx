@@ -50,7 +50,7 @@ describe('AddTriggerDialog', () => {
     name('Issues')
     fireEvent.click(screen.getByRole('checkbox', { name: 'issues' }))
     create()
-    expect(await screen.findByText('Trigger ready')).toBeInTheDocument()
+    expect(await screen.findByRole('dialog', { name: 'Trigger ready' })).toBeInTheDocument()
     expect(screen.getByText(URL_)).toBeInTheDocument()
     expect(screen.getByText(SECRET)).toBeInTheDocument()
     expect(screen.getByText('The secret is shown once.')).toBeInTheDocument()

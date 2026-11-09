@@ -94,3 +94,19 @@ describe('TriggerSection', () => {
     expect(screen.getByText('This routine has 2 triggers; they will stop working.')).toBeInTheDocument()
   })
 })
+
+describe('trigger list errors', () => {
+  it('says why triggers are missing when the list fails', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: string) => (url === '/crew/bots/dev/triggers' ? json({ error: 'triggers_unavailable' }, 503) : json([routine()]))))
+    open()
+    expect(await screen.findByText("Triggers are off: Crew couldn't read its triggers file.")).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Triggers \(/ })).toBeNull()
+  })
+
+  it('shows no trigger error when the list loads', async () => {
+    stub([trig()])
+    open()
+    await screen.findByRole('button', { name: 'Triggers (1)' })
+    expect(screen.queryByText(/Triggers are off/)).toBeNull()
+  })
+})

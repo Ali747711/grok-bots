@@ -1,6 +1,7 @@
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
+import { DialogTitle } from '@/components/ui/dialog'
 
 import { curlExample, GENERIC_HELP, githubSteps } from './setup-help'
 import type { TriggerSource } from './types'
@@ -38,7 +39,7 @@ export function SecretView({ source, url, secret, events }: SecretViewProps) {
   const example = curlExample(url, secret, events[0] ?? 'test')
   return (
     <div className="flex flex-col gap-3">
-      <h2 className="text-base font-medium">Trigger ready</h2>
+      <DialogTitle>Trigger ready</DialogTitle>
       <CopyRow label="URL" value={url} button="Copy URL" />
       <CopyRow label="Secret" value={secret} button="Copy secret" />
       <p className="text-sm font-medium">The secret is shown once.</p>

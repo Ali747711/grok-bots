@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import type { BotView } from '@/state/types'
 
 import { OrphanTriggers } from '@/features/triggers/OrphanTriggers'
+import { triggerErrorText } from '@/features/triggers/triggers-api'
 import { useTriggers } from '@/features/triggers/use-triggers'
 
 import { RoutineForm } from './RoutineForm'
@@ -17,7 +18,7 @@ type Editing = { kind: 'new' } | { kind: 'edit'; routine: RoutineView } | null
 /** A bot's routines: list with run controls, and the create / edit form. */
 export function RoutinesPanel({ bot }: { bot: BotView }) {
   const { routines, error, reload } = useRoutines(bot.name)
-  const { triggers, reload: reloadTriggers } = useTriggers(bot.name)
+  const { triggers, error: triggersError, reload: reloadTriggers } = useTriggers(bot.name)
   const [editing, setEditing] = useState<Editing>(null)
   // One routine's history is open at a time.
   const [historyFor, setHistoryFor] = useState<string | null>(null)
@@ -41,6 +42,7 @@ export function RoutinesPanel({ bot }: { bot: BotView }) {
   return (
     <div className="flex flex-col gap-3 p-4">
       <Button type="button" size="sm" className="self-start rounded-full" onClick={() => setEditing({ kind: 'new' })}>New routine</Button>
+      {triggers === null && triggersError !== null && <p className="text-xs text-muted-foreground">{triggerErrorText(triggersError)}</p>}
       {routines === null && <p className="text-sm text-muted-foreground">{error ? 'Could not load routines.' : 'Loading…'}</p>}
       {routines?.length === 0 && (
         <p className="text-sm text-muted-foreground">No routines yet. Routines run on a schedule and keep their results in run history.</p>
