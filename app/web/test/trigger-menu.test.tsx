@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn() }))
+const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }))
 vi.mock('sonner', () => ({ toast }))
 
 import type { RoutineView } from '@/features/routines/types'
@@ -59,8 +59,28 @@ describe('TriggerMenu', () => {
     await waitFor(() => expect(confirm).toBeDisabled())
     fireEvent.click(confirm)
     release(new Response(JSON.stringify({ httpStatus: 202, event: null }), { status: 200 }))
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Test event: no answer'))
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith('Test event: no answer'))
     expect(calls(fn, `POST /crew/triggers/${ID}/test`)).toHaveLength(1)
+  })
+
+  it.each([
+    ['started', 'success', 'Started'],
+    ['finished', 'success', 'Finished'],
+    ['ignored', 'info', 'Ignored by the filter'],
+    ['duplicate', 'info', 'Duplicate'],
+    ['blocked', 'warning', "Blocked by Hermes's safety check"],
+    ['too_many', 'warning', 'Too many events'],
+    ['trigger_off', 'warning', 'Trigger off'],
+    ['routine_paused', 'warning', 'Routine paused'],
+    ['failed', 'warning', 'Failed'],
+    ['bad_signature', 'warning', 'Bad signature']
+  ] as const)('tones the test toast by outcome: %s -> %s', async (outcome, tone, text) => {
+    stub({ [`POST /crew/triggers/${ID}/test`]: () => json({ httpStatus: 200, event: { outcome } }) })
+    openMenu()
+    await pick('Send test event')
+    fireEvent.click(dialog().getByRole('button', { name: 'Send test event' }))
+    await waitFor(() => expect(toast[tone]).toHaveBeenCalledWith(`Test event: ${text}`))
+    for (const other of ['success', 'info', 'warning'] as const) if (other !== tone) expect(toast[other]).not.toHaveBeenCalled()
   })
 
   it('shows the server reason when the test fails', async () => {

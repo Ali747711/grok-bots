@@ -13,7 +13,7 @@ import { OUTCOME } from './outcome-format'
 import { SecretView } from './SecretView'
 import { TriggerEventsDialog } from './TriggerEventsDialog'
 import { deleteTrigger, newSecret, sendTestEvent, triggerErrorText, warnUnsaved } from './triggers-api'
-import type { TriggerView } from './types'
+import type { TriggerOutcome, TriggerView } from './types'
 
 interface TriggerMenuProps {
   trigger: TriggerView
@@ -33,6 +33,14 @@ const CONFIRM = {
     confirm: 'Delete'
   }
 } as const
+
+/** The toast tone follows what happened: a started or finished run is good news, a filtered or repeated event is neutral, the rest needs a look. */
+function testToast(outcome: TriggerOutcome | undefined): void {
+  const message = `Test event: ${outcome ? OUTCOME[outcome].text : 'no answer'}`
+  if (outcome === 'started' || outcome === 'finished') toast.success(message)
+  else if (outcome === 'ignored' || outcome === 'duplicate') toast.info(message)
+  else toast.warning(message)
+}
 
 /** The "⋯" menu of a trigger: Show events, Send test event, New secret, Delete. */
 export function TriggerMenu({ trigger, routine, onChanged }: TriggerMenuProps) {
@@ -57,7 +65,7 @@ export function TriggerMenu({ trigger, routine, onChanged }: TriggerMenuProps) {
     if (action === 'test') {
       void run(async () => {
         const { event } = await sendTestEvent(trigger.id)
-        toast.success(`Test event: ${event ? OUTCOME[event.outcome].text : 'no answer'}`)
+        testToast(event?.outcome)
         onChanged()
       })
     } else if (action === 'secret') {

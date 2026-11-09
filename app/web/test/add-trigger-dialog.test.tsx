@@ -105,6 +105,12 @@ describe('AddTriggerDialog', () => {
     expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled()
   })
 
+  it('labels the source radios with a visible Source legend', () => {
+    renderDialog()
+    expect(screen.getByText('Source', { selector: 'legend' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Source' })).toContainElement(screen.getByRole('radio', { name: 'GitHub' }))
+  })
+
   it('allows one submission at a time', async () => {
     let release: (r: Response) => void = () => {}
     const fn = stub(() => new Promise<Response>(r => { release = r }))

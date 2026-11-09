@@ -116,14 +116,17 @@ function AddTriggerBody({ bot, routine, onCreated }: Omit<AddTriggerDialogProps,
         <label htmlFor="trigger-name" className={LABEL}>Name</label>
         <Input id="trigger-name" value={form.name} maxLength={80} onChange={e => set({ name: e.target.value })} />
       </div>
-      <div role="radiogroup" aria-label="Source" className="flex gap-4">
-        {(['github', 'generic'] as const).map(source => (
-          <label key={source} className="flex cursor-pointer items-center gap-2 text-sm">
-            <input type="radio" name="trigger-source" value={source} checked={form.source === source} onChange={() => set({ source })} className="accent-foreground" />
-            <span>{source === 'github' ? 'GitHub' : 'Generic'}</span>
-          </label>
-        ))}
-      </div>
+      <fieldset className="m-0 flex min-w-0 flex-col gap-1.5 border-0 p-0">
+        <legend className={`${LABEL} mb-1`}>Source</legend>
+        <div role="radiogroup" aria-label="Source" className="flex gap-4">
+          {(['github', 'generic'] as const).map(source => (
+            <label key={source} className="flex cursor-pointer items-center gap-2 text-sm">
+              <input type="radio" name="trigger-source" value={source} checked={form.source === source} onChange={() => set({ source })} className="accent-foreground" />
+              <span>{source === 'github' ? 'GitHub' : 'Generic'}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
       <SourceFields form={form} set={set} />
       <p className="text-xs text-muted-foreground">Leave empty to accept every event.</p>
       <Alert><AlertDescription>{WARNING}</AlertDescription></Alert>

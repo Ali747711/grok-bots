@@ -24,9 +24,10 @@ function eventSummary(text: string): string {
 export function tidyCronItems(items: readonly ChatItem[], instruction: string): ChatItem[] {
   return items.flatMap((item): ChatItem[] => {
     if (item.kind !== 'user' || !item.text.trimStart().startsWith(CRON_PREAMBLE)) return [item]
-    const notice: ChatItem = { kind: 'notice', id: item.id, text: `Instruction: ${instruction}` }
-    if (!item.text.includes(EVENT_HEADING)) return [notice]
-    return [notice, { kind: 'notice', id: `${item.id}:event`, text: `Event: ${eventSummary(item.text)}` }]
+    // A trigger whose routine was deleted has no instruction to show.
+    const notice: ChatItem[] = instruction === '' ? [] : [{ kind: 'notice', id: item.id, text: `Instruction: ${instruction}` }]
+    if (!item.text.includes(EVENT_HEADING)) return notice
+    return [...notice, { kind: 'notice', id: `${item.id}:event`, text: `Event: ${eventSummary(item.text)}` }]
   })
 }
 
