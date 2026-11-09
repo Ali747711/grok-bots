@@ -75,8 +75,9 @@ function noticeText(e: GroupEvent, view: GroupView, titleOf: Titles): { text: st
       return { text: `Auto picked ${joinAnd(picked)}`, tone: 'info' }
     }
     case 'room.assignment': {
-      const lead = view.leadMemberId ?? e.memberId ?? e.actor.id
-      return { text: `${titleOf(lead)} assigned ${handlesOf(view, e.memberIds).join(', ')}`, tone: 'info' }
+      // The event names its own lead; the room's current lead may differ or be cleared. Never use the gateway actor id.
+      const lead = e.leadMemberId ?? view.leadMemberId
+      return { text: `${lead ? titleOf(lead) : 'Lead'} assigned ${handlesOf(view, e.memberIds).join(', ')}`, tone: 'info' }
     }
     case 'turn.failed':
       return { text: `${titleOf(e.memberId ?? e.actor.id)} couldn't reply: ${e.error ?? e.reasonCode ?? 'unknown reason'}`, tone: 'warn' }

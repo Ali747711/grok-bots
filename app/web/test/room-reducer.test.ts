@@ -73,6 +73,14 @@ describe('toItems', () => {
     expect(text([ev('room.context_set', { routing: 'everyone' })])).toEqual(['Replies set to Everyone'])
   })
 
+  it('names the assigning lead from the event, not the current room lead', () => {
+    const text = (e: GroupEvent, v: GroupView = view): string[] => toItems(log([e]), v, titleOf, []).flatMap(i => (i.kind === 'notice' ? [i.text] : []))
+    const gateway = { kind: 'gateway', id: 'gw-1', profile: null, displayName: null }
+    const auto = { ...view, leadMemberId: null }
+    expect(text(ev('room.assignment', { memberIds: ['reese'], leadMemberId: 'e2e1', actor: gateway }), auto)).toEqual(['E2E One assigned @reese'])
+    expect(text(ev('room.assignment', { memberIds: ['reese'], actor: gateway }), auto)).toEqual(['Lead assigned @reese'])
+  })
+
   it('hides settled, cancelled, deferred, continued, disbanded and unknown events', () => {
     expect(items([
       ev('room.activity', { status: 'settled' }), ev('turn.settled'), ev('turn.cancelled'), ev('turn.deferred'),
