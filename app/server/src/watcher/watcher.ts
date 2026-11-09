@@ -364,7 +364,7 @@ export function startWatcher(deps: WatcherDeps): Watcher {
       try {
         return await client.request<T>(method, params, timeoutMs)
       } catch (error) {
-        if (error instanceof JsonRpcGatewayError) throw new HermesRpcError(error.code ?? -1, error.message)
+        if (error instanceof JsonRpcGatewayError) throw new HermesRpcError(error.code ?? -1, error.message, error.data)
         throw error
       }
     },

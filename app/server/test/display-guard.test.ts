@@ -19,6 +19,15 @@ const errorOf = (result: ReturnType<typeof check>) => {
 }
 
 describe('checkBrowserFrame', () => {
+  it('refuses groups.* frames and still forwards session.resume', () => {
+    for (const params of [undefined, {}, { profile: 'crew-test' }]) {
+      const result = check(call('groups.list', params))
+      expect(result.forward).toBe(false)
+      expect(errorOf(result).error.code).toBe(-32601)
+    }
+    expect(check(call('session.resume', { session_id: 's' }))).toEqual({ forward: true })
+  })
+
   it('refuses display frames Hermes would mis-target', () => {
     const cases: [string, number, unknown][] = [
       [call('display.status', {}), -32602, 7],
