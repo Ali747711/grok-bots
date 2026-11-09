@@ -4,6 +4,9 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import type { BotView } from '@/state/types'
 
+import { OrphanTriggers } from '@/features/triggers/OrphanTriggers'
+import { useTriggers } from '@/features/triggers/use-triggers'
+
 import { RoutineForm } from './RoutineForm'
 import { RoutineRow } from './RoutineRow'
 import type { RoutineView } from './types'
@@ -14,9 +17,14 @@ type Editing = { kind: 'new' } | { kind: 'edit'; routine: RoutineView } | null
 /** A bot's routines: list with run controls, and the create / edit form. */
 export function RoutinesPanel({ bot }: { bot: BotView }) {
   const { routines, error, reload } = useRoutines(bot.name)
+  const { triggers, reload: reloadTriggers } = useTriggers(bot.name)
   const [editing, setEditing] = useState<Editing>(null)
   // One routine's history is open at a time.
   const [historyFor, setHistoryFor] = useState<string | null>(null)
+
+  const changed = () => { void reload(); void reloadTriggers() }
+  const of = (id: string) => triggers?.filter(t => t.routineId === id)
+  const orphans = routines && triggers ? triggers.filter(t => !routines.some(r => r.id === t.routineId)) : []
 
   if (editing) {
     return (
@@ -40,11 +48,13 @@ export function RoutinesPanel({ bot }: { bot: BotView }) {
       {routines && routines.length > 0 && (
         <ul className="flex flex-col gap-2">
           {routines.map(r => <RoutineRow
-              key={r.id} routine={r} onChanged={() => void reload()} onEdit={() => setEditing({ kind: 'edit', routine: r })}
+              key={r.id} routine={r} onChanged={changed} onEdit={() => setEditing({ kind: 'edit', routine: r })}
+              triggers={of(r.id)} triggerCount={of(r.id)?.length ?? 0}
               historyOpen={historyFor === r.id} onToggleHistory={() => setHistoryFor(cur => (cur === r.id ? null : r.id))}
             />)}
         </ul>
       )}
+      <OrphanTriggers bot={bot.name} triggers={orphans} onChanged={changed} />
     </div>
   )
 }

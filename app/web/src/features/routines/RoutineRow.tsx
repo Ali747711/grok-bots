@@ -6,7 +6,11 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 
+import { TriggerSection } from '@/features/triggers/TriggerSection'
+import type { TriggerView } from '@/features/triggers/types'
+
 import { describeSchedule } from './describe-schedule'
+import { GHOST, SWITCH } from './row-styles'
 import { RunHistory } from './RunHistory'
 import { CrewApiError, deleteRoutine, pauseRoutine, resumeRoutine, runRoutine } from './routines-api'
 import type { LastStatus, RoutineView } from './types'
@@ -19,9 +23,7 @@ const RESULT: Record<LastStatus, { text: string; tone: string }> = {
   blocked_config: { text: 'Config problem', tone: 'bg-warn-soft text-warn-ink' }
 }
 
-/** Ghost buttons on the muted row card need their own visible hover and open states. */
-// dark:hover:bg-card is needed because the ghost variant's own dark:hover:bg-muted/50 would otherwise win in dark.
-const GHOST = 'hover:bg-card dark:hover:bg-card aria-expanded:bg-card'
+export { GHOST }
 
 interface RoutineRowProps {
   routine: RoutineView
@@ -31,6 +33,8 @@ interface RoutineRowProps {
   onToggleHistory: () => void
   /** How many triggers fire this routine (Task 8 passes it); used in the delete warning. */
   triggerCount?: number
+  /** This routine's triggers, listed in a disclosure under the row. */
+  triggers?: readonly TriggerView[]
 }
 
 /** Every action ends with a re-read; a failure shows as a note on the row. */
@@ -74,7 +78,7 @@ function PauseSwitch({ routine, onToggle }: { routine: RoutineView; onToggle: ()
       checked={routine.enabled}
       onCheckedChange={onToggle}
       aria-label={`${routine.title} enabled`}
-      className="data-checked:bg-foreground data-unchecked:border-muted-foreground"
+      className={SWITCH}
     />
   )
 }
@@ -93,7 +97,7 @@ function StatusLine({ routine }: { routine: RoutineView }) {
 }
 
 /** One routine: schedule, next run, last result, pause switch, Run now, Edit, Delete (with confirmation). */
-export function RoutineRow({ routine, onChanged, onEdit, historyOpen, onToggleHistory, triggerCount = 0 }: RoutineRowProps) {
+export function RoutineRow({ routine, onChanged, onEdit, historyOpen, onToggleHistory, triggerCount = 0, triggers }: RoutineRowProps) {
   const [confirming, setConfirming] = useState(false)
   const { note, runTick, run, toggle, remove } = useRowActions(routine, onChanged)
 
@@ -125,6 +129,7 @@ export function RoutineRow({ routine, onChanged, onEdit, historyOpen, onToggleHi
           <Button type="button" size="sm" variant="ghost" onClick={() => setConfirming(true)} className={GHOST}>Delete</Button>
         </div>
       )}
+      {triggers && <TriggerSection bot={routine.bot} routine={routine} triggers={triggers} onChanged={onChanged} />}
       {historyOpen && <RunHistory bot={routine.bot} routineId={routine.id} timezone={routine.timezone} instruction={routine.instruction} refreshKey={runTick} />}
     </li>
   )
