@@ -47,6 +47,13 @@ describe('App routes', () => {
     expect(await screen.findByRole('heading', { name: 'Launch' })).toBeInTheDocument()
   })
 
+  it('opens the group panel for ?panel=group', async () => {
+    hook.value = { state: crewState({ bots: [bot({ name: 'dev', title: 'Dev' })], groups: { available: true, seatable: ['dev'], rooms: [group({ id: 'r1', name: 'Launch', members: [gm('dev')] })] } }), connected: true }
+    renderAt('/groups/r1?panel=group')
+    expect(await screen.findByText('Group details')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete group' })).toBeInTheDocument()
+  })
+
   it('falls back to / for an unknown group after the grace period', async () => {
     vi.useFakeTimers()
     renderAt('/groups/nope')

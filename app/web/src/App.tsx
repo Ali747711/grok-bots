@@ -5,6 +5,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { NewBotDialog } from '@/features/bots/NewBotDialog'
 import { ChatView } from '@/features/chat/ChatView'
 import { GroupChatView } from '@/features/groups/GroupChatView'
+import { GroupPanel } from '@/features/groups/GroupPanel'
 import { NewGroupDialog } from '@/features/groups/NewGroupDialog'
 import { NeedsYouPage } from '@/features/needs-you/NeedsYouPage'
 import { BotPanel, isPanelTab, type PanelTab } from '@/features/panel/BotPanel'
@@ -103,7 +104,7 @@ function useLeaveDeletedBot(state: CrewState | null, selected: string | null, go
 }
 
 /** The open panel tab lives in the `?panel=` search param so a reload keeps it. */
-function usePanelParams(selected: string | null) {
+function usePanelParams(selected: string | null, selectedGroupId: string | null) {
   const [params, setParams] = useSearchParams()
   const requested = params.get('panel')
   const edit = (change: (next: URLSearchParams) => void) => setParams(prev => {
@@ -113,6 +114,7 @@ function usePanelParams(selected: string | null) {
   })
   return {
     panel: selected && isPanelTab(requested) ? requested : null,
+    groupPanel: selectedGroupId !== null && requested === 'group',
     // Clicking the open tab closes the panel.
     togglePanel: (tab: PanelTab) => edit(next => (next.get('panel') === tab ? next.delete('panel') : next.set('panel', tab))),
     selectPanel: (tab: PanelTab) => edit(next => next.set('panel', tab)),
@@ -133,7 +135,8 @@ export default function App() {
   const groupBots = (state?.bots ?? []).filter(b => !b.hidden && seatable.has(b.name))
 
   useLeaveDeletedBot(state, selected, goHome)
-  const { panel, togglePanel, selectPanel, closePanel } = usePanelParams(selected)
+  const { panel, groupPanel, togglePanel, selectPanel, closePanel } = usePanelParams(selected, selectedGroupId)
+  const panelGroup = groupPanel ? state?.groups?.rooms.find(r => r.id === selectedGroupId) : undefined
   const panelBot = panel ? state?.bots.find(b => b.name === selected) : undefined
 
   return (
@@ -162,8 +165,12 @@ export default function App() {
             <Route path="*" element={<Navigate replace to="/" />} />
           </Routes>
         }
-        panel={panelBot && panel ? <PanelBoundary key={`${panelBot.name}-${panel}`}><BotPanel bot={panelBot} tab={panel} onTab={selectPanel} onClose={closePanel} /></PanelBoundary> : null}
-        panelOpen={panelBot !== undefined}
+        panel={panelGroup ? (
+          <PanelBoundary key={`group-${panelGroup.id}`}>
+            <GroupPanel view={panelGroup} bots={state?.bots ?? []} onDeleted={() => navigate('/', { replace: true })} onClose={closePanel} />
+          </PanelBoundary>
+        ) : panelBot && panel ? <PanelBoundary key={`${panelBot.name}-${panel}`}><BotPanel bot={panelBot} tab={panel} onTab={selectPanel} onClose={closePanel} /></PanelBoundary> : null}
+        panelOpen={panelBot !== undefined || panelGroup !== undefined}
       />
       <NewGroupDialog open={newGroupOpen} onOpenChange={setNewGroupOpen} bots={groupBots} onCreated={roomId => navigate(`/groups/${encodeURIComponent(roomId)}`)} />
       <NewBotDialog open={newBotOpen} onOpenChange={setNewBotOpen} onCreated={name => navigate(`/bots/${encodeURIComponent(name)}`)} />
