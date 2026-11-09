@@ -244,6 +244,25 @@ describe('DELETE', () => {
   })
 })
 
+describe('DELETE against real Hermes', () => {
+  it('treats the internal error (-32603) as still stopping', async () => {
+    const internal = new HermesRpcError(-32603, 'internal error')
+    rpc.disband.mockRejectedValueOnce(internal).mockRejectedValueOnce(internal)
+    expect((await send('DELETE', '/crew/groups/r1')).status).toBe(204)
+    expect(sleeps).toEqual([1000, 1000])
+    rpc.disband.mockReset().mockRejectedValue(internal)
+    const res = await send('DELETE', '/crew/groups/r1')
+    expect(res.status).toBe(409)
+    expect(await res.json()).toEqual({ error: 'still_stopping' })
+    expect(rpc.disband).toHaveBeenCalledTimes(10)
+  })
+
+  it('still maps other disband errors to 502', async () => {
+    rpc.disband.mockRejectedValueOnce(rpcError('boom', { reason: 'x', detail: 'bad' }))
+    expect((await send('DELETE', '/crew/groups/r1')).status).toBe(502)
+  })
+})
+
 describe('errors and guards', () => {
   it('answers 404 for an unknown room and 503 when Hermes is offline', async () => {
     rpc.log.mockRejectedValueOnce(rpcError('denied', { reason: 'permission_denied' }))

@@ -51,6 +51,13 @@ const eventsQuery = z.object({
 const detailOf = (error: unknown): string =>
   (groupErrorReason(error)?.detail ?? (error instanceof HermesRpcError ? error.message : 'request failed')).slice(0, 300)
 
+/**
+ * Hermes raises "room work is still stopping" as a bare RuntimeError, which its socket answers as
+ * -32603 "internal error" with no data; the message only shows when a handler maps it.
+ */
+const isStillStopping = (error: unknown): boolean =>
+  error instanceof HermesRpcError && (error.code === -32603 || /still stopping/i.test(error.message))
+
 /** `/crew/groups` family: thin, validated pass-throughs to Hermes rooms (always as the owner profile). */
 export function groupRoutes(deps: GroupRouteDeps | undefined): Hono<CrewEnv> {
   const routes = new Hono<CrewEnv>()
@@ -206,7 +213,7 @@ export function groupRoutes(deps: GroupRouteDeps | undefined): Hono<CrewEnv> {
         settle(d.groups.refreshList())
         return c.body(null, 204)
       } catch (error) {
-        if (!(error instanceof HermesRpcError) || !/still stopping/i.test(error.message)) throw error
+        if (!isStillStopping(error)) throw error
         if (attempt < DISBAND_TRIES) await d.sleep(DISBAND_WAIT_MS)
       }
     }
