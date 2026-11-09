@@ -6,6 +6,9 @@ import { type RawData, WebSocket, WebSocketServer } from 'ws'
 import type { CrewConfig } from '../config.js'
 import { isAllowedUpgrade } from '../http/session-guard.js'
 import { log } from '../log.js'
+import { closeReason, forwardableCode } from './close-codes.js'
+import { checkBrowserFrame } from './display-guard.js'
+import { DISPLAY_CLIENT_MAX_PAYLOAD, attachDisplayBridge } from './display-proxy.js'
 import type { HermesToken } from './token.js'
 
 export interface WsProxyDeps {
@@ -13,21 +16,18 @@ export interface WsProxyDeps {
   readonly token: HermesToken
   readonly cookieKey: Buffer
   readonly now: () => number
+  /** Names of the bots Crew knows (the roster, including `default`); `display.*` frames must name one. */
+  readonly knownBots: () => ReadonlySet<string>
 }
 
 const PROXIED_PATH = '/api/ws'
+const DISPLAY_PATH = '/api/display/ws'
 const MAX_PENDING_FRAMES = 64
 /** Far above any JSON-RPC frame; ws's 100 MiB default would let one client exhaust memory. */
 const MAX_PAYLOAD_BYTES = 16 * 1024 * 1024
 const SERVICE_RESTART = 1012
 const TRY_AGAIN_LATER = 1013
 const BAD_CREDENTIAL = 4401
-
-/** Close codes a server may send; everything else (1005/1006 = no status / abnormal) becomes 1012. */
-function forwardableCode(code: number): number {
-  const valid = (code >= 1000 && code <= 1003) || (code >= 1007 && code <= 1011) || (code >= 3000 && code <= 4999)
-  return valid ? code : SERVICE_RESTART
-}
 
 function refuse(socket: Duplex, status: number, text: string): void {
   socket.end(`HTTP/1.1 ${status} ${text}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`)
@@ -55,6 +55,11 @@ async function bridge(client: WebSocket, deps: WsProxyDeps): Promise<void> {
   }
 
   client.on('message', (data, isBinary) => {
+    const verdict = checkBrowserFrame(data, isBinary, deps.knownBots)
+    if (!verdict.forward) {
+      if (verdict.reply && client.readyState === WebSocket.OPEN) client.send(verdict.reply)
+      return
+    }
     if (upstream.readyState === WebSocket.OPEN) return upstream.send(data, { binary: isBinary })
     if (pending.length >= MAX_PENDING_FRAMES) return client.close(TRY_AGAIN_LATER, 'upstream not ready')
     pending = [...pending, { data, isBinary }]
@@ -78,7 +83,7 @@ async function bridge(client: WebSocket, deps: WsProxyDeps): Promise<void> {
   })
   upstream.on('close', (code, reason) => {
     if (code === BAD_CREDENTIAL) void deps.token.refresh().catch(() => undefined)
-    if (client.readyState === WebSocket.OPEN) client.close(forwardableCode(code), reason.toString().slice(0, 120))
+    if (client.readyState === WebSocket.OPEN) client.close(forwardableCode(code), closeReason(reason.toString()))
   })
   upstream.on('error', error => {
     log.warn('hermes websocket error', { error: error.name })
@@ -89,12 +94,16 @@ async function bridge(client: WebSocket, deps: WsProxyDeps): Promise<void> {
 /** Handle WebSocket upgrades on the Crew server: only `/api/ws`, only with Host + Origin + session. */
 export function attachWsProxy(server: Server, deps: WsProxyDeps): void {
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD_BYTES })
+  const displayWss = new WebSocketServer({ noServer: true, maxPayload: DISPLAY_CLIENT_MAX_PAYLOAD, perMessageDeflate: false })
   server.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
     // Node drops its own socket error listener before 'upgrade'; a client reset would otherwise crash us.
     socket.on('error', () => socket.destroy())
     const path = new URL(req.url ?? '/', 'http://crew.invalid').pathname
-    if (path !== PROXIED_PATH) return refuse(socket, 404, 'Not Found')
+    if (path !== PROXIED_PATH && path !== DISPLAY_PATH) return refuse(socket, 404, 'Not Found')
     if (!isAllowedUpgrade(req, deps.config, deps.cookieKey, deps.now())) return refuse(socket, 403, 'Forbidden')
+    if (path === DISPLAY_PATH) {
+      return displayWss.handleUpgrade(req, socket, head, client => attachDisplayBridge(client, req, { config: deps.config }))
+    }
     wss.handleUpgrade(req, socket, head, client => {
       void bridge(client, deps)
     })

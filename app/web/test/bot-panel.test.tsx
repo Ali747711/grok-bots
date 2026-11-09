@@ -80,6 +80,37 @@ describe('panel in the app', () => {
   })
 })
 
+describe('Computer tab', () => {
+  beforeEach(() => {
+    client.handlers['display.status'] = () => ({ profile: 'dev', supported: true, installed: true, missing: [], running: false, geometry: '1440x900', profile_key: '/h/dev', lease: { holder: 'agent', since: 1, epoch: 1 } })
+  })
+
+  it('opens the Computer tab from the header button and ?panel=computer', async () => {
+    renderAt('/bots/dev')
+    await screen.findByRole('heading', { name: 'Dev' })
+    fireEvent.click(screen.getByRole('button', { name: 'Computer' }))
+    expect(await screen.findByRole('button', { name: 'Start screen' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Computer' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('button', { name: 'Computer' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Computer' })).toHaveClass('bg-foreground', 'text-background')
+  })
+
+  it('opens from ?panel=computer on a reload', async () => {
+    renderAt('/bots/dev?panel=computer')
+    expect(await screen.findByRole('button', { name: 'Start screen' })).toBeInTheDocument()
+  })
+
+  it('keeps e2e selectors for Routines and Profile working', async () => {
+    renderAt('/bots/dev?panel=computer')
+    await screen.findByRole('button', { name: 'Start screen' })
+    expect(screen.getAllByRole('tab').map(t => t.textContent)).toEqual(['Computer', 'Routines', 'Profile'])
+    fireEvent.click(screen.getByRole('button', { name: 'Routines' }))
+    expect(await screen.findByRole('button', { name: 'New routine' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Profile' }))
+    expect(await screen.findByLabelText('Name')).toBeInTheDocument()
+  })
+})
+
 describe('W7: a bot deleted elsewhere', () => {
   const rerenderAt = (path: string) => {
     const view = render(<MemoryRouter initialEntries={[path]}><App /></MemoryRouter>)

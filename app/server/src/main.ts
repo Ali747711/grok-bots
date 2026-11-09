@@ -57,7 +57,9 @@ export async function start(): Promise<Server> {
   const server = serve({ fetch: app.fetch, hostname: config.host, port: config.port }, info => {
     log.info('crew listening', { host: config.host, port: info.port })
   }) as Server
-  attachWsProxy(server, { config, token, cookieKey: secrets.cookie, now: Date.now })
+  // The primary bot is a bot too; the roster may not list it before the first sync.
+  const knownBots = (): ReadonlySet<string> => new Set(['default', ...watcher.state().bots.map(bot => bot.name)])
+  attachWsProxy(server, { config, token, cookieKey: secrets.cookie, now: Date.now, knownBots })
   return server
 }
 
