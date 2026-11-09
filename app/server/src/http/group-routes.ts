@@ -99,12 +99,18 @@ export function groupRoutes(deps: GroupRouteDeps | undefined): Hono<CrewEnv> {
     return run(c, async () => {
       const roomId = d.newId()
       await d.rpc.create({ roomId, name: groupName, members: buildMemberRows(parsed.members, displayNames) })
-      settle(d.groups.refreshList())
+      // The list is refreshed after routing is set, so the group reaches the browser already on Auto
+      // (an unknown group would bounce the user home after the grace period). A refresh error never fails the reply.
+      const refreshed = async (): Promise<void> => {
+        await d.groups.refreshList().catch(() => undefined)
+      }
       try {
         await d.rpc.setContext(roomId, { routing: 'auto', leadMemberId: '', purpose: '', notes: '' })
+        await refreshed()
         return c.json({ roomId, routing: 'auto' }, 201)
       } catch (error) {
         log.warn('group routing not set', { message: error instanceof Error ? error.message.slice(0, 200) : 'unknown' })
+        await refreshed()
         return c.json({ roomId, routing: 'everyone', warning: 'routing_not_set' }, 201)
       }
     })

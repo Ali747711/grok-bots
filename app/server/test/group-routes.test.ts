@@ -79,6 +79,27 @@ describe('POST /crew/groups', () => {
     expect(refreshList).toHaveBeenCalled()
   })
 
+  it('refreshes the list after the routing is set and before answering', async () => {
+    const order: string[] = []
+    rpc.setContext.mockImplementationOnce(async (_id: string, ctx: Record<string, unknown>) => { order.push('context'); return { routing: ctx.routing, lead_member_id: '', purpose: '', notes: '' } })
+    let release: () => void = () => undefined
+    refreshList.mockImplementation(() => { order.push('refresh'); return new Promise<void>(r => { release = r }) })
+    let answered = false
+    const pending = send('POST', '/crew/groups', { members: ['a', 'b'] }).then(r => { answered = true; return r })
+    await new Promise(r => setTimeout(r, 20))
+    expect(order).toEqual(['context', 'refresh'])
+    expect(answered).toBe(false)
+    release()
+    expect((await pending).status).toBe(201)
+  })
+
+  it('still answers 201 when the list refresh fails', async () => {
+    refreshList.mockRejectedValue(new Error('down'))
+    const res = await send('POST', '/crew/groups', { members: ['a', 'b'] })
+    expect(res.status).toBe(201)
+    expect(await res.json()).toEqual({ roomId: 'id1', routing: 'auto' })
+  })
+
   it('still answers 201 with a warning when the context write fails', async () => {
     rpc.setContext.mockRejectedValueOnce(rpcError('nope'))
     const res = await send('POST', '/crew/groups', { members: ['a', 'b'] })
