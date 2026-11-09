@@ -7,6 +7,8 @@ import { log } from '../log.js'
 import {
   DELIVERY_IDS_MAX,
   EVENT_LOG_MAX,
+  TRIGGER_OUTCOMES,
+  TRIGGER_SOURCES,
   type EventPatch,
   type Trigger,
   type TriggerEvent,
@@ -14,10 +16,10 @@ import {
   type TriggerRun
 } from './types.js'
 
-const outcome = z.enum(['started', 'finished', 'failed', 'blocked', 'ignored', 'duplicate', 'bad_signature', 'too_many', 'trigger_off', 'routine_paused', 'too_large'])
+const outcome = z.enum(TRIGGER_OUTCOMES)
 const triggerSchema = z.object({
   id: z.string(), bot: z.string(), routineId: z.string(), name: z.string(),
-  source: z.enum(['github', 'generic']), events: z.array(z.string()), actions: z.array(z.string()),
+  source: z.enum(TRIGGER_SOURCES), events: z.array(z.string()), actions: z.array(z.string()),
   enabled: z.boolean(), secret: z.string(), createdAt: z.number()
 })
 const eventSchema = z.object({
@@ -42,6 +44,11 @@ const EMPTY: State = { triggers: [], events: {}, deliveries: {} }
 /** Newest 50 events, plus any older `started` ones: those are still being watched (R7). */
 function trimLog(events: readonly TriggerEvent[]): readonly TriggerEvent[] {
   return events.filter((e, i) => i < EVENT_LOG_MAX || e.outcome === 'started')
+}
+
+/** A patch key set to `undefined` would be dropped by JSON and make the saved file unloadable. */
+function defined<T extends object>(patch: T): Partial<T> {
+  return Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)) as Partial<T>
 }
 
 function withoutKey<T>(record: Readonly<Record<string, T>>, key: string): Record<string, T> {
@@ -105,7 +112,7 @@ export class TriggerStore {
   async update(id: string, patch: TriggerPatch): Promise<Trigger | undefined> {
     const current = this.get(id)
     if (!current) return undefined
-    const next: Trigger = { ...current, ...patch }
+    const next: Trigger = { ...current, ...defined(patch) }
     this.state = { ...this.state, triggers: this.state.triggers.map(t => (t.id === id ? next : t)) }
     await this.queueWrite()
     return next
@@ -143,7 +150,7 @@ export class TriggerStore {
   async patchEvent(id: string, eventId: string, patch: EventPatch): Promise<TriggerEvent | undefined> {
     const current = this.events(id).find(e => e.id === eventId)
     if (!current) return undefined
-    const next: TriggerEvent = { ...current, ...patch }
+    const next: TriggerEvent = { ...current, ...defined(patch) }
     this.state = { ...this.state, events: { ...this.state.events, [id]: this.events(id).map(e => (e.id === eventId ? next : e)) } }
     await this.queueWrite()
     return next

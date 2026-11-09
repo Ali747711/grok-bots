@@ -1,17 +1,21 @@
-export type TriggerSource = 'github' | 'generic'
+export const TRIGGER_SOURCES = ['github', 'generic'] as const
+export type TriggerSource = (typeof TRIGGER_SOURCES)[number]
 
-export type TriggerOutcome =
-  | 'started'
-  | 'finished'
-  | 'failed'
-  | 'blocked'
-  | 'ignored'
-  | 'duplicate'
-  | 'bad_signature'
-  | 'too_many'
-  | 'trigger_off'
-  | 'routine_paused'
-  | 'too_large'
+/** The store's file schema uses this same list, so a new outcome cannot be saved yet rejected on load. */
+export const TRIGGER_OUTCOMES = [
+  'started',
+  'finished',
+  'failed',
+  'blocked',
+  'ignored',
+  'duplicate',
+  'bad_signature',
+  'too_many',
+  'trigger_off',
+  'routine_paused',
+  'too_large'
+] as const
+export type TriggerOutcome = (typeof TRIGGER_OUTCOMES)[number]
 
 export interface Trigger {
   readonly id: string

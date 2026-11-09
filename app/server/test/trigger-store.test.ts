@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { setLogSink } from '../src/log.js'
 import { TriggerStore } from '../src/triggers/store.js'
-import { jobNameFor, toView, type Trigger, type TriggerEvent } from '../src/triggers/types.js'
+import { jobNameFor, toView, TRIGGER_OUTCOMES, TRIGGER_SOURCES, type Trigger, type TriggerEvent } from '../src/triggers/types.js'
 
 let dir: string
 let file: string
@@ -147,6 +147,30 @@ describe('TriggerStore', () => {
     expect(again.all()).toEqual([])
     expect(again.events(id)).toEqual([])
     expect(again.seenDelivery(id, 'd1')).toBe(false)
+  })
+
+  it('survives patches carrying undefined values', async () => {
+    const store = await TriggerStore.load(file)
+    const id = 'a'.repeat(32)
+    await store.add(trigger())
+    await store.logEvent(id, event(1, { outcome: 'started' }))
+    await store.patchEvent(id, 'e1', { runId: undefined, outcome: 'finished' } as never)
+    await store.update(id, { name: undefined, enabled: false } as never)
+    const again = await TriggerStore.load(file)
+    expect(again.all()).toHaveLength(1)
+    expect(again.get(id)).toMatchObject({ name: 'Pushes', enabled: false, secret: 's3cret' })
+    expect(again.events(id)[0]).toMatchObject({ runId: null, outcome: 'finished' })
+    expect((await readdir(dir)).filter(f => f.includes('corrupt'))).toEqual([])
+  })
+
+  it('round-trips every outcome and source', async () => {
+    const store = await TriggerStore.load(file)
+    await store.add(trigger({ source: 'generic' }))
+    for (const [i, outcome] of TRIGGER_OUTCOMES.entries()) await store.logEvent('a'.repeat(32), event(i, { outcome }))
+    const again = await TriggerStore.load(file)
+    expect(again.events('a'.repeat(32))).toHaveLength(TRIGGER_OUTCOMES.length)
+    expect(again.get('a'.repeat(32))?.source).toBe('generic')
+    expect(TRIGGER_SOURCES).toEqual(['github', 'generic'])
   })
 
   it('toView never includes the secret', () => {
