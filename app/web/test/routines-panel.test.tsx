@@ -320,18 +320,32 @@ describe('RoutinesPanel event-only routines', () => {
     expect(body(callsTo(fn, 'PUT /crew/routines/r1?bot=dev')[0])).toMatchObject({ runs: 'schedule' })
   })
 
-  it('edits an event-only routine starting in Only when triggered', async () => {
-    const fn = stub({ [LIST]: () => json([routine({ triggerOnly: true })]), 'PUT /crew/routines/r1?bot=dev': () => json(routine({ triggerOnly: true })) })
+  const PLACEHOLDER = { kind: 'cron', expr: '0 3 1 1 *' } as const
+  const triggerOnly = () => routine({ triggerOnly: true, schedule: PLACEHOLDER, scheduleText: '0 3 1 1 *' })
+  const PUT = 'PUT /crew/routines/r1?bot=dev'
+
+  it('edits an event-only routine starting in Only when triggered, and never pre-fills the yearly placeholder', async () => {
+    const fn = stub({ [LIST]: () => json([triggerOnly()]), [PUT]: () => json(triggerOnly()) })
     open()
     fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
     expect(screen.getByRole('radio', { name: 'Only when triggered' })).toBeChecked()
     expect(screen.queryByRole('combobox', { name: 'When' })).toBeNull()
     fireEvent.click(screen.getByRole('radio', { name: 'On a schedule' }))
     expect(screen.getByRole('combobox', { name: 'When' })).toHaveTextContent('Every day')
-    choose()
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
-    await waitFor(() => expect(callsTo(fn, 'PUT /crew/routines/r1?bot=dev')).toHaveLength(1))
-    expect(body(callsTo(fn, 'PUT /crew/routines/r1?bot=dev')[0])).toMatchObject({ runs: 'triggered' })
+    await waitFor(() => expect(callsTo(fn, PUT)).toHaveLength(1))
+    expect(body(callsTo(fn, PUT)[0])).toMatchObject({ runs: 'schedule', schedule: { kind: 'daily', time: '09:00' } })
+  })
+
+  it('an edit that stays in Only when triggered sends runs and no timezoneChanged', async () => {
+    const fn = stub({ [LIST]: () => json([triggerOnly()]), [PUT]: () => json(triggerOnly()) })
+    open()
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(callsTo(fn, PUT)).toHaveLength(1))
+    const sent = body(callsTo(fn, PUT)[0])
+    expect(sent.runs).toBe('triggered')
+    expect(sent).not.toHaveProperty('timezoneChanged')
   })
 
   it('shows an event-only routine with no switch and Run now', async () => {

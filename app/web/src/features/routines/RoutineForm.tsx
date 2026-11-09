@@ -66,13 +66,16 @@ function NextRuns({ schedule, timezone }: { schedule: ScheduleSpec; timezone: st
 }
 
 /** True only when the user changed the zone select or the schedule; otherwise the server keeps the stored zone (even none). */
-const zoneOrScheduleChanged = (initial: RoutineView, schedule: ScheduleSpec, timezone: string): boolean =>
-  timezone !== (initial.timezone ?? browserZone()) || JSON.stringify(schedule) !== JSON.stringify(initial.schedule)
+const zoneOrScheduleChanged = (initial: RoutineView, seed: ScheduleSpec, schedule: ScheduleSpec, timezone: string): boolean =>
+  timezone !== (initial.timezone ?? browserZone()) || JSON.stringify(schedule) !== JSON.stringify(seed)
+
+/** A trigger-only routine stores Hermes's yearly placeholder; never offer that as a schedule. */
+const seedSchedule = (initial?: RoutineView): ScheduleSpec => (initial && !initial.triggerOnly ? initial.schedule : DEFAULT_SCHEDULE)
 
 function useRoutineDraft({ bot, initial, onSaved }: Omit<RoutineFormProps, 'onCancel'>) {
   const [title, setTitle] = useState(initial?.title ?? '')
   const [instruction, setInstruction] = useState(initial?.instruction ?? '')
-  const [schedule, setSchedule] = useState<ScheduleSpec>(initial?.schedule ?? DEFAULT_SCHEDULE)
+  const [schedule, setSchedule] = useState<ScheduleSpec>(seedSchedule(initial))
   const [timezone, setTimezone] = useState(initial?.timezone ?? browserZone())
   const [runs, setRuns] = useState<Runs>(initial?.triggerOnly ? 'triggered' : 'schedule')
   const [deliverToChat, setDeliverToChat] = useState(initial?.deliverToChat ?? false)
@@ -80,7 +83,7 @@ function useRoutineDraft({ bot, initial, onSaved }: Omit<RoutineFormProps, 'onCa
   const [error, setError] = useState<string | null>(null)
 
   const save = async () => {
-    const input: RoutineInput = { title: title.trim(), instruction: instruction.trim(), schedule, timezone, deliverToChat, runs, ...(initial ? { timezoneChanged: zoneOrScheduleChanged(initial, schedule, timezone) } : {}) }
+    const input: RoutineInput = { title: title.trim(), instruction: instruction.trim(), schedule, timezone, deliverToChat, runs, ...(initial && runs === 'schedule' ? { timezoneChanged: zoneOrScheduleChanged(initial, seedSchedule(initial), schedule, timezone) } : {}) }
     setBusy(true)
     setError(null)
     try {
