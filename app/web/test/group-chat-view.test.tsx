@@ -119,6 +119,21 @@ describe('GroupChatView', () => {
     expect(await screen.findByText('Older messages are in Hermes.')).toBeInTheDocument()
   })
 
+  it('shows an error with Try again after a failed fetch', async () => {
+    api.fetchGroupEvents.mockRejectedValueOnce(new Error('Hermes is offline'))
+    mount(state(room()))
+    expect(await screen.findByText('Hermes is offline', { selector: 'p[data-testid="room-error"]' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByTestId('member-message')).toBeInTheDocument()
+    expect(screen.queryByTestId('room-error')).toBeNull()
+  })
+
+  it('hides Stop in the composer and header while stale', async () => {
+    mount(state(room({ working: true })), false)
+    await screen.findByTestId('member-message')
+    expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull()
+  })
+
   it('disables the composer while Hermes is offline', async () => {
     mount(state(room(), { hermes: 'offline' }))
     expect(await screen.findByText('Hermes is offline')).toBeInTheDocument()

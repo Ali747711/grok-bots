@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { Link } from 'react-router-dom'
 
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { composerDisabledReason, DEFAULT_MAX_WORKING_BOTS } from '@/features/chat/disabled-reason'
 import { submitAnswer } from '@/features/requests/answer-request'
@@ -46,8 +47,8 @@ function ChatSkeleton() {
 function GroupChat({ state, crewConnected, group, panelOpen, onPanel }: Omit<GroupChatViewProps, 'roomId'> & { group: GroupView }) {
   const bots: readonly BotView[] = state.bots
   const titleOf = useCallback((memberId: string) => memberTitle(group, bots, memberId), [group, bots])
-  const room = useGroupRoom(group, titleOf)
   const stale = state.hermes !== 'connected' || !crewConnected
+  const room = useGroupRoom(group, titleOf, !stale)
   const profiles = new Set(group.members.map(m => m.profile))
   // A group runs one member at a time, so only bots outside it count against the limit.
   const othersWorking = bots.filter(b => b.status === 'working' && !profiles.has(b.name)).length
@@ -71,7 +72,12 @@ function GroupChat({ state, crewConnected, group, panelOpen, onPanel }: Omit<Gro
       ) : (
         <GroupMessageList items={room.items} group={group} bots={bots} cut={room.cut} onRetry={id => void room.retrySend(id)} onKeepGoing={id => void room.keepGoing(id)} footer={footer} />
       )}
-      {room.error && <p role="status" className="px-6 text-center text-xs text-muted-foreground">{room.error}</p>}
+      {room.error && (
+        <div role="status" className="flex items-center justify-center gap-2 px-6 text-xs text-muted-foreground">
+          <p data-testid="room-error">{room.error}</p>
+          <Button type="button" size="xs" variant="outline" onClick={() => void room.retry()}>Try again</Button>
+        </div>
+      )}
       {requests.length > 0 && (
         <div className="max-h-[40vh] flex-none overflow-y-auto px-6 pt-2">
           <div className="mx-auto flex max-w-[720px] flex-col gap-2">
@@ -86,7 +92,7 @@ function GroupChat({ state, crewConnected, group, panelOpen, onPanel }: Omit<Gro
         members={bots}
         titleOf={titleOf}
         firstInTopic={room.topic === null}
-        running={group.working}
+        running={group.working && !stale}
         disabledReason={reason}
         onSend={(text, opts) => void room.send(text, opts)}
         onStop={() => void room.stop()}
