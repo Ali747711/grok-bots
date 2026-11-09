@@ -19,7 +19,7 @@ import { spaRoutes } from './http/spa.js'
 import type { RoutineService } from './routines/service.js'
 import type { SettingsStore } from './settings/settings-store.js'
 import type { UsageSource } from './usage/openrouter.js'
-import type { Watcher } from './watcher/watcher.js'
+import type { CrewStateSource } from './state/crew-state.js'
 
 export interface AppDeps {
   readonly config: CrewConfig
@@ -37,7 +37,7 @@ export interface AppDeps {
   readonly bots?: BotDeps
   /** Absent in tests that don't need it; /crew/routines then answers 503 hermes_offline. */
   readonly routines?: RoutineService
-  readonly watcher?: Pick<Watcher, 'store' | 'debug' | 'state' | 'onChange' | 'answer' | 'getAvatar'>
+  readonly watcher?: CrewStateSource
 }
 
 export const PUBLIC_PATHS = [

@@ -1,4 +1,5 @@
 import { type CrewAvatar, readCrewAvatar } from '../bots/avatar.js'
+import type { GroupsState } from '../groups/types.js'
 import type { CrewSettings } from '../settings/settings-store.js'
 import type { PendingRequest } from './pending-store.js'
 import type { WatcherEvent } from './request-router.js'
@@ -38,7 +39,11 @@ export interface CrewState {
   readonly bots: readonly BotView[]
   readonly pending: readonly PendingView[]
   readonly settings: CrewSettings
+  readonly groups: GroupsState
 }
+
+/** What the watcher itself knows; the composed facade adds `groups`. */
+export type WatcherState = Omit<CrewState, 'groups'>
 
 /** The roster fields Crew reads from a `profiles.list` row (all optional on the wire). */
 export interface ProfileInput {
