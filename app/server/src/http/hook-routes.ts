@@ -1,6 +1,8 @@
 import { Hono } from 'hono'
+import { log } from '../log.js'
 
 import { type HookHandler, MAX_HOOK_BYTES } from '../triggers/hook-handler.js'
+import { TRIGGER_ID_RE } from '../triggers/types.js'
 import type { CrewEnv } from './session-guard.js'
 
 /**
@@ -32,9 +34,17 @@ export function hookRoutes(handler: HookHandler | undefined): Hono<CrewEnv> {
   const routes = new Hono<CrewEnv>()
   routes.post('/hooks/:id', async c => {
     if (!handler) return c.json({ error: 'triggers_unavailable' }, 503)
-    const raw = await readLimited(c.req.raw, MAX_HOOK_BYTES)
-    const result = await handler.handle(c.req.param('id'), raw, c.req.raw.headers)
-    return c.json(result.body, result.status)
+    const id = c.req.param('id')
+    try {
+      const raw = await readLimited(c.req.raw, MAX_HOOK_BYTES)
+      const result = await handler.handle(id, raw, c.req.raw.headers)
+      // After a refused oversized body the unread rest must not be parsed as the next request.
+      return c.json(result.body, result.status, result.status === 413 ? { Connection: 'close' } : {})
+    } catch (error) {
+      // A throw (runner, store) or a client abort mid-read: still one logged outcome, never the message (it could carry text from the request).
+      log.info('hook event', { ...(TRIGGER_ID_RE.test(id) ? { trigger: id.slice(0, 8) } : {}), status: 500, outcome: 'error', kind: error instanceof Error ? error.name : 'unknown' })
+      return c.json({ error: 'internal' }, 500)
+    }
   })
   return routes
 }

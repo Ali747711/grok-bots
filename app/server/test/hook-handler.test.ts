@@ -31,6 +31,7 @@ const gh = (over: Record<string, string | undefined> = {}, raw = body) => {
   for (const [k, v] of Object.entries(over)) v === undefined ? headers.delete(k) : headers.set(k, v)
   return headers
 }
+let clock: number
 const events = () => store.events(TID)
 
 beforeEach(async () => {
@@ -42,6 +43,7 @@ beforeEach(async () => {
   starts = []
   startReply = null
   n = 0
+  clock = NOW
   const runner = {
     start: async (t: Trigger, input: EventInput): Promise<StartResult> => {
       starts.push({ trigger: t, input })
@@ -52,7 +54,7 @@ beforeEach(async () => {
       return { ok: true, event }
     }
   }
-  handler = createHookHandler({ store, runner, now: () => NOW, newId: () => `id${++n}` })
+  handler = createHookHandler({ store, runner, now: () => clock, newId: () => `id${++n}` })
 })
 afterEach(async () => {
   restoreLog()
@@ -84,6 +86,7 @@ describe('hook handler', () => {
     expect(events()[0]).toMatchObject({ outcome: 'bad_signature', detail: 'signature does not match', deliveryId: null })
     expect(store.seenDelivery(TID, 'd1')).toBe(false)
     expect((await handler.handle(TID, body, gh())).status).toBe(202)
+    clock += 60_000
     expect((await handler.handle(TID, body, gh({ 'x-hub-signature-256': undefined }))).status).toBe(401)
     expect(events()[0]?.detail).toBe('missing signature')
   })
@@ -111,10 +114,51 @@ describe('hook handler', () => {
     expect((await handler.handle(TID, push, gh({ 'x-github-event': 'push', 'x-github-delivery': 'p3', 'x-hub-signature-256': signGithub(push, SECRET) }))).status).toBe(202)
   })
 
-  it('passesFilter treats empty lists as everything and compares without case', () => {
+  it('passesFilter treats empty lists as everything and matches exactly (R5)', () => {
     expect(passesFilter(trigger(), 'x', 'y')).toEqual({ ok: true })
-    expect(passesFilter(trigger({ events: ['Issues'] }), 'issues', null)).toEqual({ ok: true })
+    expect(passesFilter(trigger({ events: ['issues'] }), 'issues', null)).toEqual({ ok: true })
     expect(passesFilter(trigger({ actions: ['opened'] }), 'push', null)).toEqual({ ok: true })
+    expect(passesFilter(trigger({ source: 'generic', events: ['build.done'] }), 'Build.Done', null)).toEqual({ ok: false, detail: 'not in the event filter' })
+    expect(passesFilter(trigger({ actions: ['opened'] }), 'issues', 'Opened')).toEqual({ ok: false, detail: 'action not in the filter' })
+  })
+
+  it('records unverified outcomes once per trigger per minute and counts the rest', async () => {
+    const bad = gh({ 'x-hub-signature-256': 'sha256=' + '0'.repeat(64) })
+    for (let i = 0; i < 20; i++) expect((await handler.handle(TID, body, bad)).status).toBe(401)
+    expect(events().filter(e => e.outcome === 'bad_signature')).toHaveLength(1)
+    expect(logged().filter(l => l.msg === 'hook event')).toHaveLength(1)
+    clock += 60_000
+    expect((await handler.handle(TID, body, bad)).status).toBe(401)
+    expect(events()[0]).toMatchObject({ outcome: 'bad_signature', detail: 'signature does not match +19 more in the last minute' })
+    expect(logged().filter(l => l.msg === 'hook event')).toHaveLength(2)
+    expect(logged().filter(l => l.msg === 'hook event')[1]).toMatchObject({ more: 19 })
+    // trigger_off and too_large share the same per-trigger throttle
+    await store.update(TID, { enabled: false })
+    await handler.handle(TID, body, bad)
+    await handler.handle(TID, null, bad)
+    expect(events()).toHaveLength(2)
+    clock += 60_000
+    await handler.handle(TID, null, bad)
+    expect(events()[0]).toMatchObject({ outcome: 'too_large', detail: '+2 more in the last minute' })
+  })
+
+  it('throttles unknown-id lines to one per minute in total, with a count, oversized bodies included', async () => {
+    for (let i = 0; i < 10; i++) await handler.handle(`${i}`.repeat(32), body, gh())
+    for (let i = 0; i < 5; i++) expect((await handler.handle('f'.repeat(32), null, gh())).status).toBe(413)
+    expect(logged().filter(l => l.msg === 'hook for unknown trigger')).toHaveLength(1)
+    clock += 60_000
+    await handler.handle('9'.repeat(32), body, gh())
+    const unknown = logged().filter(l => l.msg === 'hook for unknown trigger')
+    expect(unknown).toHaveLength(2)
+    expect(unknown[1]).toMatchObject({ more: 14 })
+    expect(lines.join('\n')).not.toContain('99999999')
+  })
+
+  it('releases the delivery reservation when the runner throws', async () => {
+    startReply = async () => { throw new Error('boom') }
+    await expect(handler.handle(TID, body, gh())).rejects.toThrow('boom')
+    startReply = null
+    expect((await handler.handle(TID, body, gh())).status).toBe(202)
   })
 
   it('accepts and passes the parsed event, raw text and delivery to the runner', async () => {

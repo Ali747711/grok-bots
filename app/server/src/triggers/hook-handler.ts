@@ -30,20 +30,39 @@ export interface HookHandler {
 
 type Filter = { ok: true } | { ok: false; detail: 'not in the event filter' | 'action not in the filter' }
 
-/** Empty lists mean "everything"; the action filter applies only to events that carry an action. */
+/** Empty lists mean "everything"; names match exactly (R5). The action filter applies only to events that carry an action. */
 export function passesFilter(trigger: Trigger, eventType: string, action: string | null): Filter {
-  const has = (list: readonly string[], value: string) => list.some(v => v.toLowerCase() === value.toLowerCase())
-  if (trigger.events.length > 0 && !has(trigger.events, eventType)) return { ok: false, detail: 'not in the event filter' }
-  if (trigger.actions.length > 0 && action !== null && !has(trigger.actions, action)) return { ok: false, detail: 'action not in the filter' }
+  if (trigger.events.length > 0 && !trigger.events.includes(eventType)) return { ok: false, detail: 'not in the event filter' }
+  if (trigger.actions.length > 0 && action !== null && !trigger.actions.includes(action)) return { ok: false, detail: 'action not in the filter' }
   return { ok: true }
 }
 
 const short = (id: string): string => id.slice(0, 8)
+const THROTTLE_MS = 60_000
+const UNKNOWN = ''
+
+/**
+ * Outcomes of unauthenticated requests (bad signature, trigger off, too large, unknown id) are written
+ * and logged at most once a minute per key; the rest are counted and the next written one reports them.
+ */
+function createThrottle(now: () => number): (key: string) => { pass: false } | { pass: true; more: number } {
+  const state = new Map<string, { at: number; more: number }>()
+  return key => {
+    const s = state.get(key)
+    if (s && now() - s.at < THROTTLE_MS) {
+      s.more++
+      return { pass: false }
+    }
+    state.set(key, { at: now(), more: 0 })
+    return { pass: true, more: s?.more ?? 0 }
+  }
+}
 
 export function createHookHandler(deps: HookDeps): HookHandler {
   const { store, runner, now, newId } = deps
   /** Deliveries being handled right now: a second request with the same id must not start a second run. */
   const reserved = new Set<string>()
+  const gate = createThrottle(now)
 
   const record = async (trigger: Trigger, event: TriggerEvent, deliveryId: string | null = null): Promise<void> => {
     try {
@@ -58,6 +77,24 @@ export function createHookHandler(deps: HookDeps): HookHandler {
     return { status, body, event }
   }
 
+  /** An unauthenticated outcome: written and logged once a minute per trigger; the answer never changes. */
+  const unverified = async (trigger: Trigger, status: 401 | 403 | 413, error: 'bad_signature' | 'trigger_off' | 'too_large', event: TriggerEvent): Promise<HookResult> => {
+    const g = gate(trigger.id)
+    if (g.pass) {
+      const more = g.more > 0 ? `+${g.more} more in the last minute` : null
+      const detail = [event.detail, more].filter(Boolean).join(' ') || null
+      await record(trigger, { ...event, detail })
+      log.info('hook event', { trigger: short(trigger.id), status, outcome: error, ...(g.more > 0 ? { more: g.more } : {}) })
+    }
+    return { status, body: { error }, event }
+  }
+
+  const unknownTrigger = (status: 404 | 413, body: HookBody): HookResult => {
+    const g = gate(UNKNOWN)
+    if (g.pass) log.info('hook for unknown trigger', g.more > 0 ? { more: g.more } : {})
+    return { status, body, event: null }
+  }
+
   async function handle(triggerId: string, raw: Buffer | null, headers: HeaderGetter): Promise<HookResult> {
     const trigger = store.get(triggerId)
     const github = trigger?.source === 'github'
@@ -69,25 +106,14 @@ export function createHookHandler(deps: HookDeps): HookHandler {
     })
 
     if (raw === null) {
-      if (!trigger) return { status: 413, body: { error: 'too_large' }, event: null }
-      const event = make('too_large', null)
-      await record(trigger, event)
-      return done(trigger, 413, { error: 'too_large' }, 'too_large', event)
+      if (!trigger) return unknownTrigger(413, { error: 'too_large' })
+      return unverified(trigger, 413, 'too_large', make('too_large', null))
     }
-    if (!trigger) {
-      log.info('hook for unknown trigger')
-      return { status: 404, body: { error: 'not_found' }, event: null }
-    }
-    if (!trigger.enabled) {
-      const event = make('trigger_off', null)
-      await record(trigger, event)
-      return done(trigger, 403, { error: 'trigger_off' }, 'trigger_off', event)
-    }
+    if (!trigger) return unknownTrigger(404, { error: 'not_found' })
+    if (!trigger.enabled) return unverified(trigger, 403, 'trigger_off', make('trigger_off', null))
     const verified = trigger.source === 'github' ? verifyGithub(raw, headers, trigger.secret) : verifyGeneric(raw, headers, trigger.secret, now())
     if (!verified.ok) {
-      const event = make('bad_signature', verified.reason)
-      await record(trigger, event)
-      return done(trigger, 401, { error: 'bad_signature' }, 'bad_signature', event)
+      return unverified(trigger, 401, 'bad_signature', make('bad_signature', verified.reason))
     }
     const { eventType, deliveryId } = verified
     const known = { eventType, deliveryId }

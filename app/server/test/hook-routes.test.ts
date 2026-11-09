@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
+import { setLogSink } from '../src/log.js'
+
 import { createApp } from '../src/app.js'
 import { MAX_HOOK_BYTES, type HookHandler } from '../src/triggers/hook-handler.js'
 import { readLimited } from '../src/http/hook-routes.js'
@@ -61,6 +63,30 @@ describe('POST /hooks/:id', () => {
     expect(seen[0]?.raw).toBeNull()
     await post(`/hooks/${'a'.repeat(32)}`, { body: big.subarray(0, MAX_HOOK_BYTES) })
     expect(seen[1]?.raw?.length).toBe(MAX_HOOK_BYTES)
+  })
+})
+
+describe('errors and 413', () => {
+  const id = 'a'.repeat(32)
+  it('answers 500 JSON and logs one error line when the handler throws', async () => {
+    const lines: string[] = []
+    const restore = setLogSink(l => { lines.push(l) })
+    const boom = createApp({ ...makeDeps(), triggers: { hooks: { handle: async () => { throw new Error('secret=abc exploded') } } } })
+    try {
+      const res = await boom.request(`/hooks/${id}`, { method: 'POST', headers: { Host: HOST }, body: '{}' })
+      expect(res.status).toBe(500)
+      expect(await res.json()).toEqual({ error: 'internal' })
+    } finally { restore() }
+    const out = lines.map(l => JSON.parse(l)).filter(l => l.msg === 'hook event')
+    expect(out).toEqual([expect.objectContaining({ level: 'info', trigger: 'aaaaaaaa', outcome: 'error', status: 500 })])
+    expect(lines.join('\n')).not.toContain('secret=abc')
+  })
+
+  it('closes the connection on a 413', async () => {
+    const tooBig = createApp({ ...makeDeps(), triggers: { hooks: { handle: async () => ({ status: 413, body: { error: 'too_large' }, event: null }) } } })
+    const res = await tooBig.request(`/hooks/${id}`, { method: 'POST', headers: { Host: HOST }, body: '{}' })
+    expect(res.status).toBe(413)
+    expect(res.headers.get('connection')).toBe('close')
   })
 })
 
