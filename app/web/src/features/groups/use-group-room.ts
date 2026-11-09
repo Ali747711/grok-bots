@@ -21,6 +21,8 @@ export interface GroupRoom {
   retrySend(eventId: string): Promise<void>
   stop(): Promise<void>
   keepGoing(discussionEventId: string): Promise<void>
+  /** Run the events fetch again (after an error). */
+  retry(): Promise<void>
   retryTurn(action: GroupTurnAction): Promise<void>
   discardTurn(action: GroupTurnAction): Promise<void>
 }
@@ -43,7 +45,7 @@ async function readFrom(roomId: string, since: number, start: RoomLog, apply: (l
 }
 
 /** Room history and actions. One events fetch runs at a time; moves during a fetch are picked up after it. */
-export function useGroupRoom(view: GroupView | undefined, titleOf: (memberId: string) => string): GroupRoom {
+export function useGroupRoom(view: GroupView | undefined, titleOf: (memberId: string) => string, online = true): GroupRoom {
   const [log, setLog] = useState<RoomLog>(EMPTY)
   const [optimistic, setOptimistic] = useState<readonly OptimisticSend[]>([])
   const [loading, setLoading] = useState(true)
@@ -53,8 +55,10 @@ export function useGroupRoom(view: GroupView | undefined, titleOf: (memberId: st
   const busy = useRef(false)
   const again = useRef(false)
   const loaded = useRef(false)
+  const errorRef = useRef<string | null>(null)
   const cancelId = useRef<string | null>(null)
   viewRef.current = view
+  errorRef.current = error
 
   const apply = useCallback((next: RoomLog) => {
     logRef.current = next
@@ -102,6 +106,11 @@ export function useGroupRoom(view: GroupView | undefined, titleOf: (memberId: st
     if (id) void sync()
   }, [id, latestSeq, epoch, sync])
 
+  // Coming back online with an unresolved error re-runs the fetch; the sync effect above only follows the view.
+  useEffect(() => {
+    if (online && errorRef.current && id) void sync()
+  }, [online]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const patch = (eventId: string, change: Partial<OptimisticSend>) =>
     setOptimistic(prev => prev.map(o => (o.eventId === eventId ? { ...o, ...change } : o)))
 
@@ -115,7 +124,9 @@ export function useGroupRoom(view: GroupView | undefined, titleOf: (memberId: st
     else patch(o.eventId, { status: 'refused', error: `Not sent: ${REFUSAL_TEXT[result.reason] ?? result.reason}` })
   }
 
-  const topic = optimistic.findLast(o => o.status !== 'refused')?.threadId ?? currentTopic(log)
+  // Only a send that has not reached the log yet can pin the topic; once it landed, the log (latest user message) decides.
+  const landed = new Set(log.events.filter(e => e.kind === 'message.user').map(e => e.eventId))
+  const topic = optimistic.findLast(o => o.status !== 'refused' && !landed.has(o.eventIdHash))?.threadId ?? currentTopic(log)
 
   const start = async (text: string, threadId: string | undefined) => {
     const roomId = viewRef.current?.id
@@ -168,6 +179,6 @@ export function useGroupRoom(view: GroupView | undefined, titleOf: (memberId: st
     () => (view ? toItems(log, view, titleOf, optimistic) : []),
     [log, view, titleOf, optimistic]
   )
-  return { items, loading, error, cut: log.cut, topic, send, retrySend, stop, keepGoing, retryTurn: turn(retryTurn), discardTurn: turn(discardTurn) }
+  return { items, loading, error, cut: log.cut, topic, send, retrySend, stop, keepGoing, retry: sync, retryTurn: turn(retryTurn), discardTurn: turn(discardTurn) }
 }
 
