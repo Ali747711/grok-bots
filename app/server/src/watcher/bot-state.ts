@@ -9,6 +9,8 @@ export type BotStatus = 'idle' | 'working' | 'needs_you'
 export interface BotView {
   readonly name: string
   readonly title: string
+  /** Hermes's `display_name` for the profile (trimmed); null when unset. Member rows carry it. */
+  readonly displayName: string | null
   readonly color: string | null
   readonly shape: string | null
   readonly isPrimary: boolean
@@ -118,6 +120,7 @@ export class BotStateTracker {
       return {
         name: row.name,
         title: str(meta.title) ?? str(row.display_name) ?? (isPrimary ? 'Hermes' : row.name),
+        displayName: str(row.display_name)?.trim() ?? null,
         color: str(meta.color),
         shape: str(meta.shape),
         isPrimary,

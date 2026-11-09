@@ -142,3 +142,28 @@ export interface GroupsState {
   seatable: string[]
   rooms: GroupView[]
 }
+
+/** One room event as the browser sees it: only these payload keys are copied. */
+export interface GroupEvent {
+  seq: number
+  eventId: string
+  kind: string
+  /** Milliseconds. */
+  createdAt: number
+  actor: { kind: string; id: string; profile: string | null; displayName: string | null }
+  text?: string
+  threadId?: string
+  memberId?: string
+  discussionEventId?: string
+  roundIndex?: number
+  status?: string
+  reasonCode?: string
+  error?: string
+  reason?: string
+  memberIds?: string[]
+  everyone?: boolean
+  fallback?: boolean
+  name?: string
+  routing?: string
+  leadMemberId?: string
+}

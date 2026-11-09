@@ -9,7 +9,7 @@ import { PendingStore } from '../src/watcher/pending-store.js'
 import type { Watcher } from '../src/watcher/watcher.js'
 
 const bot = (name: string, status: BotView['status'] = 'idle'): BotView => ({
-  name, title: name, color: null, shape: null, isPrimary: false, hasAvatar: false, avatar: null, imageKind: null, model: null,
+  name, title: name, displayName: null, color: null, shape: null, isPrimary: false, hasAvatar: false, avatar: null, imageKind: null, model: null,
   sessionId: null, preview: null, lastActive: null, status, hidden: false, setupIncomplete: false, created: null
 })
 const room = (activity: GroupView['activity']): GroupView => ({
