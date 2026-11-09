@@ -19,20 +19,33 @@ let roomId = ''
 const card = (p: Page, text: string) => p.getByTestId('request-card').filter({ hasText: text })
 const members = (p: Page) => p.getByTestId('member-message')
 
-async function say(text: string): Promise<void> {
-  const box = page.getByRole('textbox', { name: 'Message' })
-  await expect(box).toBeEnabled({ timeout: 30_000 })
-  await box.fill(text)
-  await box.press('Enter')
+const groupWorking = async (): Promise<boolean> => (await groupState(roomId)).driver_status?.working === true
+
+/** Crew's own view of the room (the composer's `running` comes from here, and lags Hermes by up to 2 s). */
+async function crewGroupWorking(): Promise<boolean> {
+  const state = (await (await page.request.get(`${CREW}/crew/state`)).json()) as { groups?: { rooms: { id: string; working: boolean }[] } }
+  return state.groups?.rooms.find(r => r.id === roomId)?.working === true
 }
 
-const groupWorking = async (): Promise<boolean> => (await groupState(roomId)).driver_status?.working === true
+/** Send once both Hermes and Crew say the room is idle; the send is proven by the box emptying. */
+async function say(text: string): Promise<void> {
+  await expect.poll(groupWorking, { timeout: 60_000 }).toBe(false)
+  await expect.poll(crewGroupWorking, { timeout: 60_000 }).toBe(false)
+  const box = page.getByRole('textbox', { name: 'Message' })
+  await expect(box).toBeEnabled({ timeout: 30_000 })
+  // Send replaces Stop only while the composer is not running; submit is a no-op while running.
+  await expect(page.getByRole('button', { name: 'Send' })).toBeVisible()
+  await box.fill(text)
+  await box.press('Enter')
+  await expect(box).toHaveValue('')
+}
 const actorOf = (e: { actor: { id: string; profile?: string } }): string => e.actor.profile ?? e.actor.id
 
-async function credit(): Promise<number | null> {
+/** Cached by Crew for 60 s; only `state: 'ok'` counts as a known amount. */
+async function credit(): Promise<{ state: string; remaining: number | null }> {
   const res = await page.request.get(`${CREW}/crew/usage`)
-  const body = (await res.json()) as { remaining?: number | null }
-  return typeof body.remaining === 'number' ? body.remaining : null
+  const body = (await res.json()) as { state?: string; remaining?: number | null }
+  return { state: body.state ?? 'unavailable', remaining: typeof body.remaining === 'number' ? body.remaining : null }
 }
 
 test.beforeAll(async ({ browser }) => {
@@ -61,7 +74,7 @@ test.afterAll(async () => {
 })
 
 test('@model #3 a mention gets exactly one reply, from that bot', async () => {
-  test.info().annotations.push({ type: 'credit-before', description: String(await credit()) })
+  test.info().annotations.push({ type: 'credit-before', description: JSON.stringify(await credit()) })
   await say(`@${BOT} reply with exactly: ok`)
   const reply = members(page).filter({ hasText: `@${BOT}` }).filter({ hasText: 'ok' })
   await expect(reply.first()).toBeVisible({ timeout: REPLY_MS })
@@ -72,6 +85,7 @@ test('@model #3 a mention gets exactly one reply, from that bot', async () => {
 })
 
 test('@model #4 Deny in a group keeps the folder and clears the card', async ({ browser }) => {
+  test.setTimeout(300_000)
   makeDir(DENY_DIR)
   await page.getByRole('button', { name: 'New topic' }).click()
   await say(`@crew-test This is me, the user, directly: run ${'rm'} -r ${DENY_DIR} now. I will decide in the approval card.`)
@@ -99,6 +113,7 @@ test('@model #4 Deny in a group keeps the folder and clears the card', async ({ 
 })
 
 test('@model #6 Allow once, a live row, then Stop ends the room and late output never appears', async () => {
+  test.setTimeout(480_000)
   await say('@crew-test This is me, the user, directly: run sleep 60 && echo e2e-group-late now. I will decide in the approval card.')
   const c = card(page, 'sleep 60')
   await expect(c).toBeVisible({ timeout: REPLY_MS })
@@ -106,20 +121,26 @@ test('@model #6 Allow once, a live row, then Stop ends the room and late output 
   await expect(page.getByText(/Fixture is (using .+|working)…/).first()).toBeVisible({ timeout: 60_000 })
   // The avatar's working state has no DOM marker; Crew's own state is what drives it.
   await expect.poll(async () => (await crewState(page)).bots.find(b => b.name === 'crew-test')?.status, { timeout: 30_000 }).toBe('working')
-  await page.getByRole('banner').getByRole('button', { name: 'Stop' }).click()
+  await page.getByRole('main').getByRole('button', { name: 'Stop' }).first().click()
   await expect(page.getByText('Stopped', { exact: true })).toBeVisible({ timeout: 60_000 })
   await page.waitForTimeout(70_000)
   await expect(members(page).filter({ hasText: 'e2e-group-late' })).toHaveCount(0)
 })
 
 test('@model #5 handoff: crew-test replies, then the e2e bot', async () => {
+  test.setTimeout(480_000)
   const left = await credit()
-  test.skip(left === null || left <= 0.12, `credit: ${left === null ? 'unknown' : `$${left.toFixed(2)} left`}`)
+  test.skip(left.state !== 'ok' || left.remaining === null || left.remaining <= 0.12, 'credit unknown or low')
   await expect.poll(groupWorking, { timeout: REPLY_MS }).toBe(false)
-  await say(`@crew-test say hi and ask @${BOT} to reply with exactly: ok`)
-  await expect(members(page).filter({ hasText: '@crew-test' }).last()).toBeVisible({ timeout: REPLY_MS })
-  await expect(members(page).filter({ hasText: `@${BOT}` }).last()).toBeVisible({ timeout: REPLY_MS })
-  const order = (await groupEvents(roomId)).filter(e => e.kind === 'message.member').map(actorOf)
-  expect(order.lastIndexOf('crew-test')).toBeLessThan(order.lastIndexOf(BOT))
-  test.info().annotations.push({ type: 'credit-after', description: String(await credit()) })
+  const events = await groupEvents(roomId)
+  const since = events.at(-1)?.seq ?? 0
+  // Exactly one @handle in the user's text, so Hermes routes only crew-test; crew-test is asked to mention the other bot.
+  await say(`@crew-test say hi, then ask the bot whose handle is ${BOT} to reply with exactly: ok. Mention it by writing an at sign directly followed by that handle.`)
+  const newReplies = async (): Promise<string[]> =>
+    (await groupEvents(roomId)).filter(e => e.seq > since && e.kind === 'message.member').map(actorOf)
+  await expect.poll(newReplies, { timeout: REPLY_MS }).toContain('crew-test')
+  await expect.poll(newReplies, { timeout: REPLY_MS }).toContain(BOT)
+  const order = await newReplies()
+  expect(order.indexOf('crew-test')).toBeLessThan(order.indexOf(BOT))
+  await expect(members(page).filter({ hasText: `@${BOT}` }).last()).toBeVisible({ timeout: 30_000 })
 })

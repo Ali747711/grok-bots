@@ -5,9 +5,9 @@ Branch `crew-phase4`. Evidence run 2026-11-09 against the live VM (Hermes 127.0.
 ## Spec section 9
 
 1. **A Crew-made 2-bot group shows in the sidebar, in `groups.list`, routing `auto`, and in the Webapp. Evidence: passed.**
-   `cd app/e2e && npx playwright test groups.spec.ts` test 1 (dialog -> sidebar row, `groups.list` row, `groups.state` context routing `auto`) and test 6 (Webapp Bots tab shows the group; `docs/phase4/webapp-group-row.png`, crop of the group name only). 6 passed (18.4s), 2026-11-09.
+   `cd app/e2e && npx playwright test groups.spec.ts` test 1 (dialog -> sidebar row, `groups.list` row, `groups.state` context routing `auto`) and test 6 (Webapp Bots tab shows the group; `docs/phase4/webapp-group-row.png`, crop of the group name only). 6 passed (18.4s; re-runs 16.2s), 2026-11-09.
 2. **A Hermes-made room appears in Crew within 5 s; deleting it in Crew removes it from Hermes. Evidence: passed.**
-   `groups.spec.ts` test 2 (created via `groups.create` RPC; sidebar row visible; Delete group; gone from `groups.list`). Appearance latency is recorded as the `appeared-after-ms` annotation (the assertion allows 15 s because it includes page load; the watcher lists every 5 s).
+   `groups.spec.ts` test 2 (created via `groups.create` RPC; sidebar row visible; Delete group; gone from `groups.list`). Measured `appeared-after-ms` = **3349 ms** (JSON reporter run, 2026-11-09), timed from the room's creation through a full page load to the row being visible, so under the 5 s bound. The assertion itself allows 15 s, so the bound is a single measurement, not an enforced limit; the watcher lists rooms every 5 s, so a worst case just over 5 s plus page load is possible.
 3. **[model] one reply from the mentioned bot only. Evidence: pending (controller run).** `groups-model.spec.ts` "#3".
 4. **[model] Deny in a group; duplicate approval observation. Evidence: pending (controller run).** `groups-model.spec.ts` "#4" (records `unknown-profile-pending-while-group-card-open`).
 5. **[model, if credit remains] handoff. Evidence: pending (controller run).** `groups-model.spec.ts` "#5" (skips itself at or below $0.12).
@@ -20,7 +20,7 @@ Branch `crew-phase4`. Evidence run 2026-11-09 against the live VM (Hermes 127.0.
    `groups.spec.ts` test 5: a browser `groups.list` frame on `/api/ws` is refused with -32601; `POST /crew/groups` without the CSRF header gives 403, with a foreign Origin gives 403, and no extra group was created. CSP: no change to the header in this phase (no new origins; web build adds no external resource).
 10. **Unit suites, full no-model e2e, real browser. Evidence: partly passed.**
     - Web: `cd app/web && npm test` -> **Tests 625 passed (625)**. Server: `cd app/server && npm test` -> **Tests 508 passed (508)**; `npm run vendor:check` -> vendored files match.
-    - No-model e2e (controller ruling): `cd app/e2e && npx playwright test groups.spec.ts` -> **6 passed (18.4s)**; `npx playwright test computer.spec.ts idle-stop.spec.ts avatar.spec.ts phase2.spec.ts -g "^(?!.*(routine runs|deleting the bot))"` -> **13 passed (1.7m)**. `crew.spec.ts` and the routine/delete specs spend credit and were not run.
+    - No-model e2e (controller ruling): `cd app/e2e && npx playwright test groups.spec.ts` -> **6 passed (18.4s; re-runs 16.2s)**; `npx playwright test computer.spec.ts idle-stop.spec.ts avatar.spec.ts phase2.spec.ts -g "^(?!.*(routine runs|deleting the bot))"` -> **13 passed (1.7m)**. `crew.spec.ts` and the routine/delete specs spend credit and were not run.
     - Real browser at 1440 and 1000 px, light and dark, 0 console errors, 0 CSP violations: **pending (controller run)**.
 
 ## Finding fixed while writing the e2e
