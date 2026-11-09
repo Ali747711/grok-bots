@@ -6,7 +6,10 @@ export class GroupApiError extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
-    message: string
+    message: string,
+    /** For `bad_members`: why, and which profile. */
+    readonly reason?: string,
+    readonly profile?: string
   ) {
     super(message)
     this.name = 'GroupApiError'
@@ -41,9 +44,11 @@ function errorText(code: string, detail: unknown): string {
 }
 
 async function groupError(res: Response): Promise<GroupApiError> {
-  const parsed = (await res.json().catch(() => null)) as { error?: unknown; detail?: unknown } | null
+  const parsed = (await res.json().catch(() => null)) as { error?: unknown; detail?: unknown; reason?: unknown; profile?: unknown } | null
   const code = typeof parsed?.error === 'string' ? parsed.error : 'unknown'
-  return new GroupApiError(res.status, code, errorText(code, parsed?.detail))
+  const reason = typeof parsed?.reason === 'string' ? parsed.reason : undefined
+  const profile = typeof parsed?.profile === 'string' ? parsed.profile : undefined
+  return new GroupApiError(res.status, code, errorText(code, parsed?.detail), reason, profile)
 }
 
 const roomPath = (roomId: string, tail = ''): string => `/crew/groups/${encodeURIComponent(roomId)}${tail}`

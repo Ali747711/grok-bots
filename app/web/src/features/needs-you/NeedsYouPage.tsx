@@ -29,13 +29,16 @@ export function NeedsYouPage({ state, crewConnected = true, now = Date.now }: { 
           <ul className="m-0 flex list-none flex-col gap-1 p-0">
             {entries.map(entry => {
               const bot = state.bots.find(b => b.name === entry.profile)
+              const room = entry.group ? state.groups?.rooms.find(r => r.id === entry.group!.roomId) : undefined
+              const to = entry.group ? `/groups/${encodeURIComponent(entry.group.roomId)}` : `/bots/${encodeURIComponent(entry.profile)}`
+              const who = bot?.title ?? entry.profile
               return (
                 <li key={entry.id}>
-                  <Link to={`/bots/${encodeURIComponent(entry.profile)}`} className="flex items-start gap-3 rounded-2xl p-2.5 hover:bg-muted">
+                  <Link to={to} className="flex items-start gap-3 rounded-2xl p-2.5 hover:bg-muted">
                     {bot && <CrewAvatar bot={stale ? { ...bot, status: 'idle' } : bot} size={32} decorative />}
                     <span className="min-w-0 flex-1">
                       <span className="flex items-baseline gap-2 text-xs text-muted-foreground">
-                        <span className="min-w-0 truncate text-sm font-semibold text-foreground">{bot?.title ?? entry.profile}</span>
+                        <span className="min-w-0 truncate text-sm font-semibold text-foreground">{room ? `${who} in ${room.name}` : who}</span>
                         <span className="shrink-0">{KIND_LABEL[entry.kind]}</span>
                         <span className="ml-auto shrink-0">{formatAge(entry.receivedAt, now())}</span>
                       </span>
