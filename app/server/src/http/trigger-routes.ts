@@ -37,8 +37,8 @@ const unique = (list: readonly string[] | undefined): string[] => [...new Set(li
  */
 export function triggerRoutes(deps: TriggerRouteDeps | undefined): Hono<CrewEnv> {
   const routes = new Hono<CrewEnv>()
-  routes.use('/crew/bots/:bot/triggers', async (c, next) => (deps ? next() : c.json({ error: 'hermes_offline' }, 503)))
-  routes.use('/crew/triggers/*', async (c, next) => (deps ? next() : c.json({ error: 'hermes_offline' }, 503)))
+  routes.use('/crew/bots/:bot/triggers', async (c, next) => (deps ? next() : c.json({ error: 'triggers_unavailable' }, 503)))
+  routes.use('/crew/triggers/*', async (c, next) => (deps ? next() : c.json({ error: 'triggers_unavailable' }, 503)))
 
   const badBody = (c: Context, message: string) => c.json({ error: 'bad_body', message }, 400)
   const body = async <T extends z.ZodType>(c: Context, schema: T): Promise<z.infer<T> | Response> => {
@@ -51,10 +51,20 @@ export function triggerRoutes(deps: TriggerRouteDeps | undefined): Hono<CrewEnv>
     if (!TRIGGER_ID_RE.test(id)) return c.json({ error: 'bad_id' }, 400)
     return deps!.store.get(id) ?? c.json({ error: 'not_found' }, 404)
   }
-  const notSaved = (c: Context, error: unknown): Response => {
-    log.warn('trigger store write failed', { error: error instanceof Error ? error.message.slice(0, 200) : 'unknown' })
-    return c.json({ error: 'not_saved' }, 500)
+  /**
+   * The store applies a change in memory and keeps it when the file write fails, so the change is live
+   * either way: report success, with \`saved: false\` when it is not on disk yet (the next write retries).
+   */
+  const persist = async (work: Promise<unknown>): Promise<boolean> => {
+    try {
+      await work
+      return true
+    } catch (error) {
+      log.error('trigger store write failed', { error: error instanceof Error ? error.message.slice(0, 200) : 'unknown' })
+      return false
+    }
   }
+  const flag = (saved: boolean) => (saved ? {} : { saved: false })
   const view = (t: Trigger) => toView(t, deps!.hookUrl(t.id), deps!.store.lastEvent(t.id))
 
   routes.get('/crew/bots/:bot/triggers', c => {
@@ -79,12 +89,8 @@ export function triggerRoutes(deps: TriggerRouteDeps | undefined): Hono<CrewEnv>
       id: deps!.newTriggerId(), bot, routineId: parsed.routineId, name: parsed.name, source: parsed.source,
       events: unique(parsed.events), actions: unique(parsed.actions), enabled: true, secret: deps!.newSecret(), createdAt: deps!.now()
     }
-    try {
-      await deps!.store.add(trigger)
-    } catch (error) {
-      return notSaved(c, error)
-    }
-    return c.json({ trigger: view(trigger), secret: trigger.secret, url: deps!.hookUrl(trigger.id) }, 201)
+    const saved = await persist(deps!.store.add(trigger))
+    return c.json({ trigger: view(trigger), secret: trigger.secret, url: deps!.hookUrl(trigger.id), ...flag(saved) }, 201)
   })
 
   routes.patch('/crew/triggers/:id', async c => {
@@ -93,40 +99,29 @@ export function triggerRoutes(deps: TriggerRouteDeps | undefined): Hono<CrewEnv>
     const parsed = await body(c, patchBody)
     if (parsed instanceof Response) return parsed
     if (t.source === 'generic' && (parsed.actions?.length ?? 0) > 0) return badBody(c, 'actions are for GitHub triggers only')
-    try {
-      const next = await deps!.store.update(t.id, {
-        ...(parsed.name === undefined ? {} : { name: parsed.name }),
-        ...(parsed.enabled === undefined ? {} : { enabled: parsed.enabled }),
-        ...(parsed.events === undefined ? {} : { events: unique(parsed.events) }),
-        ...(parsed.actions === undefined ? {} : { actions: unique(parsed.actions) })
-      })
-      return next ? c.json(view(next)) : c.json({ error: 'not_found' }, 404)
-    } catch (error) {
-      return notSaved(c, error)
-    }
+    const saved = await persist(deps!.store.update(t.id, {
+      ...(parsed.name === undefined ? {} : { name: parsed.name }),
+      ...(parsed.enabled === undefined ? {} : { enabled: parsed.enabled }),
+      ...(parsed.events === undefined ? {} : { events: unique(parsed.events) }),
+      ...(parsed.actions === undefined ? {} : { actions: unique(parsed.actions) })
+    }))
+    const next = deps!.store.get(t.id)
+    return next ? c.json({ ...view(next), ...flag(saved) }) : c.json({ error: 'not_found' }, 404)
   })
 
   routes.post('/crew/triggers/:id/secret', async c => {
     const t = found(c)
     if (t instanceof Response) return t
     const secret = deps!.newSecret()
-    try {
-      await deps!.store.update(t.id, { secret })
-    } catch (error) {
-      return notSaved(c, error)
-    }
-    return c.json({ secret })
+    const saved = await persist(deps!.store.update(t.id, { secret }))
+    return c.json({ secret, ...flag(saved) })
   })
 
   routes.delete('/crew/triggers/:id', async c => {
     const t = found(c)
     if (t instanceof Response) return t
-    try {
-      await deps!.store.remove(t.id)
-    } catch (error) {
-      return notSaved(c, error)
-    }
-    return c.body(null, 204)
+    const saved = await persist(deps!.store.remove(t.id))
+    return saved ? c.body(null, 204) : c.json({ saved: false })
   })
 
   routes.get('/crew/triggers/:id/events', c => {
@@ -139,8 +134,14 @@ export function triggerRoutes(deps: TriggerRouteDeps | undefined): Hono<CrewEnv>
     if (t instanceof Response) return t
     // Signed with the trigger's own secret and handled in-process: the same checks as a real event, no network.
     const sample = sampleEvent(t, deps!.now(), deps!.newId())
-    const result = await deps!.hooks.handle(t.id, sample.raw, sample.headers)
-    return c.json({ httpStatus: result.status, event: result.event })
+    try {
+      const result = await deps!.hooks.handle(t.id, sample.raw, sample.headers)
+      return c.json({ httpStatus: result.status, event: result.event })
+    } catch (error) {
+      // Same as the real receiver: one logged outcome, never the message (it could carry the secret).
+      log.info('hook event', { trigger: t.id.slice(0, 8), status: 500, outcome: 'error', kind: error instanceof Error ? error.name : 'unknown' })
+      return c.json({ error: 'internal' }, 500)
+    }
   })
 
   return routes

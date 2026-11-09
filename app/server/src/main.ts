@@ -18,8 +18,7 @@ import { log } from './log.js'
 import { createRoutineService } from './routines/service.js'
 import { SettingsStore } from './settings/settings-store.js'
 import { composeCrewState } from './state/crew-state.js'
-import { TriggerStore } from './triggers/store.js'
-import { wireTriggers } from './triggers/wire.js'
+import { loadTriggerStore, wireTriggers } from './triggers/wire.js'
 import { createUsageSource } from './usage/openrouter.js'
 import { startWatcher } from './watcher/watcher.js'
 
@@ -79,14 +78,14 @@ export async function start(): Promise<Server> {
   })
   const crewState = composeCrewState(watcher, groupWatcher, groupRpc, Date.now)
   // Resume unfinished trigger runs before the server listens, so no hook can race it.
-  const triggerStore = await TriggerStore.load(join(config.stateDir, 'triggers.json'))
-  const { hooks } = wireTriggers({ rest, store: triggerStore, now: Date.now, newId: randomUUID })
-  const routines = createRoutineService({ rest, now: Date.now, triggerRuns: (bot, id) => triggerStore.runsFor(bot, id) })
-  const triggers = {
+  const triggerStore = await loadTriggerStore(join(config.stateDir, 'triggers.json'))
+  const hooks = triggerStore ? wireTriggers({ rest, store: triggerStore, now: Date.now, newId: randomUUID }).hooks : null
+  const routines = createRoutineService({ rest, now: Date.now, ...(triggerStore ? { triggerRuns: (bot: string, id: string) => triggerStore.runsFor(bot, id) } : {}) })
+  const triggers = triggerStore && hooks ? {
     store: triggerStore, hooks, routines,
     hookUrl: (id: string) => `http://${config.host}:${config.port}/hooks/${id}`,
     now: Date.now, newTriggerId: () => randomBytes(16).toString('hex'), newSecret: () => randomBytes(32).toString('hex'), newId: randomUUID
-  }
+  } : undefined
   const app = createApp({ config, secrets, tickets: new TicketStore(), now: Date.now, token, fetchUpstream: fetch, watcher: crewState, groups: { rpc: groupRpc, groups: groupWatcher, roster: () => crewState.state().bots.map(b => ({ name: b.name, title: b.title, displayName: b.displayName })), newId: randomUUID, sleep: ms => new Promise(resolve => setTimeout(resolve, ms)) }, settings, bots: { rpc: watcher.request, rest, refresh: watcher.refresh, now: Date.now }, routines, triggers, usage: createUsageSource({ envFile: config.hermesEnvFile, fetch, now: Date.now }) })
   const server = serve({ fetch: app.fetch, hostname: config.host, port: config.port }, info => {
     log.info('crew listening', { host: config.host, port: info.port })

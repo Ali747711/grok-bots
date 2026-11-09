@@ -2,12 +2,17 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { chmod } from 'node:fs/promises'
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createApp } from '../src/app.js'
 import { CSRF_COOKIE } from '../src/auth/routes.js'
 import { signSession } from '../src/auth/session-cookie.js'
 import { HermesUnavailableError } from '../src/hermes/errors.js'
+import { createHookHandler } from '../src/triggers/hook-handler.js'
+import { createLimiter, DEFAULT_LIMITS } from '../src/triggers/limits.js'
+import type { EventInput, StartResult } from '../src/triggers/runner.js'
 import { setLogSink } from '../src/log.js'
 import type { HookHandler } from '../src/triggers/hook-handler.js'
 import { sampleEvent } from '../src/triggers/sample-event.js'
@@ -58,6 +63,7 @@ beforeEach(async () => {
   })
 })
 afterEach(async () => {
+  await chmod(dir, 0o700).catch(() => undefined)
   restoreLog()
   await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 20 })
 })
@@ -100,15 +106,6 @@ describe('create', () => {
     expect((await send('POST', '/crew/bots/Bad!/triggers', {})).status).toBe(400)
     expect(store.all()).toEqual([])
     expect((await create({ source: 'generic', actions: [] })).res.status).toBe(201)
-  })
-
-  it('answers 500 not_saved when the write fails, without the secret', async () => {
-    vi.spyOn(store, 'add').mockRejectedValueOnce(new Error('disk full'))
-    const res = await send('POST', '/crew/bots/crew-test/triggers', { routineId: 'rt1', name: 'x', source: 'generic' })
-    expect(res.status).toBe(500)
-    const text = await res.text()
-    expect(JSON.parse(text)).toEqual({ error: 'not_saved' })
-    expect(text + lines.join('\n')).not.toMatch(/[0-9a-f]{64}/)
   })
 })
 
@@ -200,22 +197,104 @@ describe('send test event', () => {
 })
 
 describe('errors and wiring', () => {
-  it('answers 400 bad_id, 404 not_found and 500 not_saved', async () => {
+  it('answers 400 bad_id and 404 not_found', async () => {
     expect(await (await send('DELETE', '/crew/triggers/nope')).json()).toEqual({ error: 'bad_id' })
     expect(await (await send('DELETE', `/crew/triggers/${'f'.repeat(32)}`)).json()).toEqual({ error: 'not_found' })
-    const { json } = await create()
-    vi.spyOn(store, 'update').mockRejectedValueOnce(new Error('disk'))
-    const res = await send('PATCH', `/crew/triggers/${json.trigger.id}`, { name: 'x' })
-    expect(res.status).toBe(500)
-    expect(await res.json()).toEqual({ error: 'not_saved' })
-    vi.spyOn(store, 'remove').mockRejectedValueOnce(new Error('disk'))
-    expect((await send('DELETE', `/crew/triggers/${json.trigger.id}`)).status).toBe(500)
   })
 
   it('answers 503 hermes_offline when triggers are not wired', async () => {
     const bare = createApp(base)
     const res = await bare.request('/crew/bots/crew-test/triggers', { headers })
     expect(res.status).toBe(503)
-    expect(await res.json()).toEqual({ error: 'hermes_offline' })
+    expect(await res.json()).toEqual({ error: 'triggers_unavailable' })
+  })
+})
+
+describe('a failed save keeps the replies truthful (memory is authoritative)', () => {
+  const unwritable = () => chmod(dir, 0o500)
+  const noSecretIn = (text: string, secret: string) => expect(text + lines.join('\n')).not.toContain(secret)
+
+  it('create answers 201 with saved:false and the live trigger', async () => {
+    await unwritable()
+    const { res, json } = await create()
+    expect(res.status).toBe(201)
+    expect(json).toMatchObject({ saved: false, secret: expect.stringMatching(/^[0-9a-f]{64}$/) })
+    expect(store.get(json.trigger.id)?.secret).toBe(json.secret)
+    expect(lines.map(l => JSON.parse(l)).some(l => l.level === 'error' && l.msg === 'trigger store write failed')).toBe(true)
+    noSecretIn('', json.secret)
+  })
+
+  it('PATCH answers the changed trigger with saved:false and no secret', async () => {
+    const { json } = await create()
+    await unwritable()
+    const res = await send('PATCH', `/crew/triggers/${json.trigger.id}`, { name: 'Renamed', enabled: false })
+    expect(res.status).toBe(200)
+    const text = await res.text()
+    expect(JSON.parse(text)).toMatchObject({ name: 'Renamed', enabled: false, saved: false })
+    expect(store.get(json.trigger.id)).toMatchObject({ name: 'Renamed', enabled: false })
+    noSecretIn(text, json.secret)
+  })
+
+  it('a new secret is returned with saved:false and is the one in effect', async () => {
+    const { json } = await create()
+    await unwritable()
+    const res = await send('POST', `/crew/triggers/${json.trigger.id}/secret`)
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { secret: string; saved: boolean }
+    expect(body.saved).toBe(false)
+    expect(store.get(json.trigger.id)?.secret).toBe(body.secret)
+    noSecretIn('', json.secret)
+  })
+
+  it('DELETE answers 200 saved:false and the trigger is gone from memory', async () => {
+    const { json } = await create()
+    await unwritable()
+    const res = await send('DELETE', `/crew/triggers/${json.trigger.id}`)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ saved: false })
+    expect(store.get(json.trigger.id)).toBeUndefined()
+  })
+
+  it('successful writes keep saved out of the replies', async () => {
+    const { json } = await create()
+    expect(json).not.toHaveProperty('saved')
+    expect((await send('DELETE', `/crew/triggers/${json.trigger.id}`)).status).toBe(204)
+  })
+})
+
+describe('send test event details', () => {
+  it('logs one error line and answers 500 when the handler throws', async () => {
+    const { json } = await create()
+    const throwing = createApp({ ...base, triggers: { store, hooks: { handle: async () => { throw new Error(`boom ${json.secret}`) } }, routines: { list: async () => [] } as never, hookUrl: id => id, now: () => 1, newTriggerId: () => 'x', newSecret: () => 'y', newId: () => 'z' } })
+    const res = await throwing.request(`/crew/triggers/${json.trigger.id}/test`, { method: 'POST', headers })
+    expect(res.status).toBe(500)
+    expect(await res.json()).toEqual({ error: 'internal' })
+    const out = lines.map(l => JSON.parse(l)).filter(l => l.msg === 'hook event')
+    expect(out).toEqual([expect.objectContaining({ trigger: json.trigger.id.slice(0, 8), status: 500, outcome: 'error' })])
+    expect(lines.join('\n')).not.toContain(json.secret)
+  })
+
+  it('goes through the real hook handler: passes verify and its own filter, and counts toward the limits', async () => {
+    const limiter = createLimiter(DEFAULT_LIMITS)
+    const starts: { eventType: string; action: string | null }[] = []
+    const runner = {
+      start: async (t: Trigger, input: EventInput): Promise<StartResult> => {
+        const got = limiter.tryAcquire(t.id, 1_762_680_000_000)
+        const event = { id: input.eventId, at: input.at, deliveryId: input.deliveryId, eventType: input.eventType, action: input.action, outcome: got.ok ? 'started' as const : 'too_many' as const, jobId: null, runId: null, endedAt: null, detail: null }
+        if (!got.ok) return { ok: false, status: 429, error: 'too_many_events', event }
+        starts.push({ eventType: input.eventType, action: input.action })
+        await store.logEvent(t.id, event, input.deliveryId)
+        return { ok: true, event }
+      }
+    }
+    let n = 0
+    const real = createApp({ ...base, triggers: { store, hooks: createHookHandler({ store, runner, now: () => 1_762_680_000_000, newId: () => `id${++n}` }), routines: { list: async () => [{ id: 'rt1' }] } as never, hookUrl: id => id, now: () => 1_762_680_000_000, newTriggerId: () => 'e'.repeat(32), newSecret: () => 's'.repeat(64), newId: () => `d${++n}` } })
+    const make = await real.request('/crew/bots/crew-test/triggers', { method: 'POST', headers, body: JSON.stringify({ routineId: 'rt1', name: 'T', source: 'github', events: ['pull_request'], actions: ['reopened'] }) })
+    const id = ((await make.json()) as { trigger: { id: string } }).trigger.id
+    const test = () => real.request(`/crew/triggers/${id}/test`, { method: 'POST', headers })
+    expect(await (await test()).json()).toMatchObject({ httpStatus: 202 })
+    expect(await (await test()).json()).toMatchObject({ httpStatus: 202 })
+    expect(await (await test()).json()).toMatchObject({ httpStatus: 429, event: { outcome: 'too_many' } })
+    expect(starts).toEqual([{ eventType: 'pull_request', action: 'reopened' }, { eventType: 'pull_request', action: 'reopened' }])
   })
 })
