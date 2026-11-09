@@ -1,7 +1,7 @@
 import { HermesRestError } from '../hermes/errors.js'
 import type { HermesRest } from '../hermes/rest-client.js'
 import { log } from '../log.js'
-import { isPausedJob, jobPath, jobSchema, runOf, runSchema, TRIGGER_ONLY_REASON } from '../routines/mapping.js'
+import { isFinished, isPausedJob, jobPath, jobSchema, runOf, runSchema, TRIGGER_ONLY_REASON } from '../routines/mapping.js'
 import { buildEventPrompt } from './event-prompt.js'
 import type { Held, Limiter } from './limits.js'
 import { outcomeOf, oneShotBody } from './one-shot.js'
@@ -194,7 +194,8 @@ export function createTriggerRunner(deps: RunnerDeps): TriggerRunner {
       if (isStatus(error, 404)) return fail(trigger, event('failed', 'routine deleted'), acquired, 410, 'routine_deleted')
       return fail(trigger, event('failed', 'Hermes offline'), acquired, 503, 'hermes_offline')
     }
-    if (isPausedJob(routine) && routine.paused_reason !== TRIGGER_ONLY_REASON) return fail(trigger, event('routine_paused', null), acquired, 409, 'routine_paused')
+    // A finished one-time routine reads as disabled but is not paused (R11): it still fires its triggers.
+    if (!isFinished(routine.state) && isPausedJob(routine) && routine.paused_reason !== TRIGGER_ONLY_REASON) return fail(trigger, event('routine_paused', null), acquired, 409, 'routine_paused')
     const prompt = buildEventPrompt({ instruction: routine.prompt ?? '', source: trigger.source, eventType: input.eventType, action: input.action, payload: input.payload, ...(input.rawText === undefined ? {} : { rawText: input.rawText }) })
     let jobId: string | undefined
     try {

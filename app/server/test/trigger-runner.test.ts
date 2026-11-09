@@ -266,6 +266,14 @@ describe('polling', () => {
 })
 
 describe('review fixes', () => {
+  it('fires a finished one-time routine (R11) but still refuses a normally paused one', async () => {
+    const base = happy()
+    handler = call => (call.method === 'GET' && call.path === '/api/cron/jobs/rt1' ? routine({ enabled: false, state: 'completed' }) : base(call))
+    expect(await runner.start(trigger(), input(1))).toMatchObject({ ok: true })
+    handler = call => (call.method === 'GET' && call.path === '/api/cron/jobs/rt1' ? routine({ enabled: false, state: 'paused', paused_reason: 'vacation' }) : base(call))
+    expect(await runner.start(trigger(), input(2))).toMatchObject({ ok: false, status: 409 })
+  })
+
   it('copies no_agent when true, with the script', async () => {
     const base = happy()
     handler = call => (call.method === 'GET' && call.path === '/api/cron/jobs/rt1' ? routine({ no_agent: true, script: 'run.sh' }) : base(call))

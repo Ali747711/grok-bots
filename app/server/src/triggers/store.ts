@@ -41,9 +41,14 @@ interface State {
 
 const EMPTY: State = { triggers: [], events: {}, deliveries: {} }
 
-/** Newest 50 events, plus any older `started` ones: those are still being watched (R7). */
-function trimLog(events: readonly TriggerEvent[]): readonly TriggerEvent[] {
-  return events.filter((e, i) => i < EVENT_LOG_MAX || e.outcome === 'started')
+const HOUR_MS = 3_600_000
+
+/**
+ * Newest 50 events, plus older ones that must stay: `started` runs are still being watched (R7), and runs
+ * of the last hour feed the hourly limit after a restart (at most 10 per trigger, given the limit).
+ */
+function trimLog(events: readonly TriggerEvent[], nowMs: number): readonly TriggerEvent[] {
+  return events.filter((e, i) => i < EVENT_LOG_MAX || e.outcome === 'started' || (e.jobId !== null && nowMs - e.at < HOUR_MS))
 }
 
 /** A patch key set to `undefined` would be dropped by JSON and make the saved file unloadable. */
@@ -139,9 +144,11 @@ export class TriggerStore {
   }
 
   logEvent(id: string, event: TriggerEvent, deliveryId: string | null = null): Promise<void> {
+    // A removed trigger (deleted while a run was in flight) must not leave events behind.
+    if (!this.get(id)) return Promise.resolve()
     this.state = {
       ...this.state,
-      events: { ...this.state.events, [id]: trimLog([event, ...this.events(id)]) },
+      events: { ...this.state.events, [id]: trimLog([event, ...this.events(id)], Date.now()) },
       deliveries: deliveryId ? this.withDelivery(id, deliveryId) : this.state.deliveries
     }
     return this.queueWrite()
@@ -161,6 +168,7 @@ export class TriggerStore {
   }
 
   recordDelivery(id: string, deliveryId: string): Promise<void> {
+    if (!this.get(id)) return Promise.resolve()
     this.state = { ...this.state, deliveries: this.withDelivery(id, deliveryId) }
     return this.queueWrite()
   }

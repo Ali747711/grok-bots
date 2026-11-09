@@ -173,6 +173,32 @@ describe('TriggerStore', () => {
     expect(TRIGGER_SOURCES).toEqual(['github', 'generic'])
   })
 
+  it('keeps runs of the last hour in the log through a flood and a restart (hourly limit survives)', async () => {
+    const store = await TriggerStore.load(file)
+    const id = 'a'.repeat(32)
+    await store.add(trigger())
+    const now = Date.now()
+    for (let i = 0; i < 10; i++) await store.logEvent(id, event(i, { outcome: 'finished', jobId: `j${i}`, at: now - 50 * 60_000 + i * 1000 }))
+    for (let i = 0; i < 60; i++) await store.logEvent(id, event(100 + i, { at: now - 40 * 60_000 + i }))
+    const again = await TriggerStore.load(file)
+    expect(again.events(id).filter(e => e.jobId !== null)).toHaveLength(10)
+    // an old run is trimmed normally
+    await again.logEvent(id, event(500, { outcome: 'finished', jobId: 'old', at: now - 2 * 3_600_000 }))
+    for (let i = 0; i < 60; i++) await again.logEvent(id, event(600 + i))
+    expect(again.events(id).some(e => e.id === 'e500')).toBe(false)
+  })
+
+  it('ignores events and deliveries for a trigger that no longer exists', async () => {
+    const store = await TriggerStore.load(file)
+    await store.logEvent('f'.repeat(32), event(1), 'd1')
+    await store.recordDelivery('f'.repeat(32), 'd2')
+    expect(store.events('f'.repeat(32))).toEqual([])
+    expect(store.seenDelivery('f'.repeat(32), 'd1')).toBe(false)
+    const again = await TriggerStore.load(file)
+    expect(again.all()).toEqual([])
+    expect(JSON.stringify(await import('node:fs/promises').then(f => f.readFile(file, 'utf8').catch(() => '')))).not.toContain('d1')
+  })
+
   it('toView never includes the secret', () => {
     const view = toView(trigger(), 'http://x/hooks/a', null)
     expect(view).not.toHaveProperty('secret')
