@@ -334,7 +334,7 @@ describe('RoutinesPanel event-only routines', () => {
     expect(screen.getByRole('combobox', { name: 'When' })).toHaveTextContent('Every day')
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(callsTo(fn, PUT)).toHaveLength(1))
-    expect(body(callsTo(fn, PUT)[0])).toMatchObject({ runs: 'schedule', schedule: { kind: 'daily', time: '09:00' } })
+    expect(body(callsTo(fn, PUT)[0])).toMatchObject({ runs: 'schedule', schedule: { kind: 'daily', time: '09:00' }, timezoneChanged: true })
   })
 
   it('an edit that stays in Only when triggered sends runs and no timezoneChanged', async () => {

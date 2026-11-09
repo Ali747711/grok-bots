@@ -83,7 +83,7 @@ function useRoutineDraft({ bot, initial, onSaved }: Omit<RoutineFormProps, 'onCa
   const [error, setError] = useState<string | null>(null)
 
   const save = async () => {
-    const input: RoutineInput = { title: title.trim(), instruction: instruction.trim(), schedule, timezone, deliverToChat, runs, ...(initial && runs === 'schedule' ? { timezoneChanged: zoneOrScheduleChanged(initial, seedSchedule(initial), schedule, timezone) } : {}) }
+    const input: RoutineInput = { title: title.trim(), instruction: instruction.trim(), schedule, timezone, deliverToChat, runs, ...(initial && runs === 'schedule' ? { timezoneChanged: initial.triggerOnly || zoneOrScheduleChanged(initial, seedSchedule(initial), schedule, timezone) } : {}) }
     setBusy(true)
     setError(null)
     try {
