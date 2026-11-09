@@ -2,12 +2,12 @@ import { useCallback } from 'react'
 import { Link } from 'react-router-dom'
 
 import { Skeleton } from '@/components/ui/skeleton'
-import { Composer } from '@/features/chat/Composer'
 import { composerDisabledReason, DEFAULT_MAX_WORKING_BOTS } from '@/features/chat/disabled-reason'
 import { submitAnswer } from '@/features/requests/answer-request'
 import { RequestCard } from '@/features/requests/RequestCard'
 import type { BotView, CrewState, GroupView } from '@/state/types'
 
+import { GroupComposer } from './GroupComposer'
 import { GroupHeader } from './GroupHeader'
 import { GroupMessageList } from './GroupMessageList'
 import { TurnActions } from './GroupNotices'
@@ -81,8 +81,16 @@ function GroupChat({ state, crewConnected, group, panelOpen, onPanel }: Omit<Gro
           </div>
         </div>
       )}
-      {/* Task 8 swaps this for the group composer with mention help and New topic. */}
-      <Composer disabledReason={reason} running={group.working} onSend={text => void room.send(text, { newTopic: false })} onStop={() => void room.stop()} />
+      <GroupComposer
+        view={group}
+        members={bots}
+        titleOf={titleOf}
+        firstInTopic={room.topic === null}
+        running={group.working}
+        disabledReason={reason}
+        onSend={(text, opts) => void room.send(text, opts)}
+        onStop={() => void room.stop()}
+      />
     </>
   )
 }
