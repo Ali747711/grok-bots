@@ -1,5 +1,5 @@
 import { ArrowUp } from 'lucide-react'
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -50,6 +50,12 @@ export function GroupComposer({ view, members, titleOf, firstInTopic, running, d
   const open = options.length > 0
   const current = Math.min(active, Math.max(0, options.length - 1))
 
+  // Escape only silences the token it was pressed in: once the caret is elsewhere, or the "@" is gone, the list may reopen.
+  const tokenStart = at?.start ?? null
+  useEffect(() => {
+    if (dismissed !== null && tokenStart !== dismissed) setDismissed(null)
+  }, [dismissed, tokenStart])
+
   useLayoutEffect(() => {
     if (pendingCaret.current !== null && ref.current) {
       ref.current.setSelectionRange(pendingCaret.current, pendingCaret.current)
@@ -73,6 +79,7 @@ export function GroupComposer({ view, members, titleOf, firstInTopic, running, d
     setText('')
     setCaret(0)
     setArmed(false)
+    setDismissed(null)
   }
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (open) {

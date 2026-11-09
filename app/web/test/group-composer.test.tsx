@@ -71,6 +71,34 @@ describe('GroupComposer mentions', () => {
     expect(box()).toHaveValue('@')
   })
 
+  it('reopens after Escape once the message was sent', () => {
+    setup()
+    type('@')
+    fireEvent.keyDown(box(), { key: 'Escape' })
+    type('hello')
+    fireEvent.keyDown(box(), { key: 'Enter' })
+    type('@')
+    expect(screen.getByRole('listbox')).toBeInTheDocument()
+  })
+
+  it('reopens after Escape when the token is deleted and a new @ is typed', () => {
+    setup()
+    type('@cr')
+    fireEvent.keyDown(box(), { key: 'Escape' })
+    expect(screen.queryByRole('listbox')).toBeNull()
+    type('')
+    type('@')
+    expect(screen.getByRole('listbox')).toBeInTheDocument()
+  })
+
+  it('stays closed while the same token keeps being typed after Escape', () => {
+    setup()
+    type('@cr')
+    fireEvent.keyDown(box(), { key: 'Escape' })
+    type('@cre')
+    expect(screen.queryByRole('listbox')).toBeNull()
+  })
+
   it('offers @everyone', () => {
     setup()
     type('@ev')
