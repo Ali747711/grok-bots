@@ -27,6 +27,14 @@ Branch `crew-phase4`. Evidence run 2026-11-09 against the live VM (Hermes 127.0.
     - No-model e2e (controller ruling): `cd app/e2e && npx playwright test groups.spec.ts` -> **6 passed (18.4s; re-runs 16.2s)**; `npx playwright test computer.spec.ts idle-stop.spec.ts avatar.spec.ts phase2.spec.ts -g "^(?!.*(routine runs|deleting the bot))"` -> **13 passed (1.7m)**. `crew.spec.ts` and the routine/delete specs spend credit and were not run.
     - Real browser (controller, 2026-11-09, Chromium via Playwright, a live 2-bot test group, the mention popover open, then the group panel): 1440×900 and 1000×800, light and dark → **0 console errors, 0 CSP violations** in all four; `data-theme` followed the color scheme. Screenshots (test bots only; the sidebar with the user's bots is not captured): `docs/phase4/group-{light,dark}-{1440,1000}.png`, `docs/phase4/panel-{light,dark}-{1440,1000}.png`. At 1000 px the group panel is an overlay over the composer (the UI rebuild's narrow layout).
 
+## Auto replies, live (after the final-review fix wave)
+
+The final review found that an Auto group could show no "working" state for up to about 5 s, because Hermes runs the Auto router before any member works. The fix keeps a group polled every 2 s for 20 s after a send. Controller check, 2026-11-09, commit `3a4ea43` (one-off Playwright script, test bots only, about $0.003 per run):
+- `POST /crew/groups` → 201 `{routing:'auto'}`. The header read "2 bots · Auto replies", and the composer line before sending read "Auto will pick who replies".
+- An unaddressed message ("…whoever this fits best, reply with the single word hello…"): **Stop showed 2.4 s after Enter**, "Auto picked @e2e…" at 2.4 s, idle again at 5.7 s, 0 console errors.
+- Hermes log: `message.user` → `room.routed {member_ids:[e2e…], fallback:false}` → one `message.member` ("hello") → `turn.settled` → `room.activity`. Screenshot: `docs/phase4/auto-check.png`.
+- The first run's timings were cut off by the shell, so it was run once more; both runs routed to one bot.
+
 ## Finding fixed while writing the e2e
 
 Crew read `groups.capabilities` only on connect, so a bot created after Crew connected never became seatable (the New group dialog and the server's member check both used the stale list). The group watcher now re-reads capabilities on every list tick (`group-watcher.ts`, test "picks up a newly seatable profile on the next list tick"). Server rebuilt and `crew` restarted before the passing runs above.
