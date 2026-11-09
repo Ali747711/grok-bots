@@ -23,8 +23,9 @@ export function wireTriggers(deps: { rest: HermesRest; store: TriggerStore; now:
 export async function loadTriggerStore(file: string): Promise<TriggerStore | null> {
   try {
     return await TriggerStore.load(file)
-  } catch {
-    log.error('triggers file unreadable, triggers disabled', { file })
+  } catch (error) {
+    // The code (EACCES, EISDIR, …) is enough to act on; the message could carry file contents.
+    log.error('triggers file unreadable, triggers disabled', { file, code: (error as NodeJS.ErrnoException).code ?? 'unknown' })
     return null
   }
 }

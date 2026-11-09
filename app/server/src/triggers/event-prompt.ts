@@ -13,6 +13,9 @@ export const LINE_MAX = 300
 const INVISIBLE = new Set('\u200b\u200c\u200d\u2060\u2062\u2063\u2064\ufeff\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069')
 const EMOJI = /\p{Extended_Pictographic}/u
 
+/** Lone surrogates (from JSON `\\ud83d` escapes) become U+FFFD: Hermes cannot save them (Node 20+; the lib typings lag). */
+const wellFormed = (text: string): string => (text as string & { toWellFormed(): string }).toWellFormed()
+
 /** Drop invisible characters from outside text; a ZWJ inside an emoji sequence stays, as Hermes allows. */
 export function stripInvisible(text: string): string {
   const chars = [...text]
@@ -65,7 +68,7 @@ const first = (root: unknown, paths: readonly string[]): string | number | undef
 }
 
 /** One line, whitespace collapsed, cut to 300 chars. */
-const oneLine = (v: string | number): string => cutText(stripInvisible(String(v)).replace(/\s+/g, ' ').trim(), LINE_MAX)
+const oneLine = (v: string | number): string => cutText(stripInvisible(wellFormed(String(v))).replace(/\s+/g, ' ').trim(), LINE_MAX)
 
 function githubLines(value: unknown): string[] {
   const commitLine = pick(value, 'head_commit.message')
@@ -98,7 +101,7 @@ function payloadBlock(input: EventPromptInput): string {
       text = input.rawText ?? DEEP_PLACEHOLDER
     }
   }
-  text = stripInvisible(text)
+  text = stripInvisible(wellFormed(text))
   if (text === '') return 'Payload: (empty)'
   const cut = text.length > PAYLOAD_MAX ? `${cutText(text, PAYLOAD_MAX)}\n… (cut)` : text
   const label = lang === 'json' ? 'Payload (JSON, cut to 6000 characters):' : 'Payload (text, cut to 6000 characters):'
@@ -107,7 +110,7 @@ function payloadBlock(input: EventPromptInput): string {
 
 function bodyBlock(value: unknown): string | null {
   const raw = first(value, ['comment.body', 'issue.body', 'pull_request.body', 'release.body'])
-  const body = typeof raw === 'string' ? stripInvisible(raw) : ''
+  const body = typeof raw === 'string' ? stripInvisible(wellFormed(raw)) : ''
   if (body === '') return null
   const cut = body.length > BODY_MAX ? `${cutText(body, BODY_MAX)}…` : body
   return `Body (first 2000 characters):\n${fenced('text', cut)}`

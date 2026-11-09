@@ -120,6 +120,15 @@ describe('buildEventPrompt', () => {
     expect(gh({ issue: { number: 1, title: `${'a'.repeat(298)}${emoji}tail` } })).toContain(`${'a'.repeat(298)}${emoji}`)
   })
 
+  it('turns lone surrogates from JSON escapes into well-formed text before cutting', () => {
+    const value = JSON.parse('{"issue":{"number":1,"title":"a\\ud83d","body":"b\\ude00 tail"},"note":"c\\ud83d"}')
+    const prompt = gh(value)
+    expect(prompt.isWellFormed()).toBe(true)
+    expect(prompt).toContain('- Title: a\uFFFD')
+    const text = buildEventPrompt({ instruction: 'x', source: 'generic', eventType: 'e', action: null, payload: { kind: 'text', text: `${'p'.repeat(5999)}\ud83d${'q'.repeat(10)}` } })
+    expect(text.isWellFormed()).toBe(true)
+  })
+
   it('strips invisible characters from event text but keeps ZWJ inside emoji and the routine instruction as is', () => {
     const value = { issue: { number: 1, title: 'Fix\u200b the\ufeff bug\u202e', body: 'bo\u2060dy\u200d', html_url: 'https://x' }, note: 'a\u200bb' }
     const prompt = buildEventPrompt({ instruction: 'Keep\u200b this', source: 'github', eventType: 'issues', action: null, payload: { kind: 'json', value } })

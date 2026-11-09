@@ -43,7 +43,8 @@ describe('an unreadable triggers file', () => {
     try {
       const store = await loadTriggerStore(dir)
       expect(store).toBeNull()
-      expect(lines.map(l => JSON.parse(l)).filter(l => l.level === 'error')).toEqual([expect.objectContaining({ file: dir })])
+      expect(lines.join('\n')).not.toMatch(/illegal operation|EISDIR:/)
+      expect(lines.map(l => JSON.parse(l)).filter(l => l.level === 'error')).toEqual([expect.objectContaining({ file: dir, code: 'EISDIR' })])
       const routines = { list: async () => [] } as unknown as RoutineService
       const app = createApp({ ...makeDeps(), routines })
       expect((await app.request('/crew/health', { headers: { Host: HOST } })).status).toBe(200)
