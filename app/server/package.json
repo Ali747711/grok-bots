@@ -1,0 +1,30 @@
+{
+  "name": "@crew/server",
+  "private": true,
+  "type": "module",
+  "main": "dist/main.js",
+  "bin": {
+    "crew": "dist/cli/crew.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "vendor": "node ../scripts/vendor-hermes.mjs",
+    "vendor:check": "node ../scripts/vendor-hermes.mjs --check",
+    "probe": "node dist/tools/probe.js"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.6",
+    "hono": "^4.13.17",
+    "ws": "^8.22.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/ws": "^8.18.2",
+    "@vitest/coverage-v8": "^5.1.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}
