@@ -48,6 +48,8 @@ export function checkBrowserFrame(raw: RawData, isBinary: boolean, knownBots: ()
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return refusal(INVALID_REQUEST, 'invalid request', null)
   const { id, method, params } = parsed as { id?: unknown; method?: unknown; params?: unknown }
+  // Groups run through Crew's own routes, which pin the owner profile; a browser frame could not.
+  if (typeof method === 'string' && method.startsWith('groups.')) return refusal(METHOD_NOT_FOUND, 'groups are only available through Crew', id)
   if (typeof method !== 'string' || !method.startsWith('display.')) return { forward: true }
   if (!BROWSER_METHODS.has(method)) return refusal(METHOD_NOT_FOUND, `${method} is not available from the browser`, id)
   const profile = params && typeof params === 'object' && !Array.isArray(params) ? (params as { profile?: unknown }).profile : undefined

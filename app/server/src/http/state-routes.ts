@@ -3,7 +3,7 @@ import { streamSSE } from 'hono/streaming'
 import { z } from 'zod'
 
 import { log } from '../log.js'
-import type { Watcher } from '../watcher/watcher.js'
+import type { CrewStateSource } from '../state/crew-state.js'
 import type { CrewEnv } from './session-guard.js'
 
 const HEARTBEAT_MS = 15_000
@@ -21,7 +21,7 @@ const bodies = {
 } as const
 
 /** `GET /crew/state` (snapshot), `POST /crew/requests/:id/answer` (the only answer path) and `GET /crew/events` (SSE: event `state`, full CrewState on connect and on change). */
-export function stateRoutes(watcher: Pick<Watcher, 'state' | 'onChange' | 'answer' | 'store' | 'getAvatar'> | undefined, heartbeatMs = HEARTBEAT_MS): Hono<CrewEnv> {
+export function stateRoutes(watcher: Pick<CrewStateSource, 'state' | 'onChange' | 'answer' | 'store' | 'getAvatar'> | undefined, heartbeatMs = HEARTBEAT_MS): Hono<CrewEnv> {
   const routes = new Hono<CrewEnv>()
   routes.get('/crew/state', c => (watcher ? c.json(watcher.state()) : c.json({ error: 'watcher_not_running' }, 503)))
   routes.get('/crew/events', c => {

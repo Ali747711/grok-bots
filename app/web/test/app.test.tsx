@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CrewState } from '@/state/types'
 
 import { FakeClient } from './fake-client'
-import { crewState } from './fixtures'
+import { bot, crewState, group, gm } from './fixtures'
 
 const client = new FakeClient()
 vi.mock('@/chat/gateway', () => ({ connectGateway: () => client }))
@@ -39,6 +39,28 @@ describe('App routes', () => {
     act(() => { vi.advanceTimersByTime(3100) })
     expect(screen.getByText('Bot not found')).toBeInTheDocument()
     vi.useRealTimers()
+  })
+
+  it('shows the group for /groups/:id', async () => {
+    hook.value = { state: crewState({ bots: [bot({ name: 'dev', title: 'Dev' })], groups: { available: true, seatable: ['dev'], rooms: [group({ id: 'r1', name: 'Launch', members: [gm('dev')] })] } }), connected: true }
+    renderAt('/groups/r1')
+    expect(await screen.findByRole('heading', { name: 'Launch' })).toBeInTheDocument()
+  })
+
+  it('opens the group panel for ?panel=group', async () => {
+    hook.value = { state: crewState({ bots: [bot({ name: 'dev', title: 'Dev' })], groups: { available: true, seatable: ['dev'], rooms: [group({ id: 'r1', name: 'Launch', members: [gm('dev')] })] } }), connected: true }
+    renderAt('/groups/r1?panel=group')
+    expect(await screen.findByText('Group details')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete group' })).toBeInTheDocument()
+  })
+
+  it('falls back to / for an unknown group after the grace period', async () => {
+    vi.useFakeTimers()
+    renderAt('/groups/nope')
+    expect(screen.getByRole('status')).toBeInTheDocument()
+    act(() => { vi.advanceTimersByTime(3100) })
+    vi.useRealTimers()
+    expect(await screen.findByRole('heading', { name: 'Hermes' })).toBeInTheDocument()
   })
 
   it('shows the Needs you page', () => {

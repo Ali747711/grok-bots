@@ -1,4 +1,5 @@
 import { type CrewAvatar, readCrewAvatar } from '../bots/avatar.js'
+import type { GroupsState } from '../groups/types.js'
 import type { CrewSettings } from '../settings/settings-store.js'
 import type { PendingRequest } from './pending-store.js'
 import type { WatcherEvent } from './request-router.js'
@@ -8,6 +9,8 @@ export type BotStatus = 'idle' | 'working' | 'needs_you'
 export interface BotView {
   readonly name: string
   readonly title: string
+  /** Hermes's `display_name` for the profile (trimmed); null when unset. Member rows carry it. */
+  readonly displayName: string | null
   readonly color: string | null
   readonly shape: string | null
   readonly isPrimary: boolean
@@ -38,7 +41,11 @@ export interface CrewState {
   readonly bots: readonly BotView[]
   readonly pending: readonly PendingView[]
   readonly settings: CrewSettings
+  readonly groups: GroupsState
 }
+
+/** What the watcher itself knows; the composed facade adds `groups`. */
+export type WatcherState = Omit<CrewState, 'groups'>
 
 /** The roster fields Crew reads from a `profiles.list` row (all optional on the wire). */
 export interface ProfileInput {
@@ -113,6 +120,7 @@ export class BotStateTracker {
       return {
         name: row.name,
         title: str(meta.title) ?? str(row.display_name) ?? (isPrimary ? 'Hermes' : row.name),
+        displayName: str(row.display_name)?.trim() ?? null,
         color: str(meta.color),
         shape: str(meta.shape),
         isPrimary,

@@ -1,6 +1,6 @@
 export type PendingKind = 'approval' | 'clarify' | 'sudo' | 'secret'
 /** Where the watcher saw the request — recorded so the Phase 0 experiment shows which channel Hermes uses. */
-export type PendingSource = 'server_request' | 'open_request' | 'snapshot_prompt' | 'event'
+export type PendingSource = 'server_request' | 'open_request' | 'snapshot_prompt' | 'event' | 'group'
 /** `settled`: Hermes no longer lists it (answered, withdrawn or expired — the reason is not reported). */
 export type SettleReason = 'answered' | 'cancelled' | 'expired' | 'settled'
 
@@ -20,6 +20,8 @@ export interface PendingRequest {
   readonly source: PendingSource
   readonly promptId?: string
   readonly executionGeneration?: number
+  /** Group approvals only: where to send the answer. */
+  readonly group?: { readonly roomId: string; readonly memberId: string; readonly taskId: string; readonly requestId: string }
   readonly settled?: SettleReason
   readonly settledAt?: number
   /** Crew-side delivery state of the user's answer; absent while nothing was sent. */

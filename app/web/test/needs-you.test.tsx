@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { NeedsYouPage } from '@/features/needs-you/NeedsYouPage'
 import type { PendingView } from '@/state/types'
 
-import { bot, crewState } from './fixtures'
+import { bot, crewState, group } from './fixtures'
 
 const NOW = 1_000_000_000
 const pending = (id: string, profile: string, kind: PendingView['kind'], summary: string, ageS: number): PendingView => ({
@@ -85,5 +85,17 @@ describe('NeedsYouPage', () => {
     renderPage(crewState({ bots: [], pending: [pending('a', 'ghost', 'clarify', 'Which one?', 5)] }))
     expect(screen.getByText('ghost')).toBeInTheDocument()
     expect(screen.getByText('just now')).toBeInTheDocument()
+  })
+
+  it('links a group approval in Needs you to its group', () => {
+    const entry: PendingView = { ...pending('g', 'dev', 'approval', 'run it', 5), source: 'group', group: { roomId: 'r 1', memberId: 'dev', taskId: 't', requestId: 'q' } }
+    renderPage(crewState({
+      bots: [bot({ name: 'dev', title: 'Dev' })],
+      groups: { available: true, seatable: [], rooms: [group({ id: 'r 1', name: 'Launch' })] },
+      pending: [entry]
+    }))
+    const link = screen.getByText('Dev in Launch').closest('a')!
+    expect(link).toHaveAttribute('href', '/groups/r%201')
+    expect(within(link).getByText('Open chat')).toBeInTheDocument()
   })
 })

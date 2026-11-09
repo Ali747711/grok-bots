@@ -1,0 +1,57 @@
+# Crew Phase 4 (group chats): acceptance
+
+Branch `crew-phase4`. Evidence run 2026-11-09 against the live VM (Hermes 127.0.0.1:9120, Crew 127.0.0.1:7070), base commit `da95c81` plus the Task 10 commit. The `[model]` lines were run once by the controller on 2026-11-09 (commit `2d0ad0b` for #6a/#6b/#5, `371dc30` for #3/#4), split into small runs to measure cost first. Total model spend for all Phase 4 live proof: about $0.012 (OpenRouter key usage 1.8482 → ~1.86). Test bots only (`crew-test`, `e2e<digits>`); the Webapp screenshot is an element crop of the group name.
+
+## Spec section 9
+
+1. **A Crew-made 2-bot group shows in the sidebar, in `groups.list`, routing `auto`, and in the Webapp. Evidence: passed.**
+   `cd app/e2e && npx playwright test groups.spec.ts` test 1 (dialog -> sidebar row, `groups.list` row, `groups.state` context routing `auto`) and test 6 (Webapp Bots tab shows the group; `docs/phase4/webapp-group-row.png`, crop of the group name only). 6 passed (18.4s; re-runs 16.2s), 2026-11-09.
+2. **A Hermes-made room appears in Crew within 5 s; deleting it in Crew removes it from Hermes. Evidence: passed.**
+   `groups.spec.ts` test 2 (created via `groups.create` RPC; sidebar row visible; Delete group; gone from `groups.list`). Measured `appeared-after-ms` = **3349 ms** (JSON reporter run, 2026-11-09), timed from the room's creation through a full page load to the row being visible, so under the 5 s bound. The assertion itself allows 15 s, so the bound is a single measurement, not an enforced limit; the watcher lists rooms every 5 s, so a worst case just over 5 s plus page load is possible.
+3. **[model] one reply from the mentioned bot only. Evidence: passed.**
+   `npx playwright test groups-model.spec.ts -g "#3"` → 1 passed. Hermes room log: `message.user` "@e2e… reply with exactly: ok…" → one `message.member` from the e2e bot ("ok") → `turn.settled` → `room.activity` settled (`silent_round`). crew-test never replied. The reply showed in Crew with the bot's title. Cost $0.0023.
+4. **[model] Deny in a group; duplicate approval observation. Evidence: passed (functional steps); one ordering-only assertion failed.**
+   `-g "#4|#6|#5"` run: the card for `rm -r /tmp/crew-fixture/e2e-group-deny` appeared in the group view and Needs you; **Deny**; the folder still exists; the card cleared; crew-test replied "…was denied at the approval card, so it did not run and nothing was deleted." The test's last check ("≥ 2 user messages, different threads") failed only because the controller ran #4 without #3 in the same group (one user message). Crew's log shows only the group entry (`answer received` → `group answer sent` → `request settled`), and **no unanswerable `profile:'unknown'` duplicate** was logged, so a room approval does not reach the main watcher as a second card. (Known minor: the settle log says `answeredByCrew:false` for group answers.)
+5. **[model] handoff. Evidence: routing passed; the second bot's visible reply did not come (it chose "(pass)").**
+   `-g "#6a|#6b|#5"` run, #5 failed after 180 s. Hermes room log: crew-test (round 0) replied "Hi! @e2e… please reply with exactly: ok"; Hermes then gave the e2e bot a **round-1 turn** (`turn.settled member_id e2e…, round_index 1`), so the bot→bot handoff routing works, but that bot answered "(pass)" (`passed: true`, no message) and the round settled (`silent_round`). Hermes's round-1 prompt tells members to pass when they have nothing new to add; that is model behaviour, not Crew's. Crew shows nothing for a passed turn (by design). Not retried.
+6. **[model] Allow once, live row, Stop. Evidence: passed (#6a 1 passed, #6b 1 passed).** Two parts, because `sleep` is not approval-gated in Hermes (found in the first live run). `groups-model.spec.ts` "#6a": a gated command (the Phase 1 fixture `rm` on `/tmp/crew-fixture/e2e-group-allow`) shows a card in the group view; **Allow once** runs it (directory gone), the card clears. "#6b": `sleep 60 && echo e2e-group-late` runs with no card; the member's live row ("Fixture is using ... / working"), `crew-test` status `working`; **Stop** shows the "Stopped" notice; after 70 s no member message (UI or `groups.log` after the recorded seq) contains `e2e-group-late`. The avatar's working state has no DOM marker, so Crew's own status stands in for it.
+   Live: #6a crew-test said "ran and exited with code 0" and the folder was gone; #6b produced `room.stop_requested` + `turn.cancelled`, "Stopped" showed, and no late output appeared. The first attempt (`-g "#4|#6|#5"`) used the old single #6, which waited for a card on `sleep` and failed; that is why it was split. #6a and #6b ran in one thread, so they are also the live proof of "continue the current topic"; #4 opened its own thread ("New topic").
+7. **Mention autocomplete and the who-will-answer line. Evidence: passed (no send).**
+   `groups.spec.ts` test 3 types and checks: autocomplete inserts `@<handle> `; one mention, two mentions, `@everyone` ("Everyone (2 bots) will reply"), trailing-dot mention, and a first message (Auto) lines; the New topic armed prefix. The follow-up line ("... · @mention to ask one bot") and the send path's thread ids are proven by unit tests (`mentions.test.ts`, `group-composer.test.tsx`, `use-group-room.test.ts`) because a live follow-up needs a sent message. The `thread_id` proof from the live runs: #4 opened its own thread (New topic); #6a and #6b continued one topic (see #6).
+8. **Rename, reply rule, purpose and notes persist. Evidence: passed.**
+   `groups.spec.ts` test 4: rename -> `groups.state` room name; Everyone, then Auto with purpose and notes -> `groups.state` context.
+9. **Security. Evidence: passed.**
+   `groups.spec.ts` test 5: a browser `groups.list` frame on `/api/ws` is refused with -32601; `POST /crew/groups` without the CSRF header gives 403, with a foreign Origin gives 403, and no extra group was created. CSP: no change to the header in this phase (no new origins; web build adds no external resource).
+10. **Unit suites, full no-model e2e, real browser. Evidence: passed.**
+    - Web: `cd app/web && npm test` -> **Tests 625 passed (625)**. Server: `cd app/server && npm test` -> **Tests 508 passed (508)**; `npm run vendor:check` -> vendored files match.
+    - No-model e2e (controller ruling): `cd app/e2e && npx playwright test groups.spec.ts` -> **6 passed (18.4s; re-runs 16.2s)**; `npx playwright test computer.spec.ts idle-stop.spec.ts avatar.spec.ts phase2.spec.ts -g "^(?!.*(routine runs|deleting the bot))"` -> **13 passed (1.7m)**. `crew.spec.ts` and the routine/delete specs spend credit and were not run.
+    - Real browser (controller, 2026-11-09, Chromium via Playwright, a live 2-bot test group, the mention popover open, then the group panel): 1440×900 and 1000×800, light and dark → **0 console errors, 0 CSP violations** in all four; `data-theme` followed the color scheme. Screenshots (test bots only; the sidebar with the user's bots is not captured): `docs/phase4/group-{light,dark}-{1440,1000}.png`, `docs/phase4/panel-{light,dark}-{1440,1000}.png`. At 1000 px the group panel is an overlay over the composer (the UI rebuild's narrow layout).
+
+## Auto replies, live (after the final-review fix wave)
+
+The final review found that an Auto group could show no "working" state for up to about 5 s, because Hermes runs the Auto router before any member works. The fix keeps a group polled every 2 s for 20 s after a send. Controller check, 2026-11-09, commit `3a4ea43` (one-off Playwright script, test bots only, about $0.003 per run):
+- `POST /crew/groups` → 201 `{routing:'auto'}`. The header read "2 bots · Auto replies", and the composer line before sending read "Auto will pick who replies".
+- An unaddressed message ("…whoever this fits best, reply with the single word hello…"): **Stop showed 2.4 s after Enter**, "Auto picked @e2e…" at 2.4 s, idle again at 5.7 s, 0 console errors.
+- Hermes log: `message.user` → `room.routed {member_ids:[e2e…], fallback:false}` → one `message.member` ("hello") → `turn.settled` → `room.activity`. Screenshot: `docs/phase4/auto-check.png`.
+- The first run's timings were cut off by the shell, so it was run once more; both runs routed to one bot.
+
+## Finding fixed while writing the e2e
+
+Crew read `groups.capabilities` only on connect, so a bot created after Crew connected never became seatable (the New group dialog and the server's member check both used the stale list). The group watcher now re-reads capabilities on every list tick (`group-watcher.ts`, test "picks up a newly seatable profile on the next list tick"). Server rebuilt and `crew` restarted before the passing runs above.
+
+## Cleanup
+
+`deleteTestGroups()` (in `hermes-rpc.ts`) disbands only rooms whose members are all `crew-test` or `e2e<digits>`; it runs in global setup before `deleteTestBots()` and in each groups spec's afterAll. User bots' rooms are never touched.
+
+## Bug found after hand-over: Hermes's 24-message topic limit (2026-11-09)
+
+The user's group "Talk free" stopped answering after about 24 messages in one topic. Every send got `member.unavailable {prepare_failed: "Members could not be woken: turn.settled references no matching user discussion"}`.
+- **Root cause:** Hermes v0.23.0 keeps only the last 24 user and bot messages per thread for planning, and fails its own check once a kept reply has lost its user message. See `hermes-facts.md` "Known Hermes limit". Read-only check of `hosted_room_policy_transcript`: the stuck thread held exactly 24 messages, and its oldest were bot replies whose user message had been dropped.
+- **Fix** (commits `49307c9`, `cfebbc1`):
+  - Crew starts a new topic once the current one has 14 messages (24 − up to 10 replies).
+  - Keep going is hidden when it could pass the limit.
+  - Stuck groups show a banner with **Stop and start a new topic**.
+- **Live proof on a throwaway test group** (controller, about $0.04):
+  - 12 sends in one thread worked. The 13th, the thread's 25th message, broke the group with the same error.
+  - Crew reported `stuck: true`.
+  - Crew's `POST …/stop` (200), then a message in a new topic (`POST …/messages` without `threadId`, 202), got the reply "recovered", and `stuck` went back to `false`.

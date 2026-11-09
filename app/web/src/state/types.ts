@@ -9,6 +9,8 @@ export type HermesConnection = 'connected' | 'connecting' | 'signed_out' | 'offl
 export interface BotView {
   readonly name: string
   readonly title: string
+  /** The Hermes display name, when one is set. Missing on older servers. */
+  readonly displayName?: string | null
   readonly color: string | null
   readonly shape: string | null
   readonly isPrimary: boolean
@@ -42,9 +44,11 @@ export interface PendingView {
   readonly detailTruncated?: true
   readonly choices?: readonly string[]
   readonly receivedAt: number
-  readonly source: 'server_request' | 'open_request' | 'snapshot_prompt' | 'event'
+  readonly source: 'server_request' | 'open_request' | 'snapshot_prompt' | 'event' | 'group'
   readonly promptId?: string
   readonly executionGeneration?: number
+  /** Group approvals only: where the answer goes. */
+  readonly group?: { readonly roomId: string; readonly memberId: string; readonly taskId: string; readonly requestId: string }
   readonly state: 'open' | 'answering' | 'failed'
   readonly answerable: boolean
   readonly error?: string
@@ -61,4 +65,92 @@ export interface CrewState {
   readonly pending: readonly PendingView[]
   /** Missing when talking to an older server. */
   readonly settings?: CrewSettings
+  /** Missing when talking to an older server. */
+  readonly groups?: GroupsState
+}
+
+export type Routing = 'everyone' | 'auto' | 'lead'
+
+export interface GroupMemberView {
+  readonly memberId: string
+  readonly profile: string
+  readonly handle: string
+  readonly displayName: string | null
+}
+
+export interface GroupActivityView {
+  readonly memberId: string
+  readonly status: 'queued' | 'running' | 'stopping'
+  readonly tool: string | null
+  readonly stalled: boolean
+}
+
+export interface GroupTurnAction {
+  readonly memberId: string
+  readonly kind: 'retry' | 'discard'
+  readonly taskId: string
+  readonly executionGeneration: number
+}
+
+export interface GroupPreview {
+  readonly speaker: { readonly kind: 'user' } | { readonly kind: 'member'; readonly memberId: string } | { readonly kind: 'other'; readonly label: string }
+  readonly text: string
+}
+
+export interface GroupView {
+  readonly id: string
+  readonly name: string
+  readonly members: readonly GroupMemberView[]
+  readonly routing: Routing
+  readonly leadMemberId: string | null
+  readonly purpose: string
+  readonly notes: string
+  readonly latestSeq: number
+  readonly epoch: number
+  /** Milliseconds. */
+  readonly updatedAt: number
+  readonly working: boolean
+  /** Hermes cannot plan this room any more (a topic grew past its 24-message window). */
+  readonly stuck: boolean
+  /** A topic past Hermes's 24-message window, or another stalled prepare. */
+  readonly stuckReason: 'topic_limit' | 'prepare_failed' | null
+  /** Hermes's room-wide retry action, when offered. */
+  readonly prepareRetry: { readonly memberId: string; readonly taskId: string; readonly executionGeneration: number } | null
+  readonly lastError: string | null
+  readonly activity: readonly GroupActivityView[]
+  readonly turnActions: readonly GroupTurnAction[]
+  readonly maxContinues: number
+  readonly maxRounds: number
+  readonly preview: GroupPreview | null
+}
+
+export interface GroupsState {
+  readonly available: boolean
+  readonly seatable: readonly string[]
+  readonly rooms: readonly GroupView[]
+}
+
+/** One room event as the browser sees it. */
+export interface GroupEvent {
+  readonly seq: number
+  readonly eventId: string
+  readonly kind: string
+  /** Milliseconds. */
+  readonly createdAt: number
+  readonly actor: { readonly kind: string; readonly id: string; readonly profile: string | null; readonly displayName: string | null }
+  readonly text?: string
+  readonly threadId?: string
+  readonly memberId?: string
+  readonly discussionEventId?: string
+  readonly roundIndex?: number
+  readonly status?: string
+  readonly reasonCode?: string
+  readonly error?: string
+  readonly reason?: string
+  readonly memberIds?: readonly string[]
+  readonly everyone?: boolean
+  readonly fallback?: boolean
+  readonly name?: string
+  readonly routing?: string
+  readonly leadMemberId?: string
 }

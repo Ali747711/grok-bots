@@ -10,6 +10,7 @@ import { botEditRoutes } from './http/bot-edit-routes.js'
 import { botRoutes } from './http/bot-routes.js'
 import { screenRoutes } from './http/screen-routes.js'
 import { routineRoutes } from './http/routine-routes.js'
+import { groupRoutes, type GroupRouteDeps } from './http/group-routes.js'
 import { hostGuard } from './http/host-guard.js'
 import { originGuard } from './http/origin-guard.js'
 import { type CrewEnv, sessionGuard } from './http/session-guard.js'
@@ -19,7 +20,7 @@ import { spaRoutes } from './http/spa.js'
 import type { RoutineService } from './routines/service.js'
 import type { SettingsStore } from './settings/settings-store.js'
 import type { UsageSource } from './usage/openrouter.js'
-import type { Watcher } from './watcher/watcher.js'
+import type { CrewStateSource } from './state/crew-state.js'
 
 export interface AppDeps {
   readonly config: CrewConfig
@@ -37,7 +38,9 @@ export interface AppDeps {
   readonly bots?: BotDeps
   /** Absent in tests that don't need it; /crew/routines then answers 503 hermes_offline. */
   readonly routines?: RoutineService
-  readonly watcher?: Pick<Watcher, 'store' | 'debug' | 'state' | 'onChange' | 'answer' | 'getAvatar'>
+  readonly watcher?: CrewStateSource
+  /** Absent in tests that don't need it; /crew/groups then answers 503 hermes_offline. */
+  readonly groups?: GroupRouteDeps
 }
 
 export const PUBLIC_PATHS = [
@@ -66,6 +69,7 @@ export function createApp(deps: AppDeps): Hono<CrewEnv> {
   app.route('/', botEditRoutes(deps.bots))
   app.route('/', screenRoutes(deps.bots))
   app.route('/', routineRoutes(deps.routines, deps.now))
+  app.route('/', groupRoutes(deps.groups))
   app.route('/', authRoutes(deps))
   app.route('/', restProxy(deps))
   // Last: the SPA answers every remaining GET, so later-mounted routes would be shadowed.

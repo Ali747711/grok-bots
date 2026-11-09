@@ -13,7 +13,8 @@ export class HermesUnavailableError extends Error {
 export class HermesRpcError extends Error {
   constructor(
     readonly code: number,
-    message: string
+    message: string,
+    readonly data?: unknown
   ) {
     super(message)
     this.name = 'HermesRpcError'

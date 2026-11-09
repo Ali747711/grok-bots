@@ -1,12 +1,22 @@
 import ReactMarkdown, { type Components } from 'react-markdown'
 
+/** Marks a mention that group chats rewrite into a link; it renders as a highlight, never as a link. */
+export const MENTION_SCHEME = 'crew-mention:'
+
 /** Only absolute http(s) and mailto links survive; everything else (javascript:, data:, relative) becomes empty. */
 export function safeUrl(url: string): string {
   return /^(https?:|mailto:)/i.test(url.trim()) ? url : ''
 }
 
+const keepUrl = (url: string): string => (url.startsWith(MENTION_SCHEME) ? url : safeUrl(url))
+
 const components: Components = {
-  a: ({ node: _node, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" className="text-sky-ink underline underline-offset-2" />,
+  a: ({ node: _node, href, children, ...props }) =>
+    href?.startsWith(MENTION_SCHEME) ? (
+      <span className="rounded bg-sky-soft px-0.5 text-sky-ink">{children}</span>
+    ) : (
+      <a {...props} href={href} target="_blank" rel="noopener noreferrer" className="text-sky-ink underline underline-offset-2">{children}</a>
+    ),
   p: ({ node: _node, ...props }) => <p {...props} className="my-2 first:mt-0 last:mb-0" />,
   ul: ({ node: _node, ...props }) => <ul {...props} className="my-2 list-disc pl-5" />,
   ol: ({ node: _node, ...props }) => <ol {...props} className="my-2 list-decimal pl-5" />,
@@ -21,7 +31,7 @@ const components: Components = {
 export function Markdown({ text }: { text: string }) {
   return (
     <div className="min-w-0 leading-relaxed break-words">
-      <ReactMarkdown skipHtml urlTransform={safeUrl} components={components}>
+      <ReactMarkdown skipHtml urlTransform={keepUrl} components={components}>
         {text}
       </ReactMarkdown>
     </div>

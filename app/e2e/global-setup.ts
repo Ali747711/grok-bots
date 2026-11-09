@@ -3,9 +3,12 @@ import { mkdirSync } from 'node:fs'
 import { chromium } from '@playwright/test'
 
 import { crewLoginUrl, deleteTestBots } from './helpers.js'
+import { deleteTestGroups } from './hermes-rpc.js'
 
 /** Log in to Crew once with a fresh one-use link and save the cookie for every test. */
 export default async function globalSetup(): Promise<void> {
+  // Rooms first: a bot cannot be deleted while a room seats it.
+  await deleteTestGroups()
   await deleteTestBots()
   mkdirSync('.auth', { recursive: true })
   const browser = await chromium.launch()

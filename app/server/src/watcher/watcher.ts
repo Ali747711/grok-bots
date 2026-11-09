@@ -3,7 +3,7 @@ import { log as logger } from '../log.js'
 import type { SettingsStore } from '../settings/settings-store.js'
 import { JsonRpcGatewayError, type ServerRequest } from '../vendor/hermes/json-rpc-channel.js'
 import { type AnswerInput, answerRequest } from './answer.js'
-import { BotStateTracker, type CrewState, type ProfileInput } from './bot-state.js'
+import { BotStateTracker, type CrewState, type ProfileInput, type WatcherState } from './bot-state.js'
 import { type PendingKind, type PendingRequest, PendingStore } from './pending-store.js'
 import { applyGatewayEvent, approvalDetail, routeServerRequest, summarize, type WatcherEvent } from './request-router.js'
 
@@ -35,7 +35,7 @@ export interface DebugEntry {
 export interface Watcher {
   readonly store: PendingStore
   /** Current roster, bot status, Hermes connection and open requests. */
-  state(): CrewState
+  state(): WatcherState
   /** Fires (debounced 100 ms) when anything in `state()` may have changed. */
   onChange(listener: () => void): () => void
   /** Send the user's answer to Hermes without waiting for it; progress shows in `state()`. */
@@ -364,7 +364,7 @@ export function startWatcher(deps: WatcherDeps): Watcher {
       try {
         return await client.request<T>(method, params, timeoutMs)
       } catch (error) {
-        if (error instanceof JsonRpcGatewayError) throw new HermesRpcError(error.code ?? -1, error.message)
+        if (error instanceof JsonRpcGatewayError) throw new HermesRpcError(error.code ?? -1, error.message, error.data)
         throw error
       }
     },

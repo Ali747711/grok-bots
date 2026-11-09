@@ -157,6 +157,15 @@ describe('ChatView', () => {
     expect(JSON.parse((call[1] as RequestInit).body as string)).toEqual({ choice: 'once' })
   })
 
+  it('does not show group approvals in the bot chat', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({ messages: [] }), { status: 200 }))))
+    const grp = { id: 'group:r1:q', kind: 'approval' as const, profile: 'dev', sessionId: 's', summary: 'group cmd', choices: ['once', 'deny'], receivedAt: 1, source: 'group' as const, state: 'open' as const, answerable: true, group: { roomId: 'r1', memberId: 'dev', taskId: 't', requestId: 'q' } }
+    render(<ChatView bot={dev} state={crewState({ pending: [grp] })} crewConnected />)
+    await flush()
+    expect(screen.queryByTestId('request-card')).toBeNull()
+    expect(screen.queryByText('group cmd')).toBeNull()
+  })
+
   it('sends from the composer and shows the message', async () => {
     render(<ChatView bot={dev} state={crewState()} crewConnected />)
     await flush()

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import type { Server } from 'node:http'
 import { join } from 'node:path'
 
@@ -11,9 +12,12 @@ import { connectGateway, createGatewayClient } from './hermes/gateway-client.js'
 import { createHermesRest } from './hermes/rest-client.js'
 import { HermesToken } from './hermes/token.js'
 import { attachWsProxy } from './hermes/ws-proxy.js'
+import { createGroupRpc } from './groups/group-rpc.js'
+import { startGroupWatcher } from './groups/group-watcher.js'
 import { log } from './log.js'
 import { createRoutineService } from './routines/service.js'
 import { SettingsStore } from './settings/settings-store.js'
+import { composeCrewState } from './state/crew-state.js'
 import { createUsageSource } from './usage/openrouter.js'
 import { startWatcher } from './watcher/watcher.js'
 
@@ -53,7 +57,26 @@ export async function start(): Promise<Server> {
     reconnectDelayMs: attempt => Math.min(30_000, 1000 * 2 ** attempt)
   })
   const rest = createHermesRest({ hermesUrl: config.hermesUrl, token })
-  const app = createApp({ config, secrets, tickets: new TicketStore(), now: Date.now, token, fetchUpstream: fetch, watcher, settings, bots: { rpc: watcher.request, rest, refresh: watcher.refresh, now: Date.now }, routines: createRoutineService({ rest, now: Date.now }), usage: createUsageSource({ envFile: config.hermesEnvFile, fetch, now: Date.now }) })
+  const groupRpc = createGroupRpc(watcher.request)
+  const connectionListeners = new Set<(connected: boolean) => void>()
+  let wasConnected = watcher.state().hermes === 'connected'
+  watcher.onChange(() => {
+    const connected = watcher.state().hermes === 'connected'
+    if (connected === wasConnected) return
+    wasConnected = connected
+    for (const listener of [...connectionListeners]) listener(connected)
+  })
+  const groupWatcher = startGroupWatcher({
+    rpc: groupRpc,
+    connected: () => watcher.state().hermes === 'connected',
+    onConnectionChange: listener => {
+      connectionListeners.add(listener)
+      return () => connectionListeners.delete(listener)
+    },
+    now: Date.now
+  })
+  const crewState = composeCrewState(watcher, groupWatcher, groupRpc, Date.now)
+  const app = createApp({ config, secrets, tickets: new TicketStore(), now: Date.now, token, fetchUpstream: fetch, watcher: crewState, groups: { rpc: groupRpc, groups: groupWatcher, roster: () => crewState.state().bots.map(b => ({ name: b.name, title: b.title, displayName: b.displayName })), newId: randomUUID, sleep: ms => new Promise(resolve => setTimeout(resolve, ms)) }, settings, bots: { rpc: watcher.request, rest, refresh: watcher.refresh, now: Date.now }, routines: createRoutineService({ rest, now: Date.now }), usage: createUsageSource({ envFile: config.hermesEnvFile, fetch, now: Date.now }) })
   const server = serve({ fetch: app.fetch, hostname: config.host, port: config.port }, info => {
     log.info('crew listening', { host: config.host, port: info.port })
   }) as Server

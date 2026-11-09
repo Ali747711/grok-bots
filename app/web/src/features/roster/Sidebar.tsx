@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { DEFAULT_MAX_WORKING_BOTS } from '@/features/chat/disabled-reason'
+import { GroupsSection } from '@/features/groups/GroupsSection'
 import { cn } from '@/lib/utils'
 import type { BotView, CrewState } from '@/state/types'
 
@@ -23,7 +24,13 @@ interface SidebarProps {
   needsYouActive?: boolean
   /** Shows the "+ New bot" button when given. */
   onNewBot?: () => void
+  /** Groups section: the open group, opening one, and the "+" button (shown when given). */
+  selectedGroupId?: string | null
+  onSelectGroup?: (roomId: string) => void
+  onNewGroup?: () => void
 }
+
+const noop = (): void => undefined
 
 function SectionLabel({ children }: { children: string }) {
   return <div className="label-mono px-2 pt-3.5 pb-1">{children}</div>
@@ -114,10 +121,11 @@ interface RosterListProps {
   selected: string | null
   onSelect: (name: string) => void
   onNewBot?: () => void
+  groups: Pick<SidebarProps, 'selectedGroupId' | 'onSelectGroup' | 'onNewGroup'>
 }
 
 /** The loading skeleton, then the empty state or the primary / other / hidden groups. */
-function RosterList({ state, stale, selected, onSelect, onNewBot }: RosterListProps) {
+function RosterList({ state, stale, selected, onSelect, onNewBot, groups }: RosterListProps) {
   const bots = (state?.bots ?? []).filter(b => !b.hidden)
   const hidden = (state?.bots ?? []).filter(b => b.hidden)
   const primary = bots.filter(b => b.isPrimary)
@@ -141,6 +149,9 @@ function RosterList({ state, stale, selected, onSelect, onNewBot }: RosterListPr
             {others.map(row)}
           </section>
         )}
+        {state?.groups && (
+          <GroupsSection state={state} selectedGroupId={groups.selectedGroupId ?? null} stale={stale} onSelect={groups.onSelectGroup ?? noop} onNewGroup={groups.onNewGroup} />
+        )}
         <HiddenSection bots={hidden} row={row} />
       </div>
     </>
@@ -148,14 +159,14 @@ function RosterList({ state, stale, selected, onSelect, onNewBot }: RosterListPr
 }
 
 /** Roster: Needs-you row, the primary bot and the rest. Dimmed with statuses hidden while Hermes is not connected. */
-export function Sidebar({ state, selected, onSelect, crewConnected = true, onNeedsYou, needsYouActive = false, onNewBot }: SidebarProps) {
+export function Sidebar({ state, selected, onSelect, crewConnected = true, onNeedsYou, needsYouActive = false, onNewBot, selectedGroupId, onSelectGroup, onNewGroup }: SidebarProps) {
   const stale = state !== null && (state.hermes !== 'connected' || !crewConnected)
   return (
     <>
       <SidebarHeader onNewBot={onNewBot} />
       {state && <HermesBanner hermes={state.hermes} crewConnected={crewConnected} />}
       <NeedsYouRow count={state?.pending.length ?? 0} active={needsYouActive} onClick={onNeedsYou} />
-      <RosterList state={state} stale={stale} selected={selected} onSelect={onSelect} onNewBot={onNewBot} />
+      <RosterList state={state} stale={stale} selected={selected} onSelect={onSelect} onNewBot={onNewBot} groups={{ selectedGroupId, onSelectGroup, onNewGroup }} />
       <RosterFooter maxWorkingBots={state?.settings ? state.settings.maxWorkingBots : DEFAULT_MAX_WORKING_BOTS} />
     </>
   )

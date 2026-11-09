@@ -35,7 +35,7 @@ export function ChatView({ bot, state, crewConnected, panel, onPanel }: ChatView
   const stale = state.hermes !== 'connected' || !crewConnected
   const othersWorking = state.bots.filter(b => b.name !== bot.name && b.status === 'working').length
   // Oldest first; they leave when Hermes settles them (they drop out of state.pending).
-  const requests = state.pending.filter(p => p.profile === bot.name).sort((a, b) => a.receivedAt - b.receivedAt)
+  const requests = state.pending.filter(p => p.profile === bot.name && p.source !== 'group').sort((a, b) => a.receivedAt - b.receivedAt)
   const reason = composerDisabledReason({ hermes: state.hermes, crewConnected, canSend,
     othersWorking,
     maxWorkingBots: state.settings ? state.settings.maxWorkingBots : DEFAULT_MAX_WORKING_BOTS
