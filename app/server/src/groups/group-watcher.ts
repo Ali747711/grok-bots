@@ -34,7 +34,6 @@ interface Entry {
   state?: HermesRoomState
   preview: GroupPreview | null
   tailSeq: number
-  chain: Promise<void>
 }
 
 const seqOf = (e: Entry): number => e.state?.room.latest_seq ?? e.room.latest_seq ?? 0
@@ -45,6 +44,8 @@ export function startGroupWatcher(deps: GroupWatcherDeps): GroupWatcher {
   const clearIv = deps.clearInterval ?? clearInterval
   const entries = new Map<string, Entry>()
   const actions = new Map<string, readonly HermesPendingAction[]>()
+  // Keyed by room id, not entry, so a dropped and re-listed room still never has two calls in flight.
+  const chains = new Map<string, Promise<void>>()
   const listeners = new Set<() => void>()
   let available = false
   let seatable: string[] = []
@@ -61,7 +62,8 @@ export function startGroupWatcher(deps: GroupWatcherDeps): GroupWatcher {
   })
 
   const emitIfChanged = (): void => {
-    const next = JSON.stringify(snapshot())
+    // Pending actions are not part of GroupsState, but the approval bridge needs to hear about them.
+    const next = JSON.stringify({ state: snapshot(), actions: [...actions] })
     if (next === published) return
     published = next
     for (const l of listeners) l()
@@ -71,29 +73,37 @@ export function startGroupWatcher(deps: GroupWatcherDeps): GroupWatcher {
     logger.warn(`group watcher: ${what} failed`, { err: error instanceof Error ? error.message : String(error) })
   }
 
-  // Calls for one room run one after another; a failure never breaks the chain.
-  const enqueue = (id: string, job: (e: Entry) => Promise<void>): Promise<void> => {
+  // Calls for one room run one after another; a failure never breaks the chain. A job abandons its
+  // work (via `live`) as soon as the room was dropped, so a late reply cannot revive it.
+  const enqueue = (id: string, job: (e: Entry, live: () => boolean) => Promise<void>): Promise<void> => {
     const entry = entries.get(id)
     if (!entry) return Promise.resolve()
-    const run = entry.chain.then(async () => {
-      if (entries.get(id) !== entry) return
+    const live = (): boolean => entries.get(id) === entry
+    const run = (chains.get(id) ?? Promise.resolve()).then(async () => {
+      if (!live()) return
       try {
-        await job(entry)
+        await job(entry, live)
       } catch (error) {
         warn(`room ${id}`, error)
       }
     })
-    entry.chain = run
+    chains.set(id, run)
+    void run.then(() => {
+      if (chains.get(id) === run) chains.delete(id)
+    })
     return run
   }
 
   const pollRoom = (id: string): Promise<void> =>
-    enqueue(id, async entry => {
-      entry.state = await rpc.state(id)
-      actions.set(id, entry.state.driver_status?.pending_actions ?? [])
+    enqueue(id, async (entry, live) => {
+      const state = await rpc.state(id)
+      if (!live()) return
+      entry.state = state
+      actions.set(id, state.driver_status?.pending_actions ?? [])
       const seq = seqOf(entry)
       if (seq > entry.tailSeq) {
         const log = await rpc.log(id, Math.max(0, seq - TAIL), TAIL)
+        if (!live()) return
         entry.preview = previewFrom(log.events)
         entry.tailSeq = seq
       }
@@ -112,7 +122,7 @@ export function startGroupWatcher(deps: GroupWatcherDeps): GroupWatcher {
     for (const room of rooms) {
       seen.add(room.room_id)
       const prev = entries.get(room.room_id)
-      if (!prev) entries.set(room.room_id, { room, preview: null, tailSeq: 0, chain: Promise.resolve() })
+      if (!prev) entries.set(room.room_id, { room, preview: null, tailSeq: 0 })
       else {
         const changed = prev.room.updated_at !== room.updated_at || (prev.room.latest_seq ?? 0) !== (room.latest_seq ?? 0)
         prev.room = room

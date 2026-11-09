@@ -183,4 +183,46 @@ describe('group watcher', () => {
     await vi.advanceTimersByTimeAsync(0)
     expect(calls.slice(0, 2)).toEqual(['caps', 'list'])
   })
+
+  it('ignores a late state reply for a room that was dropped meanwhile', async () => {
+    rooms = [mkRoom('r', 10, 0)]
+    statuses = { r: busy(5) }
+    const w = start()
+    await vi.advanceTimersByTimeAsync(0)
+    let release: () => void = () => undefined
+    const gate = new Promise<void>(res => { release = res })
+    const approval = { kind: 'approval' as const, member_id: 'a', task_id: 't', execution_generation: 1, session_id: 's', request_id: 'q', approval: {} }
+    rpc.state = async id => {
+      const room = rooms[0] ?? mkRoom(id, 10, 0)
+      await gate
+      return { room, driver_status: { ...busy(6), pending_actions: [approval] } }
+    }
+    await vi.advanceTimersByTimeAsync(2000)
+    rooms = []
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(w.state().rooms).toEqual([])
+    release()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(w.pendingActions().has('r')).toBe(false)
+    expect(w.state().rooms).toEqual([])
+  })
+
+  it('fires onChange when only the pending actions change', async () => {
+    rooms = [mkRoom('r', 10, 0)]
+    statuses = { r: busy(5) }
+    const w = start()
+    await vi.advanceTimersByTimeAsync(0)
+    const fn = vi.fn()
+    w.onChange(fn)
+    const approval = { kind: 'approval' as const, member_id: 'a', task_id: 't', execution_generation: 1, session_id: 's', request_id: 'q', approval: {} }
+    statuses = { r: { ...busy(5), pending_actions: [approval] } }
+    await w.refreshRoom('r')
+    expect(fn).toHaveBeenCalledTimes(1)
+    statuses = { r: busy(5) }
+    await w.refreshRoom('r')
+    expect(fn).toHaveBeenCalledTimes(2)
+    statuses = { r: busy(9) }
+    await w.refreshRoom('r')
+    expect(fn).toHaveBeenCalledTimes(2)
+  })
 })
