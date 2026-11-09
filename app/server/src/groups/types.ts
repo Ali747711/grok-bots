@@ -61,6 +61,7 @@ export interface HermesDriverStatus {
   member_activity: HermesMemberActivity[]
   max_rounds: number
   max_continues: number
+  last_error?: string | null
 }
 
 /** An unset lead is the empty string. */
@@ -130,6 +131,8 @@ export interface GroupView {
   /** Milliseconds. */
   updatedAt: number
   working: boolean
+  /** Hermes cannot plan this room any more (a topic grew past its 24-message window). */
+  stuck: boolean
   activity: GroupActivityView[]
   turnActions: GroupTurnAction[]
   maxContinues: number

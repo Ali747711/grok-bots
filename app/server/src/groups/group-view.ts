@@ -27,10 +27,21 @@ function activityViews(state: HermesRoomState | undefined, nowMs: number): Group
 function turnActionsOf(state: HermesRoomState | undefined): GroupTurnAction[] {
   const out: GroupTurnAction[] = []
   for (const a of state?.driver_status?.pending_actions ?? []) {
-    if (a.kind === 'approval') continue
+    // `prepare:<room>` actions cover the whole room (member_id is a comma list), not one member's turn.
+    if (a.kind === 'approval' || a.task_id.startsWith('prepare:')) continue
     out.push({ memberId: a.member_id, kind: a.kind, taskId: a.task_id, executionGeneration: a.execution_generation })
   }
   return out
+}
+
+const STUCK_ERRORS = ['references no matching', 'transcript exceeded its bound']
+
+/** Hermes's planner failed on a thread past its 24-message window; every later send fails the same way. */
+function isStuck(state: HermesRoomState | undefined): boolean {
+  const status = state?.driver_status
+  if (!status) return false
+  const error = status.last_error ?? ''
+  return STUCK_ERRORS.some(t => error.includes(t)) || status.pending_actions.some(a => a.task_id.startsWith('prepare:'))
 }
 
 export function toGroupView(room: HermesRoom, state: HermesRoomState | undefined, preview: GroupPreview | null, nowMs: number): GroupView {
@@ -51,6 +62,7 @@ export function toGroupView(room: HermesRoom, state: HermesRoomState | undefined
     epoch: fresh.authority_epoch,
     updatedAt: fresh.updated_at * 1000,
     working: Boolean(status?.working) || activity.some(a => a.status === 'running' || a.status === 'stopping'),
+    stuck: isStuck(state),
     activity,
     turnActions: turnActionsOf(state),
     maxContinues: status?.max_continues ?? 5,

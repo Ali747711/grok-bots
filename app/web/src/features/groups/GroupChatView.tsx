@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
@@ -49,6 +49,8 @@ function GroupChat({ state, crewConnected, group, panelOpen, onPanel }: Omit<Gro
   const titleOf = useCallback((memberId: string) => memberTitle(group, bots, memberId), [group, bots])
   const stale = state.hermes !== 'connected' || !crewConnected
   const room = useGroupRoom(group, titleOf, !stale)
+  const [newTopic, setNewTopic] = useState(false)
+  const [recovering, setRecovering] = useState(false)
   const profiles = new Set(group.members.map(m => m.profile))
   // A group runs one member at a time, so only bots outside it count against the limit.
   const othersWorking = bots.filter(b => b.status === 'working' && !profiles.has(b.name)).length
@@ -57,6 +59,13 @@ function GroupChat({ state, crewConnected, group, panelOpen, onPanel }: Omit<Gro
     maxWorkingBots: state.settings ? state.settings.maxWorkingBots : DEFAULT_MAX_WORKING_BOTS
   })
   const requests = state.pending.filter(p => p.source === 'group' && p.group?.roomId === group.id).sort((a, b) => a.receivedAt - b.receivedAt)
+  // Stop fences the poisoned topic in Hermes; the next send then opens a fresh one.
+  const recover = async () => {
+    setRecovering(true)
+    await room.stop()
+    setNewTopic(true)
+    setRecovering(false)
+  }
   const footer = (
     <>
       <TurnActions actions={group.turnActions} titleOf={titleOf} onRetry={a => void room.retryTurn(a)} onDiscard={a => void room.discardTurn(a)} />
@@ -87,14 +96,26 @@ function GroupChat({ state, crewConnected, group, panelOpen, onPanel }: Omit<Gro
           </div>
         </div>
       )}
+      {group.stuck && (
+        <div role="alert" className="mx-6 mb-2 flex flex-wrap items-center justify-center gap-2 rounded-2xl bg-muted px-3 py-2 text-xs text-destructive">
+          <p>This group is stuck in Hermes: one topic grew past the 24 messages Hermes can track.</p>
+          <Button type="button" size="xs" variant="outline" disabled={recovering} onClick={() => void recover()}>Stop and start a new topic</Button>
+        </div>
+      )}
       <GroupComposer
+        topicFull={room.topicFull}
+        armed={newTopic}
+        onArmed={setNewTopic}
         view={group}
         members={bots}
         titleOf={titleOf}
         firstInTopic={room.topic === null}
         running={group.working && !stale}
         disabledReason={reason}
-        onSend={(text, opts) => void room.send(text, opts)}
+        onSend={(text, opts) => {
+          void room.send(text, opts)
+          setNewTopic(false)
+        }}
         onStop={() => void room.stop()}
       />
     </>

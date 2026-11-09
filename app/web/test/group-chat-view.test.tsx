@@ -134,6 +134,26 @@ describe('GroupChatView', () => {
     expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull()
   })
 
+  it('shows the stuck banner and recovers with Stop and a new topic', async () => {
+    api.sendGroupMessage.mockResolvedValue({ kind: 'accepted', seq: 3 })
+    api.fetchGroupEvents.mockResolvedValue({ events: [ev(1, { kind: 'message.user', text: 'start', memberId: undefined, actor: { kind: 'user', id: 'desktop', profile: null, displayName: null } }), ev(2)], cursor: 2, latestSeq: 2, hasMore: false, epoch: 1 })
+    mount(state(room({ stuck: true })))
+    expect(await screen.findByText('This group is stuck in Hermes: one topic grew past the 24 messages Hermes can track.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Stop and start a new topic' }))
+    await waitFor(() => expect(api.stopGroup).toHaveBeenCalledWith('r1', expect.any(String)))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'New topic' })).toHaveAttribute('aria-pressed', 'true'))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), { target: { value: 'fresh' } })
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Message' }), { key: 'Enter' })
+    await waitFor(() => expect(api.sendGroupMessage).toHaveBeenCalled())
+    expect(api.sendGroupMessage.mock.calls[0]![1].threadId).toBeUndefined()
+  })
+
+  it('hides the stuck banner when the group is healthy', async () => {
+    mount(state(room()))
+    await screen.findByTestId('member-message')
+    expect(screen.queryByText(/stuck in Hermes/)).toBeNull()
+  })
+
   it('disables the composer while Hermes is offline', async () => {
     mount(state(room(), { hermes: 'offline' }))
     expect(await screen.findByText('Hermes is offline')).toBeInTheDocument()

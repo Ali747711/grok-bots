@@ -26,7 +26,7 @@ import type { GroupView } from '@/state/types'
 export function group(over: Partial<GroupView> & { id: string }): GroupView {
   return {
     name: over.id, members: [], routing: 'auto', leadMemberId: null, purpose: '', notes: '', latestSeq: 0, epoch: 1, updatedAt: 0,
-    working: false, activity: [], turnActions: [], maxContinues: 5, maxRounds: 3, preview: null, ...over
+    working: false, stuck: false, activity: [], turnActions: [], maxContinues: 5, maxRounds: 3, preview: null, ...over
   }
 }
 

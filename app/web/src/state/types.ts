@@ -110,6 +110,8 @@ export interface GroupView {
   /** Milliseconds. */
   readonly updatedAt: number
   readonly working: boolean
+  /** Hermes cannot plan this room any more (a topic grew past its 24-message window). */
+  readonly stuck: boolean
   readonly activity: readonly GroupActivityView[]
   readonly turnActions: readonly GroupTurnAction[]
   readonly maxContinues: number

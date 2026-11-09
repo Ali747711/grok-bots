@@ -62,6 +62,25 @@ describe('toGroupView', () => {
   })
 })
 
+describe('stuck rooms', () => {
+  const prepare = { kind: 'retry' as const, member_id: 'a, b', task_id: 'prepare:r1', execution_generation: 1 }
+  it('is false for a healthy room', () => {
+    expect(toGroupView(room, withStatus(status()), null, 0).stuck).toBe(false)
+    expect(toGroupView(room, undefined, null, 0).stuck).toBe(false)
+  })
+  it('is true for the bound errors and for a prepare action, and skips prepare actions as turn actions', () => {
+    for (const last_error of ['Members could not be woken: turn.settled references no matching user discussion', 'thread transcript exceeded its bound']) {
+      expect(toGroupView(room, withStatus(status({ last_error })), null, 0).stuck).toBe(true)
+    }
+    const v = toGroupView(room, withStatus(status({ pending_actions: [prepare, { kind: 'retry', member_id: 'a', task_id: 't', execution_generation: 2 }] })), null, 0)
+    expect(v.stuck).toBe(true)
+    expect(v.turnActions).toEqual([{ memberId: 'a', kind: 'retry', taskId: 't', executionGeneration: 2 }])
+  })
+  it('ignores unrelated errors', () => {
+    expect(toGroupView(room, withStatus(status({ last_error: 'model refused' })), null, 0).stuck).toBe(false)
+  })
+})
+
 describe('previewFrom', () => {
   it('picks the last user or member message', () => {
     expect(previewFrom([ev('message.member', 'a', 'old'), ev('room.activity', 'x', 'skip')])).toEqual({ speaker: { kind: 'member', memberId: 'a' }, text: 'old' })
