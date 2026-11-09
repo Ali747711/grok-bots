@@ -13,7 +13,7 @@ const headers = { Host: HOST, Origin: ORIGIN, Cookie: `crew_session=${session}; 
 
 const view: RoutineView = {
   id: 'abc', bot: 'scout', title: 'T', instruction: 'I', schedule: { kind: 'daily', time: '09:00' }, scheduleText: '0 9 * * *', timezone: 'UTC',
-  deliverToChat: false, enabled: true, nextRunAt: null, lastRunAt: null, lastStatus: null, lastError: null, running: false, state: 'scheduled', finished: false
+  deliverToChat: false, enabled: true, nextRunAt: null, lastRunAt: null, lastStatus: null, lastError: null, running: false, state: 'scheduled', finished: false, triggerOnly: false
 }
 const body: RoutineInput = { title: 'Morning', instruction: 'Do it', schedule: { kind: 'daily', time: '09:00' }, timezone: 'Asia/Seoul', deliverToChat: false }
 
@@ -158,5 +158,16 @@ describe('POST /crew/routines/preview', () => {
     expect(bad.status).toBe(400)
     expect(await bad.json()).toMatchObject({ error: 'invalid' })
     expect((await send('POST', '/crew/routines/preview', { schedule: { kind: 'daily', time: '09:00' }, timezone: 'Mars/Base' })).status).toBe(400)
+  })
+})
+
+describe('runs mode', () => {
+  it('passes runs through and refuses an unknown runs value', async () => {
+    const res = await send('POST', '/crew/routines?bot=scout', { ...body, runs: 'triggered' })
+    expect(res.status).toBe(201)
+    expect(calls[0]).toEqual(['create', 'scout', { ...body, runs: 'triggered' }])
+    const bad = await send('POST', '/crew/routines?bot=scout', { ...body, runs: 'sometimes' })
+    expect(bad.status).toBe(400)
+    expect(await bad.json()).toMatchObject({ error: 'bad_body' })
   })
 })

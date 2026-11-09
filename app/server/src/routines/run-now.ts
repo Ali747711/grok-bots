@@ -1,7 +1,7 @@
 import { HermesRestError } from '../hermes/errors.js'
 import type { HermesRest } from '../hermes/rest-client.js'
 import { log } from '../log.js'
-import { isFinished, jobKey, jobPath, jobSchema } from './mapping.js'
+import { isFinished, isPausedJob, jobKey, jobPath, jobSchema, TRIGGER_ONLY_REASON } from './mapping.js'
 
 const RUN_NOW_WAIT_MS = 3_000
 
@@ -11,6 +11,8 @@ export interface RunNowContext {
   readonly running: Set<string>
   /** Paused routines being run now: Hermes un-pauses on trigger, so pause them again when it ends. */
   readonly restorePause: Set<string>
+  /** Of those, the routines that were trigger-only: Hermes clears the marker on a force-run, so it is put back. */
+  readonly triggerOnly: Set<string>
 }
 
 const reason = (error: unknown): string => (error instanceof Error ? error.message : String(error)).slice(0, 200)
@@ -19,19 +21,35 @@ const reason = (error: unknown): string => (error instanceof Error ? error.messa
  * A failed read propagates: without knowing the state, triggering could un-pause the routine for good.
  * A finished job is never "paused" (re-pausing a terminal record would make it impossible to resume).
  */
-async function readState(ctx: RunNowContext, bot: string, id: string): Promise<{ paused: boolean; finished: boolean }> {
+async function readState(ctx: RunNowContext, bot: string, id: string): Promise<{ paused: boolean; finished: boolean; triggerOnly: boolean }> {
   const job = jobSchema.safeParse(await ctx.rest.request<unknown>('GET', jobPath(id), { query: { profile: bot } }))
-  if (!job.success) return { paused: false, finished: false }
+  if (!job.success) return { paused: false, finished: false, triggerOnly: false }
   const finished = isFinished(job.data.state)
-  return { finished, paused: !finished && (job.data.enabled === false || job.data.state === 'paused') }
+  const paused = !finished && isPausedJob(job.data)
+  return { finished, paused, triggerOnly: paused && job.data.paused_reason === TRIGGER_ONLY_REASON }
+}
+
+/** Pause, then write Crew's marker (a pause alone leaves no reason, and Hermes clears it on every force-run). */
+export async function markTriggerOnly(rest: HermesRest, bot: string, id: string): Promise<void> {
+  await rest.request('POST', `${jobPath(id)}/pause`, { query: { profile: bot } })
+  await rest.request('PUT', jobPath(id), { query: { profile: bot }, body: { updates: { paused_reason: TRIGGER_ONLY_REASON } } })
 }
 
 async function repause(ctx: RunNowContext, bot: string, id: string): Promise<void> {
-  if (!ctx.restorePause.delete(jobKey(bot, id))) return
+  const k = jobKey(bot, id)
+  const restoreMarker = ctx.triggerOnly.delete(k)
+  if (!ctx.restorePause.delete(k)) return
   try {
     await ctx.rest.request('POST', `${jobPath(id)}/pause`, { query: { profile: bot } })
   } catch (error) {
     log.warn('re-pause after run now failed', { jobId: id, error: reason(error) })
+    return
+  }
+  if (!restoreMarker) return
+  try {
+    await ctx.rest.request('PUT', jobPath(id), { query: { profile: bot }, body: { updates: { paused_reason: TRIGGER_ONLY_REASON } } })
+  } catch (error) {
+    log.warn('trigger-only marker restore failed', { jobId: id, error: reason(error) })
   }
 }
 
@@ -52,6 +70,7 @@ export async function runNow(ctx: RunNowContext, bot: string, id: string): Promi
       return 'finished'
     }
     if (state.paused) ctx.restorePause.add(k)
+    if (state.triggerOnly) ctx.triggerOnly.add(k)
   } catch (error) {
     ctx.running.delete(k)
     throw error

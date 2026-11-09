@@ -20,7 +20,8 @@ const routineBody = z.object({
   schedule: scheduleSpecSchema,
   timezone,
   deliverToChat: z.boolean(),
-  timezoneChanged: z.boolean().optional()
+  timezoneChanged: z.boolean().optional(),
+  runs: z.enum(['schedule', 'triggered']).optional()
 })
 const previewBody = z.object({ schedule: scheduleSpecSchema, timezone })
 const limitSchema = z.coerce.number().int().min(1).max(100)
