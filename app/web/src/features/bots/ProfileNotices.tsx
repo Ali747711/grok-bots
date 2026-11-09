@@ -1,3 +1,4 @@
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
@@ -14,13 +15,15 @@ const FIELD_LABEL: Record<string, string> = { description: 'Job', soul: 'Persona
 
 export function ConflictBanner({ conflict, busy, onReload, onSaveAnyway }: ConflictBannerProps) {
   return (
-    <div role="status" className="flex flex-col gap-2 rounded-lg border border-border bg-secondary p-3 text-sm">
-      <p>{`Changed in another app: ${conflict.fields.map(f => FIELD_LABEL[f] ?? f).join(', ')}. Reload to see their version, or Save anyway.`}</p>
-      <div className="flex gap-2">
-        <Button type="button" size="sm" variant="outline" onClick={onReload}>Reload</Button>
-        <Button type="button" size="sm" disabled={busy} onClick={onSaveAnyway}>Save anyway</Button>
-      </div>
-    </div>
+    <Alert role="status">
+      <AlertDescription className="flex flex-col gap-2">
+        <p>{`Changed in another app: ${conflict.fields.map(f => FIELD_LABEL[f] ?? f).join(', ')}. Reload to see their version, or Save anyway.`}</p>
+        <div className="flex gap-2">
+          <Button type="button" size="sm" variant="outline" onClick={onReload}>Reload</Button>
+          <Button type="button" size="sm" disabled={busy} onClick={onSaveAnyway}>Save anyway</Button>
+        </div>
+      </AlertDescription>
+    </Alert>
   )
 }
 

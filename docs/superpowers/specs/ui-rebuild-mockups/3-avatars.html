@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crew — avatars</title>
+<script type="importmap">
+{"imports":{
+  "react":"https://esm.sh/react@18.3.1",
+  "react/jsx-runtime":"https://esm.sh/react@18.3.1/jsx-runtime",
+  "react-dom/client":"https://esm.sh/react-dom@18.3.1/client",
+  "bot-avatars":"https://esm.sh/bot-avatars@0.2.2?external=react"
+}}
+</script>
+<style>
+  * { box-sizing:border-box; }
+  body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; color:#0d0d0d;
+    background: linear-gradient(180deg,#2a8af0 0%,#4ea4f6 40%,#bcdcfb 100%) fixed; min-height:100vh; }
+  .page { max-width: 1300px; margin: 0 auto; padding: 28px 24px 60px; }
+  .blk { background: rgba(255,255,255,.95); border-radius: 24px; padding: 18px 20px; margin-bottom: 18px; }
+  h1 { font-size: 24px; margin: 0 0 4px; letter-spacing:-0.02em; color:#fff; } .sub { color: rgba(255,255,255,.9); margin: 0 0 20px; font-size: 14px; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; text-transform: uppercase; letter-spacing:.12em; font-size: 10px; color:#6b7280; }
+  .opts { display:grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .opt { border: 2px solid transparent; cursor:pointer; }
+  .opt.selected { border-color:#d6f55a; box-shadow: 0 0 0 3px #0d0d0d; }
+  .opt h3 { margin: 0 0 4px; font-size: 16px; } .opt p { margin: 0 0 12px; color:#6b7280; font-size: 13px; }
+  .row { display:flex; gap: 14px; flex-wrap: wrap; align-items:flex-end; }
+  .cell { display:flex; flex-direction:column; align-items:center; gap:4px; width: 70px; }
+  .cell span.t { font-size: 10.5px; color:#6b7280; }
+  .states { display:flex; gap: 26px; align-items:flex-end; }
+  .states .cell { width: 110px; } .states b { font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Which avatar finish do you like?</h1>
+  <p class="sub">The same bots in the two main finishes. Hover or click any avatar: they follow your pointer and hop. Click the finish you like.</p>
+  <div class="opts">
+    <div class="blk opt" data-choice="fabric" onclick="toggleSelect(this)">
+      <div class="mono">Finish A</div><h3>Plush fur</h3><p>Soft, toy-like, warm. The library's default.</p>
+      <div class="row" id="fabric"></div>
+    </div>
+    <div class="blk opt" data-choice="plastic" onclick="toggleSelect(this)">
+      <div class="mono">Finish B</div><h3>Glossy plastic</h3><p>Shiny, clean, a bit more "tech".</p>
+      <div class="row" id="plastic"></div>
+    </div>
+  </div>
+  <div class="blk">
+    <div class="mono">How a bot's avatar shows its status</div>
+    <div class="states" id="states" style="margin-top:10px"></div>
+    <p style="color:#6b7280;font-size:13px;margin:14px 0 0">Working → hops and spins now and then · Idle → looks around · Needs you → idle avatar plus the lime "needs you" dot · Asleep (hidden or not used for a while) → head down, slow breaths.</p>
+  </div>
+  <div class="blk">
+    <div class="mono">All 18 shapes, so each bot can get its own</div>
+    <div class="row" id="all" style="margin-top:10px"></div>
+  </div>
+</div>
+<script type="module">
+  import React from 'react';
+  import { createRoot } from 'react-dom/client';
+  import { BotAvatar } from 'bot-avatars';
+  const h = React.createElement;
+  const mount = (parent, items) => items.forEach(([props, label], i) => {
+    const cell = document.createElement('div'); cell.className = 'cell';
+    const holder = document.createElement('div'); cell.appendChild(holder);
+    if (label) { const t = document.createElement(props.big ? 'b' : 'span'); t.className = props.big ? '' : 't'; t.textContent = label; cell.appendChild(t); }
+    parent.appendChild(cell);
+    const { big, ...rest } = props;
+    createRoot(holder).render(h(BotAvatar, { size: big ? 84 : 56, seed: (i * 0.211) % 1, ...rest }));
+  });
+  const crew = [['clover','Hermes'],['star','Scout'],['flower','Writer'],['droid','Fixture'],['cat','Mimi'],['ghost','Night']];
+  mount(document.getElementById('fabric'), crew.map(([type, n]) => [{ type, shading: 'fabric' }, n]));
+  mount(document.getElementById('plastic'), crew.map(([type, n]) => [{ type, shading: 'plastic' }, n]));
+  mount(document.getElementById('states'), [
+    [{ type:'clover', state:'working', big:true }, 'Working'],
+    [{ type:'clover', state:'default', big:true }, 'Idle'],
+    [{ type:'clover', state:'sleeping', big:true }, 'Asleep']
+  ]);
+  const all = ['clover','flower','triangle','square','blob','ghost','circle','drop','star','droid','mech','alien','hexagon','cat','cloud','pill','pebble','puddle'];
+  mount(document.getElementById('all'), all.map(type => [{ type, size: 48 }, type]));
+</script>
+</body>
+</html>

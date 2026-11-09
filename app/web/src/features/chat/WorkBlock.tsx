@@ -1,5 +1,6 @@
 import { useState } from 'react'
 
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import type { ChatItem, WorkStep } from '@/chat/types'
 
 type Work = Extract<ChatItem, { kind: 'work' }>
@@ -11,7 +12,7 @@ function StepDetail({ detail }: { detail: string }) {
   const long = detail.length > DETAIL_MAX
   return (
     <div className="mt-1">
-      <pre data-testid="step-detail" className="max-h-72 overflow-auto rounded-md border border-border bg-card p-2 font-mono text-xs whitespace-pre-wrap">
+      <pre data-testid="step-detail" className="max-h-72 overflow-auto rounded-lg bg-card p-2 font-mono text-xs whitespace-pre-wrap">
         {all || !long ? detail : detail.slice(0, DETAIL_MAX)}
       </pre>
       {long && !all && (
@@ -29,7 +30,7 @@ function Step({ step }: { step: WorkStep }) {
       <div className="flex flex-wrap items-baseline gap-2">
         <span className="font-medium">{step.name}</span>
         <span className="min-w-0 break-all text-muted-foreground">{step.summary}</span>
-        {step.isError && <span className="text-xs font-medium text-red-600 dark:text-red-400">Failed</span>}
+        {step.isError && <span className="text-xs font-medium text-danger-ink">Failed</span>}
       </div>
       {step.detail && <StepDetail detail={step.detail} />}
     </li>
@@ -49,17 +50,14 @@ export function WorkBlock({ item }: { item: Work }) {
   const [open, setOpen] = useState(false)
   if (item.steps.length === 0) return null
   return (
-    <div className="mb-2 rounded-[10px] border border-border bg-card">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen(o => !o)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-muted-foreground"
-      >
+    <Collapsible open={open} onOpenChange={setOpen} className="mb-2 rounded-xl bg-muted">
+      <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-muted-foreground">
         <span aria-hidden>{open ? '▾' : '▸'}</span>
         {label(item)}
-      </button>
-      {open && <ul className="m-0 list-none px-3 pb-2.5 text-[13px]">{item.steps.map(s => <Step key={s.id} step={s} />)}</ul>}
-    </div>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <ul className="m-0 list-none px-3 pb-2.5 text-[13px]">{item.steps.map(s => <Step key={s.id} step={s} />)}</ul>
+      </CollapsibleContent>
+    </Collapsible>
   )
 }

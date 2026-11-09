@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { NeedsYouPage } from '@/features/needs-you/NeedsYouPage'
 import type { PendingView } from '@/state/types'
@@ -12,9 +12,43 @@ const pending = (id: string, profile: string, kind: PendingView['kind'], summary
   id, kind, profile, sessionId: 's', summary, receivedAt: NOW - ageS * 1000, source: 'event', state: 'open', answerable: true
 })
 
-const renderPage = (state = crewState()) => render(<MemoryRouter><NeedsYouPage state={state} now={() => NOW} /></MemoryRouter>)
+const renderPage = (state = crewState(), crewConnected = true) =>
+  render(<MemoryRouter><NeedsYouPage state={state} crewConnected={crewConnected} now={() => NOW} /></MemoryRouter>)
+
+vi.mock('bot-avatars', async () => {
+  const actual = await vi.importActual<typeof import('bot-avatars')>('bot-avatars')
+  return { ...actual, BotAvatar: (props: Record<string, unknown>) => <div data-testid="stub" data-size={String(props.size)} data-state={String(props.state)} /> }
+})
 
 describe('NeedsYouPage', () => {
+  it('lists needs-you entries with avatars and links', () => {
+    renderPage(crewState({ bots: [bot({ name: 'dev', title: 'Dev' })], pending: [pending('a', 'dev', 'approval', 'run it', 5)] }))
+    const link = screen.getByText('run it').closest('a')!
+    expect(link).toHaveAttribute('href', '/bots/dev')
+    expect(within(link).getByTestId('stub')).toHaveAttribute('data-size', '32')
+    expect(link.querySelector('[aria-hidden="true"]')).not.toBeNull()
+    expect(within(link).getByText('Open chat')).toHaveClass('text-sky-ink')
+    expect(link.closest('ul')!.parentElement).not.toHaveClass('rounded-block')
+  })
+
+  it.each([
+    ['Hermes offline', { hermes: 'offline' as const }, true],
+    ['Crew stream down', {}, false]
+  ])('hides live status on the rows while stale (%s)', (_label, over, connected) => {
+    const bots = [bot({ name: 'dev', title: 'Dev', status: 'working' }), bot({ name: 'res', title: 'Res', status: 'needs_you' })]
+    renderPage(crewState({ ...over, bots, pending: [pending('a', 'dev', 'approval', 'x', 5), pending('b', 'res', 'approval', 'y', 6)] }), connected)
+    expect(screen.getAllByTestId('stub')).toHaveLength(2)
+    for (const stub of screen.getAllByTestId('stub')) expect(stub).not.toHaveAttribute('data-state', 'working')
+    expect(screen.queryByRole('img', { name: 'Needs you', hidden: true })).toBeNull()
+  })
+
+  it('shows live status on the rows while connected (control)', () => {
+    const bots = [bot({ name: 'dev', title: 'Dev', status: 'working' }), bot({ name: 'res', title: 'Res', status: 'needs_you' })]
+    renderPage(crewState({ bots, pending: [pending('a', 'dev', 'approval', 'x', 5), pending('b', 'res', 'approval', 'y', 6)] }))
+    expect(within(screen.getByText('x').closest('a')!).getByTestId('stub')).toHaveAttribute('data-state', 'working')
+    expect(within(screen.getByText('y').closest('a')!).getByRole('img', { name: 'Needs you', hidden: true })).toBeInTheDocument()
+  })
+
   it('lists entries across bots and links to the chat', () => {
     renderPage(crewState({
       bots: [bot({ name: 'researcher', title: 'Researcher' }), bot({ name: 'dev', title: 'Dev' })],
@@ -32,6 +66,14 @@ describe('NeedsYouPage', () => {
     expect(screen.getByText('2h ago')).toBeInTheDocument()
     expect(screen.getByText('send summary email').closest('a')).toHaveAttribute('href', '/bots/researcher')
     expect(screen.getByText('API key for X').closest('a')).toHaveAttribute('href', '/bots/dev')
+  })
+
+  it('truncates a long unbroken title and keeps the kind and age whole', () => {
+    const long = 'x'.repeat(80)
+    renderPage(crewState({ bots: [bot({ name: 'dev', title: long })], pending: [pending('a', 'dev', 'approval', 's', 125)] }))
+    expect(screen.getByText(long)).toHaveClass('min-w-0', 'truncate')
+    expect(screen.getByText('Approval')).toHaveClass('shrink-0')
+    expect(screen.getByText('2m ago')).toHaveClass('shrink-0')
   })
 
   it('shows an empty state', () => {

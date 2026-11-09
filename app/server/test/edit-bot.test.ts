@@ -26,7 +26,7 @@ beforeEach(() => {
 describe('readBotDetail', () => {
   it('builds the detail from the rpc row, the soul and the rest roster row', async () => {
     expect(await readBotDetail(deps, 'scout')).toEqual({
-      name: 'scout', isPrimary: false, title: 'Scout', look: { shape: 'circle', color: '#111111', imageKind: 'shape' }, hidden: false,
+      name: 'scout', isPrimary: false, title: 'Scout', look: { shape: 'circle', color: '#111111', imageKind: 'shape' }, avatar: null, hidden: false,
       description: 'Original desc', soul: 'Original', model: { provider: 'openrouter', model: 'a/b' }, metaRevision: 2
     })
     expect(rest.requests.map(r => r.path)).toContain('/api/profiles/scout/soul')
@@ -99,6 +99,12 @@ describe('updateBot', () => {
     expect(metaOf(rpc.configures[0]!)).toEqual({ title: 'Scout', shape: 'blobatar:seed1:round', color: '#222222', custom: true, groups: ['ops'] })
     await updateBot(deps, 'scout', { look: { shape: 'sigil-3' } })
     expect(metaOf(rpc.configures[1]!)).toMatchObject({ shape: 'sigil-3', color: '#222222', custom: true })
+  })
+
+  it('writes an avatar through the same CAS write, keeping unknown keys', async () => {
+    const out = await updateBot(deps, 'scout', { avatar: { type: 'star', color: '#123456' } })
+    expect(metaOf(rpc.configures[0]!)).toEqual({ title: 'Scout', shape: 'blob', color: '#123456', imageKind: 'shape', groups: ['ops'], crewAvatar: { type: 'star', color: '#123456' }, custom: true })
+    expect(out).toMatchObject({ status: 'saved', detail: { avatar: { type: 'star', color: '#123456' } } })
   })
 
   it('does not mark custom for a hide-only change', async () => {
@@ -183,7 +189,7 @@ describe('per-bot write serialization', () => {
     let release!: () => void
     const gate = new Promise<void>(resolve => { release = resolve })
     rpc.handlers.set('profiles.create', () => gate.then(() => { rpc.rows.set('fresh', {}); return { ok: true } }))
-    const created = createBot(deps, { name: 'fresh', title: 'F', mission: '', look: { shape: 'circle', color: '#111111' } })
+    const created = createBot(deps, { name: 'fresh', title: 'F', mission: '', avatar: { type: 'circle', color: '#111111' } })
     const deleted = deleteBot(deps, 'fresh')
     await new Promise(resolve => setTimeout(resolve, 10))
     expect(rest.requests).toEqual([])

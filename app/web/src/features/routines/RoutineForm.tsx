@@ -1,6 +1,8 @@
 import { useState } from 'react'
 
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 
@@ -17,7 +19,8 @@ interface RoutineFormProps {
   onCancel: () => void
 }
 
-const SELECT = 'h-8 rounded-lg border border-input bg-background px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50'
+// Native select for the long zone list (type-ahead): styled like the shadcn trigger, with dark counterparts for its dark: classes.
+const SELECT = 'h-8 w-full rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30'
 const FIELD = 'flex flex-col gap-1.5'
 const LABEL = 'text-sm font-medium'
 const browserZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -32,10 +35,10 @@ function saveError(e: unknown): string {
 function NextRuns({ schedule, timezone }: { schedule: ScheduleSpec; timezone: string }) {
   const { next, error } = useSchedulePreview(schedule, timezone, scheduleReady(schedule))
   return (
-    <div className="text-xs text-muted-foreground">
-      <div className="font-medium">Next runs</div>
-      {error && <p>{error}</p>}
-      {next?.map(ms => <p key={ms}>{formatInZone(ms, timezone)}</p>)}
+    <div className="flex flex-col gap-1 rounded-xl bg-muted p-3">
+      <div className="label-mono">Next runs</div>
+      {error && <p className="text-xs text-muted-foreground">{error}</p>}
+      {next?.map(ms => <p key={ms} className="font-mono text-xs">{formatInZone(ms, timezone)}</p>)}
     </div>
   )
 }
@@ -95,11 +98,15 @@ export function RoutineForm({ onCancel, ...props }: RoutineFormProps) {
         </select>
       </div>
       <label className="flex items-start gap-2 text-sm">
-        <input type="checkbox" className="mt-1" checked={deliverToChat} onChange={e => setDeliverToChat(e.target.checked)} />
+        <Checkbox
+          checked={deliverToChat}
+          onCheckedChange={setDeliverToChat}
+          className="mt-0.5 border-muted-foreground data-checked:border-foreground data-checked:bg-foreground data-checked:text-background dark:data-checked:bg-foreground"
+        />
         <span>Also post the result in the chat (one extra turn per run)</span>
       </label>
       <NextRuns schedule={schedule} timezone={timezone} />
-      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
         <Button type="button" disabled={busy || title.trim() === '' || instruction.trim() === '' || !scheduleReady(schedule)} onClick={() => void save()}>Save</Button>

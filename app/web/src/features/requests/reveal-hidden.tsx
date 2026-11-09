@@ -13,7 +13,7 @@ export function RevealHidden({ text }: { text: string }) {
     <>
       {text.split(HIDDEN_SPLIT).map((part, i) =>
         HIDDEN_ONE.test(part) ? (
-          <span key={i} className="rounded bg-red-100 px-0.5 font-mono text-red-700 dark:bg-red-950 dark:text-red-300">{token(part)}</span>
+          <span key={i} className="rounded bg-contrast-danger px-0.5 font-mono text-contrast">{token(part)}</span>
         ) : (
           part
         )

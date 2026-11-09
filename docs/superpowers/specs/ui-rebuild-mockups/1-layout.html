@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crew — layout options</title>
+<script type="importmap">
+{"imports":{
+  "react":"https://esm.sh/react@18.3.1",
+  "react/jsx-runtime":"https://esm.sh/react@18.3.1/jsx-runtime",
+  "react-dom/client":"https://esm.sh/react-dom@18.3.1/client",
+  "bot-avatars":"https://esm.sh/bot-avatars@0.2.2?external=react"
+}}
+</script>
+<style>
+  :root { --bg:#eef0f3; --card:#fff; --ink:#111827; --muted:#6b7280; --line:#eceef1; --soft:#f6f7f9; --accent:#111827; --amber:#f59e0b; --green:#22c55e; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; color:var(--ink); background:#fafafa; }
+  .page { max-width: 1400px; margin: 0 auto; padding: 28px 24px 60px; }
+  h1 { font-size: 22px; margin: 0 0 4px; } .sub { color: var(--muted); margin: 0 0 22px; font-size: 14px; }
+  .opt { border: 2px solid transparent; border-radius: 22px; padding: 14px; margin-bottom: 26px; cursor: pointer; background:#fff; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+  .opt.selected { border-color: #6366f1; }
+  .opt-title { display:flex; align-items:baseline; gap:10px; margin: 2px 6px 12px; }
+  .opt-title b { font-size: 16px; } .opt-title span { color: var(--muted); font-size: 13px; }
+  .screen { background: var(--bg); border-radius: 18px; padding: 12px; height: 560px; display:flex; gap: 12px; overflow:hidden; }
+  .blk { background: var(--card); border-radius: 22px; box-shadow: 0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.03); }
+  .col { display:flex; flex-direction:column; gap:12px; min-width:0; }
+  .rail { width: 58px; padding: 12px 0; display:flex; flex-direction:column; align-items:center; gap: 10px; }
+  .ico { width: 38px; height: 38px; border-radius: 12px; display:grid; place-items:center; color:#4b5563; font-size: 16px; position:relative; }
+  .ico.on { background: var(--accent); color:#fff; }
+  .badge { position:absolute; top:-3px; right:-3px; background: var(--amber); color:#fff; font-size:10px; font-weight:700; border-radius: 999px; padding: 1px 5px; }
+  .search { padding: 10px 14px; color: var(--muted); font-size: 13px; display:flex; justify-content:space-between; }
+  .botcard { padding: 12px 14px; display:flex; gap:10px; align-items:center; }
+  .botcard.on { outline: 2px solid var(--accent); }
+  .name { font-weight: 650; font-size: 14px; } .meta { color: var(--muted); font-size: 12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .dot { width:8px; height:8px; border-radius:999px; display:inline-block; margin-right:5px; vertical-align: middle; }
+  .chat { flex:1; display:flex; flex-direction:column; padding: 16px 22px; min-width:0; }
+  .chathead { display:flex; flex-direction:column; align-items:center; gap:4px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+  .chathead.row { flex-direction:row; justify-content:space-between; }
+  .acts { display:flex; gap:8px; margin-top: 6px; }
+  .pill { border: 1px solid var(--line); background:#fff; border-radius: 999px; padding: 5px 12px; font-size: 12px; color:#374151; }
+  .pill.dark { background: var(--accent); color:#fff; border-color: var(--accent); }
+  .msgs { flex:1; padding: 14px 0; display:flex; flex-direction:column; gap: 12px; overflow:hidden; font-size: 13.5px; }
+  .me { align-self:flex-end; background: var(--soft); border-radius: 16px 16px 4px 16px; padding: 9px 13px; max-width: 70%; }
+  .bot { max-width: 80%; line-height: 1.5; }
+  .work { display:inline-flex; gap:8px; align-items:center; background: var(--soft); border-radius: 12px; padding: 6px 10px; color:#4b5563; font-size: 12px; }
+  .ask { border: 1px solid #fde68a; background: #fffbeb; border-radius: 16px; padding: 12px 14px; max-width: 86%; }
+  .ask code { display:block; background:#fff; border:1px solid #f3e8b0; border-radius: 10px; padding: 7px 9px; margin: 8px 0; font-size: 12px; }
+  .composer { border: 1px solid var(--line); border-radius: 18px; padding: 12px 14px; display:flex; justify-content:space-between; align-items:center; color: var(--muted); font-size: 13px; background: var(--soft); }
+  .send { width: 32px; height: 32px; border-radius: 999px; background: var(--accent); color:#fff; display:grid; place-items:center; }
+  .widget { padding: 14px 16px; }
+  .wtitle { display:flex; justify-content:space-between; align-items:center; font-weight: 650; font-size: 13.5px; margin-bottom: 10px; }
+  .wrow { background: var(--soft); border-radius: 14px; padding: 10px 12px; font-size: 12.5px; margin-bottom: 8px; }
+  .bar { height: 8px; background: var(--soft); border-radius: 999px; overflow:hidden; margin-top: 8px; } .bar i { display:block; height:100%; width: 85%; background: var(--green); }
+  .side { width: 268px; padding: 14px 12px; display:flex; flex-direction:column; gap: 6px; }
+  .side .hdr { display:flex; justify-content:space-between; align-items:center; padding: 2px 6px 8px; }
+  .row { display:flex; align-items:center; gap:10px; padding: 8px 8px; border-radius: 14px; }
+  .row.on { background: var(--soft); }
+  .label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 8px 8px 2px; }
+  .tabs { display:flex; gap:6px; background: var(--soft); padding: 4px; border-radius: 12px; margin-bottom: 12px; }
+  .tab { flex:1; text-align:center; padding: 6px; border-radius: 9px; font-size: 12.5px; color:#4b5563; } .tab.on { background:#fff; color: var(--ink); font-weight:600; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+  .av { flex: none; display:grid; place-items:center; }
+  .note { color: var(--muted); font-size: 12.5px; margin: 10px 6px 0; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Which layout feels right for Crew?</h1>
+  <p class="sub">Both use your rounded-blocks style at full width, with the real bot avatars (try hovering or clicking one). Colours here are neutral placeholders: we'll pick colours on the next screen. Click the option you like.</p>
+
+  <!-- A -->
+  <div class="opt" data-choice="a" onclick="toggleSelect(this)">
+    <div class="opt-title"><b>A · Dashboard, like your reference</b><span>icon rail · bots as cards · chat · info column (Needs you, routines, credit)</span></div>
+    <div class="screen">
+      <div class="blk rail">
+        <div class="ico" style="font-weight:800">C</div>
+        <div class="ico on">💬</div>
+        <div class="ico">⏰</div>
+        <div class="ico">🔔<span class="badge">1</span></div>
+        <div class="ico">⚙️</div>
+        <div style="flex:1"></div>
+        <div class="ico" style="background:#f3f4f6">＋</div>
+      </div>
+      <div class="col" style="width:270px">
+        <div class="blk search"><span>Search bots</span><span>⌘K</span></div>
+        <div class="blk botcard on"><span class="av" data-bot="clover" data-state="working" data-size="40"></span><div style="min-width:0"><div class="name">Hermes</div><div class="meta"><span class="dot" style="background:var(--green)"></span>Working · checking the logs…</div></div></div>
+        <div class="blk botcard"><span class="av" data-bot="star" data-size="40"></span><div style="min-width:0"><div class="name">Scout</div><div class="meta"><span class="dot" style="background:var(--amber)"></span>Needs you · wants to run a command</div></div></div>
+        <div class="blk botcard"><span class="av" data-bot="flower" data-size="40"></span><div style="min-width:0"><div class="name">Writer</div><div class="meta"><span class="dot" style="background:#d1d5db"></span>Idle · Draft ready for review</div></div></div>
+        <div class="blk botcard"><span class="av" data-bot="droid" data-state="sleeping" data-size="40"></span><div style="min-width:0"><div class="name">Fixture</div><div class="meta"><span class="dot" style="background:#d1d5db"></span>Idle · node --version → v24</div></div></div>
+      </div>
+      <div class="blk chat">
+        <div class="chathead">
+          <span class="av" data-bot="clover" data-state="working" data-size="64"></span>
+          <div class="name" style="font-size:16px">Hermes</div>
+          <div class="meta">Primary bot · Working</div>
+          <div class="acts"><span class="pill">⏰ Routines</span><span class="pill">👤 Profile</span><span class="pill">🖥 Computer</span></div>
+        </div>
+        <div class="msgs">
+          <div class="me">Can you check why the backup failed last night?</div>
+          <div class="work">▸ Worked for 12s · 4 steps</div>
+          <div class="bot">The backup job stopped at 02:14 because the disk was 98% full. I can clear the old archives in <b>/var/backups/old</b> to free 14 GB.</div>
+          <div class="ask"><b>Hermes wants to run a command</b><code>rm -r /var/backups/old</code><span class="pill dark">Allow once</span> <span class="pill">Allow for this chat</span> <span class="pill">Deny</span></div>
+        </div>
+        <div class="composer"><span>Message Hermes…</span><span class="send">↑</span></div>
+      </div>
+      <div class="col" style="width:290px">
+        <div class="blk widget"><div class="wtitle"><span>🔔 Needs you</span><span class="meta">1</span></div><div class="wrow"><b>Scout</b> wants to run<br><span class="meta">curl https://arxiv.org/…</span></div></div>
+        <div class="blk widget"><div class="wtitle"><span>⏰ Routines</span><span class="meta">Today</span></div><div class="wrow"><b>Morning brief</b> · Hermes<br><span class="meta">Every day at 9:00 AM · next in 2 h</span></div><div class="wrow"><b>Paper digest</b> · Scout<br><span class="meta">Weekdays at 8:30 AM · Done ✓</span></div></div>
+        <div class="blk widget"><div class="wtitle"><span>💳 Credit</span><span class="meta">OpenRouter</span></div><div style="font-size:22px;font-weight:700">$1.71 <span class="meta" style="font-size:13px;font-weight:400">of $2.00 left</span></div><div class="bar"><i></i></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- B -->
+  <div class="opt" data-choice="b" onclick="toggleSelect(this)">
+    <div class="opt-title"><b>B · Three blocks, today's Crew layout made modern</b><span>roster block · chat · panel block (Routines / Profile) when opened</span></div>
+    <div class="screen">
+      <div class="blk side">
+        <div class="hdr"><b style="font-size:16px">Crew</b><span class="pill dark">＋ New bot</span></div>
+        <div class="row"><span>🔔</span><span style="font-size:13.5px">Needs you</span><span style="margin-left:auto" class="badge" >1</span></div>
+        <div class="label">Primary</div>
+        <div class="row on"><span class="av" data-bot="clover" data-state="working" data-size="36"></span><div style="min-width:0"><div class="name">Hermes</div><div class="meta">Working · checking the logs…</div></div></div>
+        <div class="label">Bots</div>
+        <div class="row"><span class="av" data-bot="star" data-size="36"></span><div style="min-width:0"><div class="name">Scout</div><div class="meta">Needs you · wants to run…</div></div></div>
+        <div class="row"><span class="av" data-bot="flower" data-size="36"></span><div style="min-width:0"><div class="name">Writer</div><div class="meta">Idle · Draft ready</div></div></div>
+        <div class="row"><span class="av" data-bot="droid" data-state="sleeping" data-size="36"></span><div style="min-width:0"><div class="name">Fixture</div><div class="meta">Idle · v24</div></div></div>
+        <div style="flex:1"></div>
+        <div class="row" style="justify-content:space-between"><span class="pill">$1.71 credit left</span><span>⚙️</span></div>
+      </div>
+      <div class="blk chat">
+        <div class="chathead row">
+          <div style="display:flex;gap:10px;align-items:center"><span class="av" data-bot="clover" data-state="working" data-size="40"></span><div><div class="name">Hermes</div><div class="meta">Working</div></div></div>
+          <div class="acts" style="margin:0"><span class="pill dark">Routines</span><span class="pill">Profile</span></div>
+        </div>
+        <div class="msgs">
+          <div class="me">Can you check why the backup failed last night?</div>
+          <div class="work">▸ Worked for 12s · 4 steps</div>
+          <div class="bot">The backup job stopped at 02:14 because the disk was 98% full. I can clear the old archives in <b>/var/backups/old</b> to free 14 GB.</div>
+          <div class="ask"><b>Hermes wants to run a command</b><code>rm -r /var/backups/old</code><span class="pill dark">Allow once</span> <span class="pill">Allow for this chat</span> <span class="pill">Deny</span></div>
+        </div>
+        <div class="composer"><span>Message Hermes…</span><span class="send">↑</span></div>
+      </div>
+      <div class="blk widget" style="width:330px">
+        <div class="tabs"><div class="tab on">Routines</div><div class="tab">Profile</div></div>
+        <div class="wrow"><b>Morning brief</b><br><span class="meta">Every day at 9:00 AM · Next: 9:00 AM · OK</span></div>
+        <div class="wrow"><b>Disk check</b><br><span class="meta">Every 6 hours · Paused</span></div>
+        <span class="pill dark">＋ New routine</span>
+      </div>
+    </div>
+  </div>
+
+  <p class="note">Either way: same features as today, rebuilt with shadcn components; light and dark themes; each bot gets an animated avatar that shows when it's working (hopping), idle, or asleep.</p>
+</div>
+<script type="module">
+  import React from 'react';
+  import { createRoot } from 'react-dom/client';
+  import { BotAvatar } from 'bot-avatars';
+  document.querySelectorAll('[data-bot]').forEach((el, i) => {
+    createRoot(el).render(React.createElement(BotAvatar, {
+      type: el.dataset.bot, size: Number(el.dataset.size || 36),
+      state: el.dataset.state || 'default', seed: (i * 0.137) % 1
+    }));
+  });
+</script>
+</body>
+</html>

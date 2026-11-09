@@ -9,6 +9,11 @@ import { JsonRpcGatewayError } from '@/vendor/hermes/json-rpc-channel'
 import { FakeClient } from './fake-client'
 import { bot, crewState } from './fixtures'
 
+vi.mock('bot-avatars', async () => {
+  const actual = await vi.importActual<typeof import('bot-avatars')>('bot-avatars')
+  return { ...actual, BotAvatar: (props: Record<string, unknown>) => <div data-testid="stub" data-size={String(props.size)} data-state={String(props.state)} /> }
+})
+
 const client = new FakeClient()
 vi.mock('@/chat/gateway', () => ({ connectGateway: () => client }))
 
@@ -47,6 +52,21 @@ describe('MessageList', () => {
   })
 })
 
+describe('MessageList: look', () => {
+  it('renders user messages as contrast bubbles and bot replies as prose', () => {
+    const items: ChatItem[] = [
+      { kind: 'user', id: 'u', text: 'hi there' },
+      { kind: 'assistant', id: 'a', text: '[docs](https://example.com) and `code`' }
+    ]
+    render(<MessageList items={items} />)
+    expect(screen.getByText('hi there')).toHaveClass('bg-contrast', 'text-contrast-foreground', 'rounded-[16px_16px_4px_16px]')
+    const reply = screen.getByText('docs').closest('div')!
+    expect(reply.closest('.bg-contrast')).toBeNull()
+    expect(screen.getByText('docs')).toHaveClass('text-sky-ink')
+    expect(screen.getByText('code').closest('code')).toBeInTheDocument()
+  })
+})
+
 describe('MessageList: delivery state', () => {
   it('shows checking, and Not sent with its reason and a working Retry', () => {
     const onRetry = vi.fn()
@@ -71,6 +91,44 @@ describe('ChatView', () => {
     expect(screen.getByRole('heading', { name: 'Dev' })).toBeInTheDocument()
     expect(screen.getByText('Working')).toBeInTheDocument()
     expect(client.calls[0]).toMatchObject({ method: 'session.resume', params: { profile: 'dev', session_id: 'tip-1' } })
+  })
+
+  it('shows the working status in sky in the header, with a 40 px avatar', async () => {
+    render(<ChatView bot={{ ...dev, status: 'working' }} state={crewState()} crewConnected />)
+    await flush()
+    expect(screen.getByText('Working')).toHaveClass('text-sky-ink', 'label-mono')
+    expect(screen.getByTestId('stub')).toHaveAttribute('data-size', '40')
+  })
+
+  it.each([
+    ['Hermes offline', { hermes: 'offline' as const }, true],
+    ['Crew stream down', {}, false]
+  ])('hides live status in the header while stale (%s)', async (_label, over, connected) => {
+    for (const status of ['working', 'needs_you'] as const) {
+      const { unmount } = render(<ChatView bot={{ ...dev, status }} state={crewState(over)} crewConnected={connected} />)
+      await flush()
+      expect(screen.queryByText(/^(Working|Needs you)$/)).toBeNull()
+      expect(screen.getByTestId('stub')).not.toHaveAttribute('data-state', 'working')
+      expect(screen.queryByRole('img', { name: 'Needs you', hidden: true })).toBeNull()
+      unmount()
+    }
+  })
+
+  it('marks the pressed panel button with the foreground fill and hides the avatar from assistive tech', async () => {
+    render(<ChatView bot={dev} state={crewState()} crewConnected panel="routines" onPanel={() => undefined} />)
+    await flush()
+    expect(screen.getByRole('button', { name: 'Routines' })).toHaveClass('bg-foreground', 'text-background')
+    expect(screen.getByRole('button', { name: 'Routines' }).className).not.toMatch(/dark:bg-input|bg-primary/)
+    expect(screen.getByRole('button', { name: 'Profile' })).not.toHaveClass('bg-foreground')
+    expect(screen.getByTestId('stub').closest('[aria-hidden="true"]')).not.toBeNull()
+  })
+
+  it('lets the cost estimate give way before the bot name', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({ messages: [], estimated_cost_usd: 1.25 })))))
+    render(<ChatView bot={{ ...dev, status: 'working' }} state={crewState()} crewConnected />)
+    await flush()
+    expect(screen.getByRole('heading', { name: 'Dev' }).parentElement).toHaveClass('min-w-24', 'flex-1')
+    expect(await screen.findByText(/estimate/)).toHaveClass('min-w-0', 'truncate')
   })
 
   it('keeps header and composer outside the scrolling transcript', async () => {

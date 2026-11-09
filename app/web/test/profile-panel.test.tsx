@@ -2,24 +2,32 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { deriveAvatarType } from '@/features/avatars/avatar-model'
 import { ProfilePanel } from '@/features/bots/ProfilePanel'
 import type { BotDetail } from '@/features/bots/types'
 
 import { bot } from './fixtures'
 
+const toast = vi.hoisted(() => ({ success: vi.fn() }))
+vi.mock('sonner', () => ({ toast }))
+vi.mock('bot-avatars', async () => {
+  const actual = await vi.importActual<typeof import('bot-avatars')>('bot-avatars')
+  return { ...actual, BotAvatar: (props: Record<string, unknown>) => <div data-testid="stub" data-type={String(props.type)} /> }
+})
+
 const json = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status }))
 const MODELS = { providers: [{ slug: 'openrouter', name: 'OpenRouter', is_current: true, models: ['a/one', 'b/two'] }], model: 'a/one', provider: 'openrouter' }
 const detail = (over: Partial<BotDetail> = {}): BotDetail => ({
-  name: 'dev', isPrimary: false, title: 'Dev', look: { shape: 'squircle', color: '#6366f1', imageKind: 'shape' }, hidden: false,
+  name: 'dev', isPrimary: false, title: 'Dev', look: { shape: 'squircle', color: '#6366f1', imageKind: 'shape' }, avatar: null, hidden: false,
   description: 'Does dev', soul: 'Be nice', model: { provider: 'openrouter', model: 'a/one' }, metaRevision: 3, ...over
 })
 
-interface Routes { get?: () => Promise<Response>; patch?: (body: unknown) => Promise<Response>; del?: () => Promise<Response>; other?: Record<string, () => Promise<Response>> }
+interface Routes { models?: () => Promise<Response>; get?: () => Promise<Response>; patch?: (body: unknown) => Promise<Response>; del?: () => Promise<Response>; other?: Record<string, () => Promise<Response>> }
 
 function stub(r: Routes = {}) {
   const fn = vi.fn((url: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET'
-    if (url === '/api/model/options') return json(MODELS)
+    if (url === '/api/model/options') return (r.models ?? (() => json(MODELS)))()
     const other = r.other?.[`${method} ${url}`]
     if (other) return other()
     if (url === '/crew/bots/dev' || url === '/crew/bots/hermes' || url === '/crew/bots/default') {
@@ -47,9 +55,19 @@ const open = (b = bot({ name: 'dev', title: 'Dev' })) =>
   )
 const loaded = () => screen.findByDisplayValue('Does dev')
 const change = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } })
+/** Base UI only commits an option click that started with a pointer-down on it. */
+const pick = (label: string, option: string) => {
+  fireEvent.click(screen.getByRole('combobox', { name: label }))
+  const item = screen.getByRole('option', { name: option })
+  fireEvent.pointerDown(item)
+  fireEvent.click(item)
+}
 const save = () => fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.unstubAllGlobals()
+  toast.success.mockClear()
+})
 
 describe('ProfilePanel', () => {
   it('shows the name, the read-only handle and the loaded fields', async () => {
@@ -78,8 +96,8 @@ describe('ProfilePanel', () => {
     open()
     await loaded()
     change('Name', 'Dev Two')
-    await screen.findByRole('option', { name: 'b/two' })
-    change('Model', 'b/two')
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Model' })).toBeEnabled())
+    pick('Model', 'b/two')
     save()
     await waitFor(() => expect(patches(fn)).toHaveLength(1))
     expect(patches(fn)[0]).toEqual({
@@ -117,8 +135,8 @@ describe('ProfilePanel', () => {
     const fn = stub({ patch: () => (n++ === 0 ? json({ status: 'confirm_required', message: 'This model is expensive' }, 409) : json({ status: 'saved', detail: detail() })) })
     open()
     await loaded()
-    await screen.findByRole('option', { name: 'b/two' })
-    change('Model', 'b/two')
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Model' })).toBeEnabled())
+    pick('Model', 'b/two')
     save()
     expect(await screen.findByText('This model is expensive')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Use this model' }))
@@ -141,9 +159,19 @@ describe('ProfilePanel', () => {
     const fn = stub({ patch: () => json({ status: 'saved', detail: detail({ hidden: true }) }) })
     open()
     await loaded()
-    fireEvent.click(screen.getByRole('button', { name: 'Hide' }))
+    fireEvent.click(screen.getByRole('switch', { name: /Hide from the list/ }))
     await waitFor(() => expect(patches(fn)).toEqual([{ hidden: true }]))
-    expect(await screen.findByRole('button', { name: 'Show' })).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('switch', { name: /Hide from the list/ })).toHaveAttribute('aria-checked', 'true'))
+    expect(toast.success).toHaveBeenCalledWith('Bot hidden')
+  })
+
+  it('toasts after a saved profile', async () => {
+    stub()
+    open()
+    await loaded()
+    change('Persona (SOUL.md)', 'Be brief')
+    save()
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Profile saved'))
   })
 
   it('delete requires the typed handle and goes home', async () => {
@@ -180,7 +208,7 @@ describe('ProfilePanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Finish setup' }))
     await waitFor(() => expect(fn.mock.calls.some(([u]) => u === '/crew/bots/dev/finish')).toBe(true))
     const call = fn.mock.calls.find(([u]) => u === '/crew/bots/dev/finish')
-    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ title: 'Dev', look: { shape: 'squircle', color: '#6366f1' } })
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ title: 'Dev', avatar: { type: deriveAvatarType('dev') } })
   })
 
   it('removes a photo at once', async () => {
@@ -231,8 +259,8 @@ describe('ProfilePanel', () => {
     open()
     await loaded()
     change('Persona (SOUL.md)', 'Mine')
-    fireEvent.click(screen.getByRole('button', { name: 'Hide' }))
-    await screen.findByRole('button', { name: 'Show' })
+    fireEvent.click(screen.getByRole('switch', { name: /Hide from the list/ }))
+    await waitFor(() => expect(screen.getByRole('switch', { name: /Hide from the list/ })).toHaveAttribute('aria-checked', 'true'))
     expect(screen.getByLabelText('Persona (SOUL.md)')).toHaveValue('Mine')
     save()
     await waitFor(() => expect(patches(fn)).toHaveLength(2))
@@ -243,9 +271,9 @@ describe('ProfilePanel', () => {
     stub({ patch: () => json({ error: 'hermes_error' }, 502) })
     open()
     await loaded()
-    fireEvent.click(screen.getByRole('button', { name: 'Hide' }))
+    fireEvent.click(screen.getByRole('switch', { name: /Hide from the list/ }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/Could not save/)
-    expect(screen.getByRole('button', { name: 'Hide' })).toBeEnabled()
+    expect(screen.getByRole('switch', { name: /Hide from the list/ })).toBeEnabled()
   })
 
   it('shows an error when finishing setup fails', async () => {
@@ -257,26 +285,194 @@ describe('ProfilePanel', () => {
     expect(screen.getByRole('button', { name: 'Finish setup' })).toBeEnabled()
   })
 
-  it('W1: sends only the colour when only the colour changed, and keeps an unknown shape', async () => {
-    const blob = detail({ look: { shape: 'blobatar', color: '#6366f1', imageKind: 'shape' } })
-    const fn = stub({ get: () => json(blob), patch: () => json({ status: 'saved', detail: blob }) })
+  it('saves a picked type immediately with PATCH {avatar}, keeping the stored colour', async () => {
+    const stored = detail({ avatar: { type: 'cat', color: '#7c5cff' } })
+    const fn = stub({ get: () => json(stored), patch: () => json({ status: 'saved', detail: stored }) })
     open()
     await loaded()
-    expect(screen.getByRole('button', { name: 'Current shape' })).toHaveAttribute('aria-pressed', 'true')
-    fireEvent.click(screen.getByRole('button', { name: 'Violet' }))
-    save()
-    await waitFor(() => expect(patches(fn)).toHaveLength(1))
-    expect(patches(fn)[0]).toEqual({ look: { color: '#7c3aed' } })
+    expect(screen.getByRole('button', { name: 'cat' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'ghost' }))
+    await waitFor(() => expect(patches(fn)).toEqual([{ avatar: { type: 'ghost', color: '#7c5cff' } }]))
   })
 
-  it('W1: sends only the shape when only the shape changed', async () => {
+  it('saves Default as a type with no colour, and a swatch as its hex', async () => {
+    const stored = detail({ avatar: { type: 'cat', color: '#7c5cff' } })
+    const fn = stub({ get: () => json(stored), patch: () => json({ status: 'saved', detail: stored }) })
+    open()
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: 'Default' }))
+    await waitFor(() => expect(patches(fn)).toHaveLength(1))
+    expect(patches(fn)[0]).toEqual({ avatar: { type: 'cat' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Teal' }))
+    await waitFor(() => expect(patches(fn)).toHaveLength(2))
+    expect(patches(fn)[1]).toEqual({ avatar: { type: 'cat', color: '#2ec4c4' } })
+  })
+
+  it('holds a second pick back until the first save is done, so it keeps the first pick', async () => {
+    let release: (v: Response) => void = () => undefined
+    const stored = detail({ avatar: { type: 'cat' } })
+    const fn = stub({ get: () => json(stored), patch: () => new Promise<Response>(resolve => { release = resolve }) })
+    open()
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: 'Teal' }))
+    await waitFor(() => expect(patches(fn)).toHaveLength(1))
+    expect(screen.getByRole('button', { name: 'ghost' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'ghost' }))
+    expect(patches(fn)).toHaveLength(1)
+    release(new Response(JSON.stringify({ status: 'saved', detail: detail({ avatar: { type: 'cat', color: '#2ec4c4' } }) })))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'ghost' })).toBeEnabled())
+    expect(screen.getByRole('button', { name: 'Teal' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('keeps Save off until a photo upload has finished', async () => {
+    let release: (v: Response) => void = () => undefined
+    vi.stubGlobal('createImageBitmap', vi.fn(() => Promise.resolve({ width: 10, height: 10, close: vi.fn() })))
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn() } as unknown as CanvasRenderingContext2D)
+    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/png;base64,AAAA')
+    stub({ other: { 'PUT /crew/bots/dev/avatar': () => new Promise<Response>(resolve => { release = resolve }) } })
+    open()
+    await loaded()
+    change('Name', 'Dev Two')
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+    fireEvent.change(screen.getByLabelText('Upload photo'), { target: { files: [new File([new Uint8Array(5)], 'a.png', { type: 'image/png' })] } })
+    await waitFor(() => expect(screen.getByLabelText('Upload photo')).toBeDisabled())
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    release(new Response(JSON.stringify(detail({ look: { shape: 'squircle', color: '#6366f1', imageKind: 'photo' } }))))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled())
+    vi.restoreAllMocks()
+  })
+
+  it('says "photo" when a photo change fails', async () => {
+    vi.stubGlobal('createImageBitmap', vi.fn(() => Promise.resolve({ width: 10, height: 10, close: vi.fn() })))
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn() } as unknown as CanvasRenderingContext2D)
+    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/png;base64,AAAA')
+    stub({ other: { 'PUT /crew/bots/dev/avatar': () => json({ error: 'hermes_error' }, 502) } })
+    open()
+    await loaded()
+    fireEvent.change(screen.getByLabelText('Upload photo'), { target: { files: [new File([new Uint8Array(5)], 'a.png', { type: 'image/png' })] } })
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not change the photo. Try again.')
+    vi.restoreAllMocks()
+  })
+
+  it('holds picks locally for an unfinished bot and sends them with Finish setup', async () => {
+    const fn = stub({ other: { 'POST /crew/bots/dev/finish': () => json({ name: 'dev', complete: true, steps: {}, needsModel: false }) } })
+    open(bot({ name: 'dev', title: 'Dev', setupIncomplete: true }))
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: 'ghost' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Teal' }))
+    expect(patches(fn)).toHaveLength(0)
+    expect(screen.getByRole('button', { name: 'ghost' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Teal' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'Finish setup' }))
+    await waitFor(() => expect(fn.mock.calls.some(([u]) => u === '/crew/bots/dev/finish')).toBe(true))
+    const call = fn.mock.calls.find(([u]) => u === '/crew/bots/dev/finish')
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ title: 'Dev', avatar: { type: 'ghost', color: '#2ec4c4' } })
+  })
+
+  it('sends a held pick once when another save ends setup before Finish', async () => {
+    const fn = stub({ patch: () => json({ status: 'saved', detail: detail({ avatar: { type: 'ghost', color: '#2ec4c4' } }) }) })
+    const tree = (b: ReturnType<typeof bot>) => (
+      <MemoryRouter initialEntries={['/bots/dev']}><Routes><Route path="*" element={<ProfilePanel bot={b} />} /></Routes></MemoryRouter>
+    )
+    const { rerender } = render(tree(bot({ name: 'dev', title: 'Dev', setupIncomplete: true })))
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: 'ghost' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Teal' }))
+    expect(patches(fn)).toHaveLength(0)
+    rerender(tree(bot({ name: 'dev', title: 'Dev', setupIncomplete: false })))
+    await waitFor(() => expect(patches(fn)).toHaveLength(1))
+    expect(patches(fn)[0]).toEqual({ avatar: { type: 'ghost', color: '#2ec4c4' } })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'ghost' })).toBeEnabled())
+    expect(patches(fn)).toHaveLength(1)
+  })
+
+  it('locks the picker while a photo is being prepared', async () => {
+    vi.stubGlobal('createImageBitmap', vi.fn(() => new Promise(() => undefined)))
+    stub()
+    open()
+    await loaded()
+    fireEvent.change(screen.getByLabelText('Upload photo'), { target: { files: [new File([new Uint8Array(5)], 'a.png', { type: 'image/png' })] } })
+    await screen.findByText('Preparing photo…')
+    expect(screen.getByRole('button', { name: 'ghost' })).toBeDisabled()
+  })
+
+  it('keeps a held pick and sends it with Finish setup after a failed photo upload', async () => {
+    vi.stubGlobal('createImageBitmap', vi.fn(() => Promise.resolve({ width: 10, height: 10, close: vi.fn() })))
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn() } as unknown as CanvasRenderingContext2D)
+    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/png;base64,AAAA')
+    const fn = stub({ other: {
+      'PUT /crew/bots/dev/avatar': () => json({ error: 'hermes_error' }, 502),
+      'POST /crew/bots/dev/finish': () => json({ name: 'dev', complete: true, steps: {}, needsModel: false })
+    } })
+    open(bot({ name: 'dev', title: 'Dev', setupIncomplete: true }))
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: 'ghost' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Teal' }))
+    fireEvent.change(screen.getByLabelText('Upload photo'), { target: { files: [new File([new Uint8Array(5)], 'a.png', { type: 'image/png' })] } })
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not change the photo. Try again.')
+    expect(screen.getByRole('button', { name: 'ghost' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Teal' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'Finish setup' }))
+    await waitFor(() => expect(fn.mock.calls.some(([u]) => u === '/crew/bots/dev/finish')).toBe(true))
+    const call = fn.mock.calls.find(([u]) => u === '/crew/bots/dev/finish')
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ title: 'Dev', avatar: { type: 'ghost', color: '#2ec4c4' } })
+    vi.restoreAllMocks()
+  })
+
+  it('waits for an in-flight save before sending a held pick when setup ends', async () => {
+    vi.stubGlobal('createImageBitmap', vi.fn(() => Promise.resolve({ width: 10, height: 10, close: vi.fn() })))
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn() } as unknown as CanvasRenderingContext2D)
+    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/png;base64,AAAA')
+    let release: (v: Response) => void = () => undefined
+    const fn = stub({
+      patch: () => json({ status: 'saved', detail: detail({ avatar: { type: 'ghost' } }) }),
+      other: { 'PUT /crew/bots/dev/avatar': () => new Promise<Response>(resolve => { release = resolve }) }
+    })
+    const tree = (b: ReturnType<typeof bot>) => (
+      <MemoryRouter initialEntries={['/bots/dev']}><Routes><Route path="*" element={<ProfilePanel bot={b} />} /></Routes></MemoryRouter>
+    )
+    const { rerender } = render(tree(bot({ name: 'dev', title: 'Dev', setupIncomplete: true })))
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: 'ghost' }))
+    fireEvent.change(screen.getByLabelText('Upload photo'), { target: { files: [new File([new Uint8Array(5)], 'a.png', { type: 'image/png' })] } })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'ghost' })).toBeDisabled())
+    await waitFor(() => expect(fn.mock.calls.some(([u, i]) => u === '/crew/bots/dev/avatar' && i?.method === 'PUT')).toBe(true))
+    rerender(tree(bot({ name: 'dev', title: 'Dev', setupIncomplete: false })))
+    await new Promise(resolve => setTimeout(resolve, 30))
+    expect(patches(fn)).toHaveLength(0)
+    expect(screen.getByRole('button', { name: 'ghost' })).toBeDisabled()
+    release(new Response(JSON.stringify(detail({ look: { shape: 'squircle', color: '#6366f1', imageKind: 'photo' } }))))
+    await waitFor(() => expect(patches(fn)).toEqual([{ avatar: { type: 'ghost' } }]))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'ghost' })).toBeEnabled())
+    vi.restoreAllMocks()
+  })
+
+  it('shows a pinned model that is not in the list, never the default sentinel', async () => {
+    const pinned = { provider: 'openrouter', model: 'z/pinned' }
+    stub({ get: () => json(detail({ model: pinned })) })
+    open()
+    await loaded()
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Model' })).toHaveTextContent('z/pinned'))
+    expect(screen.getByRole('combobox', { name: 'Model' })).not.toHaveTextContent('__default__')
+  })
+
+  it('shows the pinned model id when the model list fails to load', async () => {
+    stub({ models: () => json({}, 500), get: () => json(detail({ model: { provider: 'openrouter', model: 'a/one' } })) })
+    open()
+    await loaded()
+    expect(await screen.findByText("Couldn't load models")).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Model' })).toHaveTextContent('a/one')
+    expect(screen.getByRole('combobox', { name: 'Model' })).not.toHaveTextContent('__default__')
+  })
+
+  it('does not send guarded fields or baselines with an avatar pick, and Save stays off', async () => {
     const fn = stub()
     open()
     await loaded()
-    fireEvent.click(screen.getByRole('button', { name: 'Circle' }))
-    save()
+    fireEvent.click(screen.getByRole('button', { name: 'Blue' }))
     await waitFor(() => expect(patches(fn)).toHaveLength(1))
-    expect(patches(fn)[0]).toEqual({ look: { shape: 'circle' } })
+    expect(patches(fn)[0]).toEqual({ avatar: { type: deriveAvatarType('dev'), color: '#4aa8ff' } })
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
   })
 
   it('W3: says so when Finish setup does not complete', async () => {

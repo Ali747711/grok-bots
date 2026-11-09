@@ -14,3 +14,12 @@ export function durationText(run: Pick<RunView, 'startedAt' | 'endedAt' | 'statu
   const rest = minutes % 60
   return rest === 0 ? `${Math.floor(minutes / 60)} h` : `${Math.floor(minutes / 60)} h ${rest} min`
 }
+
+/** Badge colours per run status, from theme tokens. */
+export const RUN_TONE: Record<RunView['status'], string> = {
+  running: 'bg-sky-soft text-sky-ink',
+  completed: 'bg-muted text-foreground',
+  failed: 'bg-danger-soft text-danger-ink',
+  cancelled: 'bg-muted text-muted-foreground',
+  missed: 'bg-muted text-muted-foreground'
+}

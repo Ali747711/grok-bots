@@ -25,6 +25,19 @@ describe('BotStateTracker', () => {
     ])
   })
 
+  it('reads a valid crewAvatar and imageKind, and nulls an invalid avatar', () => {
+    const t = new BotStateTracker()
+    t.applyProfiles([
+      { name: 'a', ui_meta: { 'hermes-bots': { crewAvatar: { type: 'cat', color: '#112233' }, imageKind: 'photo' } } },
+      { name: 'b', ui_meta: { 'hermes-bots': { crewAvatar: { type: 'dragon' }, imageKind: 'weird' } } },
+      { name: 'c', ui_meta: { 'hermes-bots': { crewAvatar: { type: 'cat', color: 'red' }, imageKind: 'shape' } } },
+      { name: 'd' }
+    ])
+    expect(t.view([]).map(b => [b.avatar, b.imageKind])).toEqual([
+      [{ type: 'cat', color: '#112233' }, 'photo'], [null, null], [null, 'shape'], [null, null]
+    ])
+  })
+
   it('falls back to display_name, then the profile name, for the title', () => {
     const t = new BotStateTracker()
     t.applyProfiles([{ name: 'a', display_name: 'Alpha' }, { name: 'b' }])

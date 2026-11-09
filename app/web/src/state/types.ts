@@ -1,6 +1,8 @@
 // Mirrors the shapes served by GET /crew/state and /crew/events (server: watcher/bot-state.ts).
 // Kept as a copy on purpose: the web app never imports server code.
 
+import type { AvatarType } from '@/features/avatars/avatar-model'
+
 export type BotStatus = 'idle' | 'working' | 'needs_you'
 export type HermesConnection = 'connected' | 'connecting' | 'signed_out' | 'offline'
 
@@ -11,6 +13,9 @@ export interface BotView {
   readonly shape: string | null
   readonly isPrimary: boolean
   readonly hasAvatar: boolean
+  /** The bot's chosen avatar type and colour; null when never set. */
+  readonly avatar: { readonly type: AvatarType; readonly color?: string } | null
+  readonly imageKind: 'photo' | 'shape' | null
   readonly model: string | null
   readonly sessionId: string | null
   readonly preview: string | null

@@ -1,10 +1,10 @@
 import { useEffect, useId, useState } from 'react'
 
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 import type { ScheduleKind, ScheduleSpec, Unit } from './types'
 
-const SELECT = 'h-8 rounded-lg border border-input bg-background px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50'
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 const KINDS: readonly { kind: ScheduleKind; label: string }[] = [
   { kind: 'once_in', label: 'Once, after…' },
@@ -21,6 +21,36 @@ interface PickerProps {
   value: ScheduleSpec
   onChange: (next: ScheduleSpec) => void
 }
+
+interface Option {
+  value: string
+  label: string
+}
+
+/** A shadcn Select over labelled options; `label` names the trigger (an id) or `ariaLabel` does. */
+function OptionSelect({ value, options, onChange, labelledBy, ariaLabel, className }: {
+  value: string
+  options: readonly Option[]
+  onChange: (value: string) => void
+  labelledBy?: string
+  ariaLabel?: string
+  className?: string
+}) {
+  return (
+    <Select value={value} onValueChange={v => v !== null && onChange(v)} items={options}>
+      <SelectTrigger aria-labelledby={labelledBy} aria-label={ariaLabel} className={className ?? 'w-full'}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+      </SelectContent>
+    </Select>
+  )
+}
+
+const UNITS: readonly Option[] = [{ value: 'm', label: 'minutes' }, { value: 'h', label: 'hours' }, { value: 'd', label: 'days' }]
+const DAY_OPTIONS: readonly Option[] = DAYS.map((d, i) => ({ value: String(i), label: d }))
+const KIND_OPTIONS: readonly Option[] = KINDS.map(k => ({ value: k.kind, label: k.label }))
 
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, Math.trunc(n) || min))
 
@@ -78,11 +108,7 @@ function AmountUnit({ value, onChange }: { value: Extract<ScheduleSpec, { amount
   return (
     <div className="flex gap-2">
       <NumberField label="Amount" value={value.amount} min={1} max={999} onChange={amount => onChange({ ...value, amount })} />
-      <select aria-label="Unit" className={SELECT} value={value.unit} onChange={e => onChange({ ...value, unit: e.target.value as Unit })}>
-        <option value="m">minutes</option>
-        <option value="h">hours</option>
-        <option value="d">days</option>
-      </select>
+      <OptionSelect ariaLabel="Unit" className="w-32" value={value.unit} options={UNITS} onChange={unit => onChange({ ...value, unit: unit as Unit })} />
     </div>
   )
 }
@@ -102,9 +128,7 @@ function Details({ value, onChange }: PickerProps) {
     case 'weekly':
       return (
         <div className="flex gap-2">
-          <select aria-label="Day of the week" className={SELECT} value={value.day} onChange={e => onChange({ ...value, day: Number(e.target.value) })}>
-            {DAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}
-          </select>
+          <OptionSelect ariaLabel="Day of the week" className="w-36" value={String(value.day)} options={DAY_OPTIONS} onChange={day => onChange({ ...value, day: Number(day) })} />
           <TimeInput value={value} onChange={onChange} />
         </div>
       )
@@ -125,10 +149,8 @@ export function SchedulePicker({ value, onChange }: PickerProps) {
   const id = useId()
   return (
     <div className="flex flex-col gap-2">
-      <label htmlFor={id} className="text-sm font-medium">When</label>
-      <select id={id} className={SELECT} value={value.kind} onChange={e => onChange(defaultFor(e.target.value as ScheduleKind, value))}>
-        {KINDS.map(k => <option key={k.kind} value={k.kind}>{k.label}</option>)}
-      </select>
+      <span id={id} className="text-sm font-medium">When</span>
+      <OptionSelect labelledBy={id} value={value.kind} options={KIND_OPTIONS} onChange={kind => onChange(defaultFor(kind as ScheduleKind, value))} />
       <Details value={value} onChange={onChange} />
     </div>
   )

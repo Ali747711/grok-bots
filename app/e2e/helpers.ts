@@ -32,7 +32,7 @@ export const makeDir = (path: string) => vm(`mkdir -p ${path}`)
 export async function openBot(page: Page, name: string): Promise<void> {
   await page.goto(`${CREW}/bots/${name}`)
   await expect(page.getByRole('textbox', { name: 'Message' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Send' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible()
 }
 
 /** Send a chat message from the Crew composer once sending is allowed. */

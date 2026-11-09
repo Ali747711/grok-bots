@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { z } from 'zod'
 
+import { crewAvatarSchema } from '../bots/avatar.js'
 import type { BotDeps } from '../bots/create.js'
 import { clearAvatar, deleteBot, readBotDetail, setAvatar, updateBot } from '../bots/edit.js'
 import { PROFILE_NAME_RE } from '../bots/names.js'
@@ -18,6 +19,7 @@ const patchBody = z.object({
   title: z.string().min(1).max(80),
   look: z.object({ shape: z.string().min(1).max(64), color: z.string().regex(/^#[0-9a-fA-F]{6}$/) }).partial()
     .refine(look => look.shape !== undefined || look.color !== undefined, 'look needs a shape or a color'),
+  avatar: crewAvatarSchema,
   hidden: z.boolean(),
   description: z.string().max(2000),
   soul: z.string().max(100_000),

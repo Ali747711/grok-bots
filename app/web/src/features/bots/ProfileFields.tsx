@@ -1,3 +1,4 @@
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 
@@ -29,16 +30,19 @@ export function ProfileFields({ form, handle, allowDefault, onChange }: ProfileF
         <Textarea id="profile-job" maxLength={2000} value={form.description} onChange={e => onChange({ description: e.target.value })} />
       </div>
       <div className={FIELD}>
-        <label htmlFor="profile-model" className={LABEL}>Model</label>
+        <span id="profile-model-label" className={LABEL}>Model</span>
         <ModelSelect id="profile-model" value={form.model} onChange={model => onChange({ model })} allowDefault={allowDefault} />
       </div>
-      <details className="rounded-lg border border-border p-2">
-        <summary className="cursor-pointer text-sm font-medium">Advanced</summary>
-        <div className={`${FIELD} pt-2`}>
-          <label htmlFor="profile-soul" className={LABEL}>Persona (SOUL.md)</label>
-          <Textarea id="profile-soul" maxLength={100000} className="min-h-40 font-mono text-xs" value={form.soul} onChange={e => onChange({ soul: e.target.value })} />
-        </div>
-      </details>
+      <Collapsible className="rounded-lg border border-border p-2">
+        <CollapsibleTrigger className="w-full cursor-pointer text-left text-sm font-medium">Advanced</CollapsibleTrigger>
+        {/* Kept mounted so the persona field exists (and is read) while the section is closed. */}
+        <CollapsibleContent keepMounted>
+          <div className={`${FIELD} pt-2`}>
+            <label htmlFor="profile-soul" className={LABEL}>Persona (SOUL.md)</label>
+            <Textarea id="profile-soul" maxLength={100000} className="min-h-40 font-mono text-xs" value={form.soul} onChange={e => onChange({ soul: e.target.value })} />
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
     </>
   )
 }

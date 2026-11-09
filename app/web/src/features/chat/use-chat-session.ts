@@ -16,11 +16,13 @@ export interface ChatSnapshot {
   /** The gateway socket is up (Stop needs this even while the chat is re-opening). */
   connected: boolean
   running: boolean
+  /** The history has been read (or opening failed); false while the first open is still pending. */
+  loaded: boolean
   /** Quiet inline status ("Reconnecting to the chat…"), or null. */
   notice: string | null
 }
 
-const EMPTY: ChatSnapshot = { session: null, items: [], canSend: false, connected: false, running: false, notice: null }
+const EMPTY: ChatSnapshot = { session: null, items: [], canSend: false, connected: false, running: false, loaded: false, notice: null }
 
 /** One ChatSession per open bot page: created on enter, closed on leave. */
 export function useChatSession(bot: BotView): ChatSnapshot {
@@ -33,9 +35,11 @@ export function useChatSession(bot: BotView): ChatSnapshot {
     const session = new ChatSession(client, latestBot.current)
     let openError: string | null = null
     let cancelled = false
+    let loaded = false
     const publish = () => {
       if (cancelled) return
-      setSnapshot({ session, items: session.items, canSend: session.canSend, connected: session.connected, running: session.running, notice: openError ?? session.error })
+      loaded = loaded || session.canSend || openError !== null
+      setSnapshot({ session, items: session.items, canSend: session.canSend, connected: session.connected, running: session.running, loaded, notice: openError ?? session.error })
     }
     const unsubscribe = session.subscribe(publish)
 

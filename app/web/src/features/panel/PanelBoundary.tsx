@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 
 interface PanelBoundaryProps {
@@ -23,9 +24,13 @@ export class PanelBoundary extends Component<PanelBoundaryProps, { failed: boole
   override render(): ReactNode {
     if (!this.state.failed) return this.props.children
     return (
-      <div className="flex flex-col items-start gap-3 p-4 text-sm">
-        <p>Something went wrong in this panel</p>
-        <Button type="button" size="sm" onClick={this.props.onReload ?? (() => window.location.reload())}>Reload</Button>
+      <div className="p-4">
+        <Alert variant="destructive">
+          <AlertDescription className="flex flex-col items-start gap-3">
+            <p>Something went wrong in this panel</p>
+            <Button type="button" size="sm" onClick={this.props.onReload ?? (() => window.location.reload())}>Reload</Button>
+          </AlertDescription>
+        </Alert>
       </div>
     )
   }

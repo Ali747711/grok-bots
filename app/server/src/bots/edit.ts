@@ -1,3 +1,4 @@
+import { type CrewAvatar, avatarMetaPatch, readCrewAvatar } from './avatar.js'
 import { withBotLock } from './bot-lock.js'
 import { type BotDeps, refreshQuietly } from './create.js'
 import { type BotMeta, BotNotFoundError, BotMetaWriteError, updateBotMeta } from './ui-meta.js'
@@ -15,6 +16,7 @@ export interface BotDetail {
   readonly isPrimary: boolean
   readonly title: string
   readonly look: { readonly shape: string | null; readonly color: string | null; readonly imageKind: 'photo' | 'shape' | null }
+  readonly avatar: CrewAvatar | null
   readonly hidden: boolean
   readonly description: string
   readonly soul: string
@@ -31,6 +33,7 @@ export interface LookPatch {
 export interface BotPatch {
   readonly title?: string
   readonly look?: LookPatch
+  readonly avatar?: CrewAvatar
   readonly hidden?: boolean
   readonly description?: string
   readonly soul?: string
@@ -103,6 +106,7 @@ export async function readBotDetail(deps: BotDeps, name: string): Promise<BotDet
     isPrimary,
     title: text(meta.title) || text(row.display_name) || (isPrimary ? 'Hermes' : titleCase(name)),
     look: { shape: text(meta.shape) || null, color: text(meta.color) || null, imageKind },
+    avatar: readCrewAvatar(meta.crewAvatar),
     hidden: meta.hidden === true,
     description: typeof row.description === 'string' ? row.description : '',
     soul: soul.exists === false ? '' : (soul.content ?? ''),
@@ -132,7 +136,8 @@ function metaPatch(patch: BotPatch): Partial<BotMeta> {
   return {
     ...(patch.title !== undefined ? { title: patch.title } : {}),
     ...(patch.hidden !== undefined ? { hidden: patch.hidden } : {}),
-    ...(patch.look ? { ...(patch.look.shape !== undefined ? { shape: patch.look.shape } : {}), ...(patch.look.color !== undefined ? { color: patch.look.color } : {}), custom: true } : {})
+    ...(patch.look ? { ...(patch.look.shape !== undefined ? { shape: patch.look.shape } : {}), ...(patch.look.color !== undefined ? { color: patch.look.color } : {}), custom: true } : {}),
+    ...(patch.avatar ? avatarMetaPatch(patch.avatar) : {})
   }
 }
 

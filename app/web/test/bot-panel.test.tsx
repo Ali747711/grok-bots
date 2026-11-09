@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -20,7 +20,7 @@ beforeEach(() => {
   client.handlers = { 'session.resume': () => ({ session_id: 'live-1', execution_generation: 1, running: false }) }
   vi.stubGlobal('fetch', vi.fn((url: string) =>
     Promise.resolve(new Response(JSON.stringify(url.startsWith('/crew/bots/') && !url.endsWith('/finish')
-      ? { name: url.slice('/crew/bots/'.length), isPrimary: false, title: url.endsWith('researcher') ? 'Researcher' : 'Dev', look: { shape: null, color: null, imageKind: null }, hidden: false, description: 'd', soul: 's', model: null, metaRevision: 1 }
+      ? { name: url.slice('/crew/bots/'.length), isPrimary: false, title: url.endsWith('researcher') ? 'Researcher' : 'Dev', look: { shape: null, color: null, imageKind: null }, avatar: null, hidden: false, description: 'd', soul: 's', model: null, metaRevision: 1 }
       : { messages: [] })))))
 })
 afterEach(() => vi.unstubAllGlobals())
@@ -47,6 +47,18 @@ describe('panel in the app', () => {
     expect(screen.queryByRole('region', { name: 'Panel' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Routines' }))
     expect(screen.getByRole('button', { name: 'New routine' })).toBeInTheDocument()
+  })
+
+  it('switches tabs with the panel tabs and closes the panel', async () => {
+    renderAt('/bots/dev?panel=profile')
+    expect(await screen.findByLabelText('Name')).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Profile' })).toHaveAttribute('aria-selected', 'true')
+    fireEvent.click(screen.getByRole('tab', { name: 'Routines' }))
+    expect(await screen.findByRole('button', { name: 'New routine' })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Name')).toBeNull()
+    expect(screen.getByRole('tab', { name: 'Routines' })).toHaveAttribute('aria-selected', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'Close panel' }))
+    expect(screen.queryByRole('region', { name: 'Panel' })).toBeNull()
   })
 
   it('survives a reload: ?panel=profile opens the panel', async () => {
@@ -82,8 +94,11 @@ describe('W7: a bot deleted elsewhere', () => {
     expect(await screen.findByRole('heading', { name: 'Hermes' })).toBeInTheDocument()
   })
 
-  it('does not redirect for a bot that has not appeared yet', async () => {
+  it('does not redirect for a bot that has not appeared yet', () => {
+    vi.useFakeTimers()
     rerenderAt('/bots/new-one')
-    expect(await screen.findByText('Bot not found')).toBeInTheDocument()
+    act(() => { vi.advanceTimersByTime(3100) })
+    expect(screen.getByText('Bot not found')).toBeInTheDocument()
+    vi.useRealTimers()
   })
 })

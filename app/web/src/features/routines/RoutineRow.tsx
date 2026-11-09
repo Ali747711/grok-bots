@@ -1,6 +1,9 @@
 import { useState } from 'react'
+import { toast } from 'sonner'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 
 import { describeSchedule } from './describe-schedule'
@@ -9,12 +12,16 @@ import { CrewApiError, deleteRoutine, pauseRoutine, resumeRoutine, runRoutine } 
 import type { LastStatus, RoutineView } from './types'
 import { formatInZone } from './use-schedule-preview'
 
-const RESULT: Record<LastStatus, { text: string; bad: boolean }> = {
-  ok: { text: 'OK', bad: false },
-  error: { text: 'Error', bad: true },
-  delivery_failed: { text: 'Delivery failed', bad: true },
-  blocked_config: { text: 'Config problem', bad: true }
+const RESULT: Record<LastStatus, { text: string; tone: string }> = {
+  ok: { text: 'OK', tone: 'bg-ok-soft text-ok-ink' },
+  error: { text: 'Error', tone: 'bg-danger-soft text-danger-ink' },
+  delivery_failed: { text: 'Delivery failed', tone: 'bg-danger-soft text-danger-ink' },
+  blocked_config: { text: 'Config problem', tone: 'bg-warn-soft text-warn-ink' }
 }
+
+/** Ghost buttons on the muted row card need their own visible hover and open states. */
+// dark:hover:bg-card is needed because the ghost variant's own dark:hover:bg-muted/50 would otherwise win in dark.
+const GHOST = 'hover:bg-card dark:hover:bg-card aria-expanded:bg-card'
 
 interface RoutineRowProps {
   routine: RoutineView
@@ -29,15 +36,18 @@ function useRowActions(routine: RoutineView, onChanged: () => void) {
   const [note, setNote] = useState<string | null>(null)
   // Bumped after Run now so an open history re-reads at once.
   const [runTick, setRunTick] = useState(0)
-  const act = async (action: () => Promise<unknown>, fail: string) => {
+  const act = async (action: () => Promise<unknown>, fail: string): Promise<boolean> => {
     setNote(null)
+    let ok = true
     try {
       await action()
     } catch (e) {
+      ok = false
       // The server's own reason (a Hermes refusal) beats a generic line.
       setNote(e instanceof CrewApiError && typeof e.body?.message === 'string' ? e.body.message : fail)
     }
     onChanged()
+    return ok
   }
   return {
     note,
@@ -50,30 +60,32 @@ function useRowActions(routine: RoutineView, onChanged: () => void) {
         setRunTick(t => t + 1)
       }, 'Could not start the routine'),
     toggle: () => act(() => (routine.enabled ? pauseRoutine : resumeRoutine)(routine.bot, routine.id), 'Could not change the routine'),
-    remove: () => act(() => deleteRoutine(routine.bot, routine.id), 'Could not delete the routine')
+    remove: async () => {
+      if (await act(() => deleteRoutine(routine.bot, routine.id), 'Could not delete the routine')) toast.success('Routine deleted')
+    }
   }
 }
 
 function PauseSwitch({ routine, onToggle }: { routine: RoutineView; onToggle: () => void }) {
   return (
-    <button
-      type="button" role="switch" aria-checked={routine.enabled} aria-label={`${routine.title} enabled`} onClick={onToggle}
-      className={cn('h-5 w-9 rounded-full border border-border p-0.5 transition-colors', routine.enabled ? 'bg-foreground' : 'bg-secondary')}
-    >
-      <span className={cn('block size-3.5 rounded-full bg-background transition-transform', routine.enabled ? 'translate-x-4' : 'bg-muted-foreground')} />
-    </button>
+    <Switch
+      checked={routine.enabled}
+      onCheckedChange={onToggle}
+      aria-label={`${routine.title} enabled`}
+      className="data-checked:bg-foreground data-unchecked:border-muted-foreground"
+    />
   )
 }
 
 /** Next run, "Paused", or "Done" for a routine Hermes has finished (nothing left to pause, resume or run). */
 function StatusLine({ routine }: { routine: RoutineView }) {
   const result = routine.lastStatus ? RESULT[routine.lastStatus] : null
-  const text = routine.finished ? 'Done' : routine.enabled ? (routine.nextRunAt !== null ? `Next: ${formatInZone(routine.nextRunAt, routine.timezone)}` : '') : 'Paused'
+  const text = routine.finished ? 'Done' : routine.enabled ? (routine.nextRunAt !== null ? `Next · ${formatInZone(routine.nextRunAt, routine.timezone)}` : '') : 'Paused'
   return (
-    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-      <span>{text}</span>
-      {routine.finished && routine.lastRunAt !== null && <span>{formatInZone(routine.lastRunAt, routine.timezone)}</span>}
-      {result && <span title={routine.lastError ?? undefined} className={cn('rounded-full bg-secondary px-1.5', result.bad && 'text-destructive')}>{result.text}</span>}
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="label-mono">{text}</span>
+      {routine.finished && routine.lastRunAt !== null && <span className="label-mono">{formatInZone(routine.lastRunAt, routine.timezone)}</span>}
+      {result && <Badge title={routine.lastError ?? undefined} className={cn('h-5 px-2 text-xs ring-1 ring-border', result.tone)}>{result.text}</Badge>}
     </div>
   )
 }
@@ -84,9 +96,9 @@ export function RoutineRow({ routine, onChanged, onEdit, historyOpen, onToggleHi
   const { note, runTick, run, toggle, remove } = useRowActions(routine, onChanged)
 
   return (
-    <li className="flex flex-col gap-1.5 rounded-lg border border-border p-3 text-sm">
+    <li className="flex flex-col gap-2 rounded-2xl bg-muted p-3 text-sm">
       <div className="flex items-center gap-2">
-        <span className="min-w-0 flex-1 truncate font-medium">{routine.title}</span>
+        <span className="min-w-0 flex-1 truncate font-semibold">{routine.title}</span>
         {!routine.finished && <PauseSwitch routine={routine} onToggle={() => void toggle()} />}
       </div>
       <div className="text-xs text-muted-foreground">{describeSchedule(routine.schedule)}</div>
@@ -103,9 +115,9 @@ export function RoutineRow({ routine, onChanged, onEdit, historyOpen, onToggleHi
           {!routine.finished && (
             <Button type="button" size="sm" variant="outline" disabled={routine.running} onClick={() => void run()}>{routine.running ? 'Running…' : 'Run now'}</Button>
           )}
-          <Button type="button" size="sm" variant="ghost" aria-expanded={historyOpen} onClick={onToggleHistory}>History</Button>
-          <Button type="button" size="sm" variant="ghost" onClick={onEdit}>Edit</Button>
-          <Button type="button" size="sm" variant="ghost" onClick={() => setConfirming(true)}>Delete</Button>
+          <Button type="button" size="sm" variant="ghost" aria-expanded={historyOpen} onClick={onToggleHistory} className={GHOST}>History</Button>
+          <Button type="button" size="sm" variant="ghost" onClick={onEdit} className={GHOST}>Edit</Button>
+          <Button type="button" size="sm" variant="ghost" onClick={() => setConfirming(true)} className={GHOST}>Delete</Button>
         </div>
       )}
       {historyOpen && <RunHistory bot={routine.bot} routineId={routine.id} timezone={routine.timezone} instruction={routine.instruction} refreshKey={runTick} />}

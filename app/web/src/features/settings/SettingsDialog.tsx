@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { creditText, type Usage } from '@/features/usage/CreditPill'
 
 import { saveSettings } from './settings-api'
@@ -16,6 +18,28 @@ interface SettingsDialogProps {
   maxWorkingBots: number | null
   /** Credit from the caller's single usage poll. */
   usage: Usage | null
+}
+
+const LABEL_ID = 'max-working-bots-label'
+
+/** The options, plus a saved value outside the list (set by hand, 1-20 is valid) so the select can show it. */
+function limitItems(saved: number | null): { value: string; label: string }[] {
+  const numbers = saved !== null && !LIMITS.includes(saved) ? [...LIMITS, saved].sort((x, y) => x - y) : LIMITS
+  return [...numbers.map(n => ({ value: String(n), label: String(n) })), { value: NO_LIMIT, label: 'No limit' }]
+}
+
+function LimitSelect({ value, onChange, saved }: { value: string; onChange: (v: string) => void; saved: number | null }) {
+  const items = limitItems(saved)
+  return (
+    <Select value={value} onValueChange={v => v !== null && onChange(v)} items={items}>
+      <SelectTrigger aria-labelledby={LABEL_ID} className="w-full">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {items.map(item => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}
+      </SelectContent>
+    </Select>
+  )
 }
 
 const toValue = (limit: number | null) => (limit === null ? NO_LIMIT : String(limit))
@@ -40,16 +64,13 @@ export function SettingsDialog({ open, onOpenChange, maxWorkingBots, usage }: Se
     try {
       await saveSettings({ maxWorkingBots: value === NO_LIMIT ? null : Number(value) })
       onOpenChange(false)
+      toast.success('Settings saved')
     } catch {
       setError('Could not save the settings. Try again.')
     } finally {
       setSaving(false)
     }
   }
-
-  // A saved value outside the list (set by hand, 1-20 is valid) still needs an option so the select shows it.
-  const options =
-    maxWorkingBots !== null && !LIMITS.includes(maxWorkingBots) ? [...LIMITS, maxWorkingBots].sort((a, b) => a - b) : LIMITS
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -59,16 +80,8 @@ export function SettingsDialog({ open, onOpenChange, maxWorkingBots, usage }: Se
           <DialogDescription>How many bots may work at once.</DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="max-working-bots" className="text-sm font-medium">Bots working at the same time</label>
-          <select
-            id="max-working-bots"
-            value={value}
-            onChange={e => setValue(e.target.value)}
-            className="h-8 rounded-lg border border-input bg-background px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-          >
-            {options.map(n => <option key={n} value={String(n)}>{n}</option>)}
-            <option value={NO_LIMIT}>No limit</option>
-          </select>
+          <span id={LABEL_ID} className="text-sm font-medium">Bots working at the same time</span>
+          <LimitSelect value={value} onChange={setValue} saved={maxWorkingBots} />
           <p className="text-xs text-muted-foreground">Each working bot spends credit.</p>
           <p className="text-xs text-muted-foreground">{creditText(usage)}</p>
         </div>

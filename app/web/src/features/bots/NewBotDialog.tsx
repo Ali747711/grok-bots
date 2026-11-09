@@ -4,10 +4,11 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { deriveAvatarType, type AvatarType } from '@/features/avatars/avatar-model'
+import { AvatarPicker, type AvatarValue } from '@/features/avatars/AvatarPicker'
 
 import { createBot, finishBot } from './bots-api'
 import { describeCreateFailure } from './create-errors'
-import { LookPicker, toBotLook, type LookValue } from './LookPicker'
 import { ModelSelect } from './ModelSelect'
 import { NAME_MESSAGES, slugifyProfileName, validateBotName } from './slug'
 import type { CreateResult, ModelChoice } from './types'
@@ -19,7 +20,6 @@ interface NewBotDialogProps {
   onCreated: (name: string) => void
 }
 
-const START_LOOK: LookValue = { look: { shape: 'squircle', color: '#6366f1' } }
 const FIELD = 'flex flex-col gap-1.5'
 const LABEL = 'text-sm font-medium'
 
@@ -63,11 +63,11 @@ interface FieldsProps {
   handleError: string | undefined
   mission: string
   onMission: (v: string) => void
-  look: LookValue
-  onLook: (v: LookValue) => void
+  avatar: AvatarValue
+  onAvatar: (v: AvatarValue) => void
+  onTypePick: (type: AvatarType) => void
   model: ModelChoice | null
   onModel: (v: ModelChoice | null) => void
-  initial: string
   onPhotoBusy: (busy: boolean) => void
 }
 
@@ -84,11 +84,11 @@ function BotFields(f: FieldsProps) {
         <Textarea id="bot-mission" value={f.mission} maxLength={2000} onChange={e => f.onMission(e.target.value)} placeholder="What does it do? e.g. Research assistant who finds papers about agents." />
       </div>
       <div className={FIELD}>
-        <span className={LABEL}>Look</span>
-        <LookPicker value={f.look} onChange={f.onLook} initial={f.initial} onBusyChange={f.onPhotoBusy} />
+        <span className={LABEL}>Avatar</span>
+        <AvatarPicker value={f.avatar} onChange={f.onAvatar} onBusyChange={f.onPhotoBusy} onTypePick={f.onTypePick} />
       </div>
       <div className={FIELD}>
-        <label htmlFor="bot-model" className={LABEL}>Model</label>
+        <span id="bot-model-label" className={LABEL}>Model</span>
         <ModelSelect value={f.model} onChange={f.onModel} allowDefault />
       </div>
     </>
@@ -101,7 +101,9 @@ function NewBotForm(props: Omit<NewBotDialogProps, 'open'>) {
   const [handleEdit, setHandleEdit] = useState<string | null>(null)
   const [photoBusy, setPhotoBusy] = useState(false)
   const [mission, setMission] = useState('')
-  const [look, setLook] = useState<LookValue>(START_LOOK)
+  // The type follows the handle until the user picks one.
+  const [pickedType, setPickedType] = useState<AvatarType | null>(null)
+  const [look, setLook] = useState<{ color?: string; photo?: string | null }>({})
   const [model, setModel] = useState<ModelChoice | null>(null)
   const flow = useCreateFlow(props)
 
@@ -110,19 +112,21 @@ function NewBotForm(props: Omit<NewBotDialogProps, 'open'>) {
   const touched = name.trim() !== '' || handleEdit !== null
   // In Hermes the display name is ui_meta.title; the handle is the profile name.
   const finalTitle = name.trim()
-  const image = look.image ? { image: look.image } : {}
+  const avatar: AvatarValue = { ...look, type: pickedType ?? deriveAvatarType(handle) }
+  const image = avatar.photo ? { image: avatar.photo } : {}
+  const choice = { type: avatar.type, ...(avatar.color ? { color: avatar.color } : {}) }
   const forget = <T,>(set: (v: T) => void) => (v: T) => { set(v); flow.setFailure({}) }
 
-  const create = () => flow.run(() => createBot({ name: handle, title: finalTitle, mission, look: toBotLook(look.look), ...image, ...(model ? { model } : {}) }))
-  const finish = (botName: string) => flow.run(() => finishBot(botName, { look: toBotLook(look.look), title: finalTitle, ...image }))
+  const create = () => flow.run(() => createBot({ name: handle, title: finalTitle, mission, avatar: choice, ...image, ...(model ? { model } : {}) }))
+  const finish = (botName: string) => flow.run(() => finishBot(botName, { avatar: choice, title: finalTitle, ...image }))
 
   return (
     <>
       <BotFields
         name={name} onName={forget(setName)} handle={handle} editingHandle={handleEdit !== null} onEditHandle={forget(setHandleEdit)}
         handleError={!check.ok && touched ? NAME_MESSAGES[check.reason] : flow.failure.handle}
-        mission={mission} onMission={setMission} look={look} onLook={setLook} model={model} onModel={setModel}
-        initial={finalTitle.charAt(0).toUpperCase() || '?'} onPhotoBusy={setPhotoBusy}
+        mission={mission} onMission={setMission} avatar={avatar} onAvatar={next => setLook({ color: next.color, photo: next.photo })} onTypePick={setPickedType} model={model} onModel={setModel}
+        onPhotoBusy={setPhotoBusy}
       />
       {flow.failure.general && <p role="alert" className="text-sm text-destructive">{flow.failure.general}</p>}
       {flow.partial ? (
@@ -192,7 +196,7 @@ export function NewBotDialog({ open, onOpenChange, onCreated }: NewBotDialogProp
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>New bot</DialogTitle>
-          <DialogDescription>Give it a name, a job and a look.</DialogDescription>
+          <DialogDescription>Give it a name, a job and an avatar.</DialogDescription>
         </DialogHeader>
         <NewBotForm onOpenChange={onOpenChange} onCreated={onCreated} />
       </DialogContent>

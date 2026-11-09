@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { toast } from 'sonner'
 
 import { CrewApiError, updateBot } from './bots-api'
 import { rebase } from './profile-form'
@@ -46,6 +47,7 @@ export function useProfileSave({ name, onReset, reload }: Deps) {
       const out = await updateBot(name, patch)
       if (out.status === 'saved') {
         onReset(out.detail)
+        toast.success('Profile saved')
         setConflict(null)
         setConfirm(null)
       } else if (out.status === 'conflict') {

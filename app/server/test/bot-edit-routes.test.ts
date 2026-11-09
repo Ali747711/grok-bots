@@ -106,6 +106,16 @@ describe('PATCH /crew/bots/:name', () => {
     }
   })
 
+  it('accepts an avatar without a baseline and rejects a bad one', async () => {
+    expect((await send('PATCH', '/crew/bots/scout', { avatar: { type: 'star', color: '#123456' } })).status).toBe(200)
+    expect((await send('PATCH', '/crew/bots/scout', { avatar: { type: 'star' } })).status).toBe(200)
+    for (const avatar of [{ type: 'dragon' }, { type: 'star', color: 'red' }, {}, 'star']) {
+      const res = await send('PATCH', '/crew/bots/scout', { avatar })
+      expect(res.status).toBe(400)
+      expect(await res.json()).toMatchObject({ error: 'bad_body' })
+    }
+  })
+
   it('accepts a partial look with any Hermes shape string', async () => {
     for (const look of [{ color: '#abcdef' }, { shape: 'blobatar' }, { shape: 'blobatar:seed:round' }, { shape: 'sigil-3', color: '#abcdef' }]) {
       expect((await send('PATCH', '/crew/bots/scout', { look })).status).toBe(200)

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import type { BotView } from '@/state/types'
@@ -23,7 +24,7 @@ export function RoutinesPanel({ bot }: { bot: BotView }) {
         key={editing.kind === 'edit' ? editing.routine.id : 'new'}
         bot={bot.name}
         {...(editing.kind === 'edit' ? { initial: editing.routine } : {})}
-        onSaved={() => { setEditing(null); void reload() }}
+        onSaved={() => { setEditing(null); void reload(); toast.success('Routine saved') }}
         onCancel={() => setEditing(null)}
       />
     )
@@ -31,7 +32,7 @@ export function RoutinesPanel({ bot }: { bot: BotView }) {
 
   return (
     <div className="flex flex-col gap-3 p-4">
-      <Button type="button" size="sm" onClick={() => setEditing({ kind: 'new' })}>New routine</Button>
+      <Button type="button" size="sm" className="self-start rounded-full" onClick={() => setEditing({ kind: 'new' })}>New routine</Button>
       {routines === null && <p className="text-sm text-muted-foreground">{error ? 'Could not load routines.' : 'Loading…'}</p>}
       {routines?.length === 0 && (
         <p className="text-sm text-muted-foreground">No routines yet. Routines run on a schedule and keep their results in run history.</p>

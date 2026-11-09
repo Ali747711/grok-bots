@@ -14,7 +14,7 @@ const headers = {
   Host: HOST, Origin: ORIGIN, Cookie: `crew_session=${session}; ${CSRF_COOKIE}=tok`,
   'Content-Type': 'application/json', 'X-Crew-CSRF': 'tok'
 }
-const body = { name: 'scout', title: 'Researcher', mission: 'Find papers', look: { shape: 'squircle', color: '#7c3aed' } }
+const body = { name: 'scout', title: 'Researcher', mission: 'Find papers', avatar: { type: 'square', color: '#7c3aed' } }
 
 let rpc: FakeRpc
 let bots: BotDeps
@@ -36,6 +36,14 @@ describe('POST /crew/bots', () => {
     expect(await res.json()).toMatchObject({ name: 'scout', complete: true, steps: { profile: 'ok', look: 'ok', chat: 'ok' } })
   })
 
+  it('stores the avatar with its hermes shape and colour, and rejects an unknown type', async () => {
+    expect((await post('/crew/bots', body)).status).toBe(201)
+    expect((rpc.configures[0]!.ui_meta as Record<string, Record<string, unknown>>)['hermes-bots']).toMatchObject({ crewAvatar: { type: 'square', color: '#7c3aed' }, shape: 'squircle', color: '#7c3aed' })
+    const res = await post('/crew/bots', { ...body, name: 'other', avatar: { type: 'dragon' } })
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ error: 'bad_body' })
+  })
+
   it('rejects a reserved or malformed name before calling hermes', async () => {
     for (const name of ['default', 'Scout', '-a', '']) {
       const res = await post('/crew/bots', { ...body, name })
@@ -48,8 +56,9 @@ describe('POST /crew/bots', () => {
   it('rejects a gif data url and other bad bodies', async () => {
     for (const payload of [
       { ...body, image: 'data:image/gif;base64,AAAA' },
-      { ...body, look: { shape: 'blob', color: '#7c3aed' } },
-      { ...body, look: { shape: 'circle', color: 'red' } },
+      { ...body, avatar: { type: 'dragon' } },
+      { ...body, avatar: { type: 'cat', color: 'red' } },
+      { ...body, avatar: undefined },
       { ...body, title: 'x'.repeat(81) },
       { ...body, mission: 'x'.repeat(2001) },
       { ...body, image: 'data:image/png;base64,' + 'A'.repeat(2_700_000) },
@@ -123,6 +132,21 @@ describe('POST /crew/bots/:name/finish', () => {
     const res = await post('/crew/bots/scout/finish', {})
     expect(res.status).toBe(200)
     expect(await res.json()).toMatchObject({ name: 'scout', complete: true, steps: { look: 'ok', chat: 'ok' } })
+  })
+
+  it('passes a valid avatar to the meta patch as crewAvatar', async () => {
+    rpc.rows.set('scout', {})
+    const res = await post('/crew/bots/scout/finish', { avatar: { type: 'cat', color: '#112233' } })
+    expect(res.status).toBe(200)
+    expect((rpc.configures[0]!.ui_meta as Record<string, Record<string, unknown>>)['hermes-bots']).toMatchObject({ crewAvatar: { type: 'cat', color: '#112233' } })
+  })
+
+  it('rejects an unknown avatar type or a bad hex with 400', async () => {
+    rpc.rows.set('scout', {})
+    expect((await post('/crew/bots/scout/finish', { avatar: { type: 'dragon' } })).status).toBe(400)
+    expect((await post('/crew/bots/scout/finish', { avatar: { type: 'cat', color: 'red' } })).status).toBe(400)
+    expect((await post('/crew/bots/scout/finish', { avatar: { type: 'cat', color: '#12345' } })).status).toBe(400)
+    expect(rpc.configures).toHaveLength(0)
   })
 
   it('refuses to finish the primary bot before any hermes call', async () => {

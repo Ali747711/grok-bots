@@ -7,7 +7,7 @@ import { HermesRpcError } from '../src/hermes/errors.js'
 import { setLogSink } from '../src/log.js'
 import { FakeRpc } from './fake-rpc.js'
 
-const draft: BotDraft = { name: 'scout', title: 'Researcher', mission: 'Find papers', look: { shape: 'squircle', color: '#7c3aed' } }
+const draft: BotDraft = { name: 'scout', title: 'Researcher', mission: 'Find papers', avatar: { type: 'square', color: '#7c3aed' } }
 let rpc: FakeRpc
 let refreshes: number
 let deps: BotDeps
@@ -26,7 +26,7 @@ describe('createBot', () => {
     expect(rpc.of('profiles.create')[0]!.timeoutMs).toBe(120_000)
     expect(rpc.params('session.create')).toEqual({ profile: 'scout', title: 'Bot Chat', hidden: true, follow_profile_config: true })
     expect(rpc.params('setup.runtime_check')).toEqual({ profile: 'scout' })
-    expect((rpc.configures[0]!.ui_meta as Record<string, unknown>)['hermes-bots']).toEqual({ shape: 'squircle', color: '#7c3aed', imageKind: 'shape', title: 'Researcher', created: 1234 })
+    expect((rpc.configures[0]!.ui_meta as Record<string, unknown>)['hermes-bots']).toEqual({ crewAvatar: { type: 'square', color: '#7c3aed' }, shape: 'squircle', color: '#7c3aed', custom: true, imageKind: 'shape', title: 'Researcher', created: 1234 })
     expect(result).toEqual({ name: 'scout', complete: true, steps: { profile: 'ok', look: 'ok', avatar: 'skipped', chat: 'ok' }, needsModel: false })
     expect(refreshes).toBe(1)
   })
@@ -113,19 +113,19 @@ describe('quiet failures are logged', () => {
 })
 
 describe('finishBot', () => {
-  it('finishes a bot that never got a look', async () => {
+  it('finishes a bot that never got a look, deriving its avatar type from the handle', async () => {
     rpc.rows.set('scout', {})
     const result = await finishBot(deps, 'scout', {})
     expect(rpc.methods()).toEqual(['profiles.list', 'profiles.list', 'profiles.configure', 'session.create'])
-    expect((rpc.configures[0]!.ui_meta as Record<string, unknown>)['hermes-bots']).toEqual({ shape: 'squircle', color: '#6366f1', imageKind: 'shape', title: 'Scout', created: 1234 })
+    expect((rpc.configures[0]!.ui_meta as Record<string, unknown>)['hermes-bots']).toEqual({ crewAvatar: { type: 'ghost' }, shape: 'blob', color: '#F4F2FA', custom: true, imageKind: 'shape', title: 'Scout', created: 1234 })
     expect(result).toMatchObject({ name: 'scout', complete: true, steps: { look: 'ok', avatar: 'skipped', chat: 'ok' } })
     expect(refreshes).toBe(1)
   })
 
-  it('uses the given look, title and image', async () => {
+  it('uses the given avatar, title and image', async () => {
     rpc.rows.set('inbox-triage', {})
-    await finishBot(deps, 'inbox-triage', { look: { shape: 'circle', color: '#112233' }, title: 'Triage', image: 'data:image/png;base64,AAAA' })
-    expect((rpc.configures[0]!.ui_meta as Record<string, unknown>)['hermes-bots']).toEqual({ shape: 'circle', color: '#112233', imageKind: 'photo', title: 'Triage', created: 1234 })
+    await finishBot(deps, 'inbox-triage', { avatar: { type: 'circle', color: '#112233' }, title: 'Triage', image: 'data:image/png;base64,AAAA' })
+    expect((rpc.configures[0]!.ui_meta as Record<string, unknown>)['hermes-bots']).toEqual({ crewAvatar: { type: 'circle', color: '#112233' }, shape: 'circle', color: '#112233', custom: true, imageKind: 'photo', title: 'Triage', created: 1234 })
     expect(rpc.of('profiles.set_asset')).toHaveLength(1)
   })
 

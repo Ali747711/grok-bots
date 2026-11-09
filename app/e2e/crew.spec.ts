@@ -1,6 +1,7 @@
 import { type Browser, type Page, expect, test } from '@playwright/test'
 
 import { CREW, crewState, dirExists, makeDir, openBot, send, vm, waitIdle, webappLoginUrl } from './helpers.js'
+import { profileRows, testBotNames } from './hermes-rpc.js'
 
 test.describe.configure({ mode: 'serial' })
 
@@ -28,7 +29,12 @@ test('roster shows the primary bot and Fixture with status', async ({ page }) =>
   await expect(sidebar.getByText('Fixture', { exact: true })).toBeVisible()
   const state = await crewState(page)
   expect(state.hermes).toBe('connected')
-  expect(state.bots.map(b => b.name).sort()).toEqual(['crew-test', 'default'])
+  // The roster mirrors Hermes's own profile list (the live machine also holds the user's bots), and it
+  // always includes the primary bot and Fixture. e2e<digits> bots from other specs are left out of both sides.
+  const real = (names: string[]) => names.filter(n => testBotNames([n]).length === 0).sort()
+  const hermesNames = real((await profileRows()).map(p => p.name))
+  expect(real(state.bots.map(b => b.name))).toEqual(hermesNames)
+  expect(hermesNames).toEqual(expect.arrayContaining(['crew-test', 'default']))
 })
 
 test('a message to Fixture streams into Fixture only', async ({ page }) => {
@@ -124,7 +130,7 @@ test('Stop interrupts a running turn', async ({ page }) => {
   const count = async (needle: string) => ((await transcript(page).textContent()) ?? '').split(needle).length - 1
   const stoppedBefore = await count('Stopped')
   await send(page, `Run: sleep 60 && echo ${marker}`)
-  const stop = page.getByRole('button', { name: 'Stop' })
+  const stop = page.getByRole('button', { name: 'Stop', exact: true })
   await expect(stop).toBeVisible({ timeout: 60_000 })
   // Wait until the sleep is really running (a live work step), then stop it.
   await expect(transcript(page).getByText(/Working · 1 step/)).toBeVisible({ timeout: 60_000 })

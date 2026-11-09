@@ -6,6 +6,16 @@ import type { PendingView } from '@/state/types'
 
 import { bot, crewState } from './fixtures'
 
+vi.mock('bot-avatars', async () => {
+  const actual = await vi.importActual<typeof import('bot-avatars')>('bot-avatars')
+  return {
+    ...actual,
+    BotAvatar: (props: Record<string, unknown>) => (
+      <div data-testid="stub" data-type={String(props.type)} data-color={props.color === undefined ? '' : String(props.color)} data-size={String(props.size)} data-state={String(props.state)} />
+    )
+  }
+})
+
 const pending = (id: string): PendingView => ({
   id, kind: 'approval', profile: 'researcher', sessionId: 's', summary: 'rm', receivedAt: 1,
   source: 'event', state: 'open', answerable: true
@@ -13,6 +23,11 @@ const pending = (id: string): PendingView => ({
 
 const renderSidebar = (state = crewState(), selected: string | null = null, onSelect = vi.fn()) =>
   render(<Sidebar state={state} selected={selected} onSelect={onSelect} />)
+
+function expectNoStatusShown() {
+  for (const stub of screen.getAllByTestId('stub')) expect(stub).not.toHaveAttribute('data-state', 'working')
+  expect(screen.queryAllByRole('img', { name: 'Needs you', hidden: true })).toHaveLength(0)
+}
 
 describe('Sidebar', () => {
   it('lists the primary bot first, then the others, with status dots', () => {
@@ -22,9 +37,10 @@ describe('Sidebar', () => {
     const others = screen.getByRole('group', { name: 'Bots' })
     const names = within(others).getAllByRole('button').map(b => b.getAttribute('data-bot'))
     expect(names).toEqual(['researcher', 'dev'])
-    expect(screen.getByTestId('status-default')).toHaveAttribute('data-status', 'working')
-    expect(screen.getByTestId('status-researcher')).toHaveAttribute('data-status', 'needs_you')
-    expect(screen.getByTestId('status-dev')).toHaveAttribute('data-status', 'idle')
+    expect(within(screen.getByRole('button', { name: /Hermes/ })).getByTestId('stub')).toHaveAttribute('data-state', 'working')
+    expect(within(screen.getByRole('button', { name: /Dev/ })).getByTestId('stub')).toHaveAttribute('data-state', 'default')
+    expect(within(screen.getByRole('button', { name: /Researcher/ })).getByRole('img', { name: 'Needs you', hidden: true })).toBeInTheDocument()
+    expect(screen.getAllByRole('img', { name: 'Needs you', hidden: true })).toHaveLength(1)
   })
 
   it('shows the preview line', () => {
@@ -43,7 +59,7 @@ describe('Sidebar', () => {
   it('shows the hermes offline banner and dims the roster without statuses', () => {
     renderSidebar(crewState({ hermes: 'offline' }))
     expect(screen.getByText('Hermes is offline')).toBeInTheDocument()
-    expect(screen.queryByTestId('status-default')).toBeNull()
+    expectNoStatusShown()
     expect(screen.getByTestId('roster')).toHaveAttribute('data-stale', 'true')
   })
 
@@ -65,25 +81,48 @@ describe('Sidebar', () => {
     renderSidebar(crewState(), 'dev', onSelect)
     fireEvent.click(screen.getByRole('button', { name: /Researcher/ }))
     expect(onSelect).toHaveBeenCalledWith('researcher')
-    expect(screen.getByRole('button', { name: /Dev/ })).toHaveAttribute('aria-current', 'true')
+    expect(screen.getByRole('button', { name: /Dev/ })).toHaveAttribute('aria-current', 'page')
   })
 
-  it('renders avatars: image when present, initial otherwise, circle vs rounded', () => {
+  it('renders avatars: photo for a photo bot, a fur avatar otherwise, at 36 px', () => {
     renderSidebar(crewState({
       bots: [
         bot({ name: 'default', title: 'Hermes', isPrimary: true }),
-        bot({ name: 'pic', title: 'Pic', hasAvatar: true }),
-        bot({ name: 'dev', title: 'Dev', shape: 'circle', color: '#16a34a' })
+        bot({ name: 'pic', title: 'Pic', imageKind: 'photo', hasAvatar: true }),
+        bot({ name: 'dev', title: 'Dev', avatar: { type: 'cat', color: '#16a34a' } })
       ]
     }))
-    expect(screen.getByAltText('Pic')).toHaveAttribute('src', '/crew/avatars/pic')
-    const hermes = screen.getByTestId('avatar-default')
-    expect(hermes).toHaveTextContent('H')
-    expect(hermes).toHaveStyle({ backgroundColor: '#8b5cf6' })
-    expect(hermes.className).toContain('rounded-[10px]')
-    const dev = screen.getByTestId('avatar-dev')
-    expect(dev).toHaveStyle({ backgroundColor: '#16a34a' })
-    expect(dev.className).toContain('rounded-full')
+    const pic = screen.getByRole('button', { name: 'Pic' })
+    expect(pic.querySelector('img')).toHaveAttribute('src', '/crew/avatars/pic')
+    expect(pic.querySelector('img')).toHaveAttribute('alt', '')
+    const dev = within(screen.getByRole('button', { name: 'Dev' })).getByTestId('stub')
+    expect(dev).toHaveAttribute('data-type', 'cat')
+    expect(dev).toHaveAttribute('data-color', '#16a34a')
+    expect(dev).toHaveAttribute('data-size', '36')
+    expect(within(screen.getByRole('button', { name: 'Hermes' })).getByTestId('stub')).toBeInTheDocument()
+  })
+
+  it('truncates long and Korean names without stretching the row', () => {
+    const long = 'x'.repeat(80)
+    renderSidebar(crewState({ bots: [bot({ name: 'long', title: long }), bot({ name: 'ko', title: '한글 봇' })] }))
+    expect(screen.getByText(long)).toHaveClass('truncate')
+    expect(screen.getByText('한글 봇')).toHaveClass('truncate')
+    expect(within(screen.getByText(long).closest('button')!).getByTestId('stub').parentElement!.parentElement).toHaveStyle({ width: '36px', height: '36px' })
+  })
+
+  it('marks the selected bot with the sky style', () => {
+    renderSidebar(crewState(), 'dev')
+    const row = screen.getByRole('button', { name: /Dev/ })
+    expect(row).toHaveAttribute('data-selected', 'true')
+    expect(row).toHaveClass('bg-sky-soft')
+    expect(screen.getByRole('button', { name: /Researcher/ })).not.toHaveAttribute('data-selected')
+  })
+
+  it('shows mono section labels and the lime needs-you count', () => {
+    renderSidebar(crewState({ pending: [pending('a')] }))
+    expect(within(screen.getByRole('group', { name: 'Primary' })).getByText('Primary')).toHaveClass('label-mono')
+    expect(within(screen.getByRole('group', { name: 'Bots' })).getByText('Bots')).toHaveClass('label-mono')
+    expect(screen.getByTestId('needs-you-count')).toHaveClass('bg-primary', 'text-primary-foreground')
   })
 
   it('renders a loading sidebar before the first state', () => {
@@ -95,7 +134,15 @@ describe('Sidebar', () => {
     render(<Sidebar state={crewState()} selected={null} onSelect={() => undefined} crewConnected={false} />)
     expect(screen.getByText('Reconnecting to Crew…')).toBeInTheDocument()
     expect(screen.getByTestId('roster')).toHaveAttribute('data-stale', 'true')
-    expect(screen.queryByTestId('status-default')).toBeNull()
+    expectNoStatusShown()
+  })
+
+  it('marks the Needs you row like a selected bot when its page is open', () => {
+    render(<Sidebar state={crewState()} selected={null} onSelect={() => undefined} needsYouActive />)
+    const row = screen.getByRole('button', { name: /Needs you/ })
+    expect(row).toHaveClass('bg-sky-soft')
+    expect(row).toHaveAttribute('aria-current', 'page')
+    expect(row).toHaveAttribute('data-selected', 'true')
   })
 
   it('opens the Needs you view', () => {

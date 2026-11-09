@@ -98,6 +98,10 @@ describe('RunHistory', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Daily digest/ }))
     expect(await screen.findByText('All fine.')).toBeInTheDocument()
     expect(screen.queryByText(/Blocked by policy/)).toBeNull()
+    // Muted pills and blocks inside must stay visible, so the area itself is the card colour with an edge.
+    const area = screen.getByTestId('transcript').parentElement
+    expect(area).toHaveClass('bg-card', 'border')
+    expect(area).not.toHaveClass('bg-muted')
   })
 
   it('says so when the transcript cannot be loaded', async () => {
@@ -127,6 +131,23 @@ describe('RunHistory', () => {
     unmount()
     await tick(120_000)
     expect(callsTo(fn, RUNS)).toHaveLength(4)
+  })
+})
+
+describe('status badges', () => {
+  it('colours each status with theme tokens', async () => {
+    stub({
+      [RUNS]: () => json([
+        run({ id: 'a' }), run({ id: 'b', status: 'running', endedAt: null }), run({ id: 'c', status: 'failed', sessionId: null, error: 'x' }),
+        run({ id: 'd', status: 'cancelled', sessionId: null }), run({ id: 'e', status: 'missed', endedAt: null, sessionId: null })
+      ])
+    })
+    open()
+    expect(await screen.findByText('Running')).toHaveClass('bg-sky-soft', 'text-sky-ink')
+    expect(screen.getByText('Done')).toHaveClass('bg-muted', 'text-foreground')
+    expect(screen.getByText('Failed')).toHaveClass('bg-danger-soft', 'text-danger-ink')
+    expect(screen.getByText('Cancelled')).toHaveClass('bg-muted', 'text-muted-foreground')
+    expect(screen.getByText('Missed')).toHaveClass('bg-muted', 'text-muted-foreground')
   })
 })
 
