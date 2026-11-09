@@ -7,6 +7,8 @@ import type { GroupPreview, GroupsState, HermesPendingAction, HermesRoom, Hermes
 const LIST_MS = 5000
 const ACTIVE_MS = 2000
 const TAIL = 20
+/** After a send (or any seq move) a room stays in the 2 s set this long: Auto routes before any member runs. */
+const CLOSE_WINDOW_MS = 20_000
 
 export interface GroupWatcher {
   state(): GroupsState
@@ -50,6 +52,10 @@ export function startGroupWatcher(deps: GroupWatcherDeps): GroupWatcher {
   let available = false
   let seatable: string[] = []
   let capsLoaded = false
+  // Room id -> time until which it is polled every 2 s even if Hermes reports it idle.
+  const closeUntil = new Map<string, number>()
+  let listing = false
+  let capsFailing = false
   let stopped = false
   let published = ''
 
@@ -94,6 +100,11 @@ export function startGroupWatcher(deps: GroupWatcherDeps): GroupWatcher {
     return run
   }
 
+  const keepClose = (id: string): void => {
+    closeUntil.set(id, deps.now() + CLOSE_WINDOW_MS)
+  }
+  const isClose = (id: string): boolean => (closeUntil.get(id) ?? 0) > deps.now()
+
   const pollRoom = (id: string): Promise<void> =>
     enqueue(id, async (entry, live) => {
       const state = await rpc.state(id)
@@ -110,6 +121,15 @@ export function startGroupWatcher(deps: GroupWatcherDeps): GroupWatcher {
     }).then(emitIfChanged)
 
   const refreshList = async (): Promise<void> => {
+    listing = true
+    try {
+      await listOnce()
+    } finally {
+      listing = false
+    }
+  }
+
+  const listOnce = async (): Promise<void> => {
     let rooms: HermesRoom[]
     try {
       rooms = await rpc.list()
@@ -127,6 +147,7 @@ export function startGroupWatcher(deps: GroupWatcherDeps): GroupWatcher {
         const changed = prev.room.updated_at !== room.updated_at || (prev.room.latest_seq ?? 0) !== (room.latest_seq ?? 0)
         prev.room = room
         if (!changed) continue
+        keepClose(room.room_id)
       }
       polls.push(pollRoom(room.room_id))
     }
@@ -134,6 +155,7 @@ export function startGroupWatcher(deps: GroupWatcherDeps): GroupWatcher {
       if (seen.has(id)) continue
       entries.delete(id)
       actions.delete(id)
+      closeUntil.delete(id)
     }
     emitIfChanged()
     await Promise.all(polls)
@@ -145,8 +167,11 @@ export function startGroupWatcher(deps: GroupWatcherDeps): GroupWatcher {
       available = caps.driver === true
       seatable = [...caps.seatable_profiles].sort()
       capsLoaded = true
+      capsFailing = false
     } catch (error) {
-      warn('capabilities', error)
+      // One warning per failure streak, not one per 5 s tick.
+      if (!capsFailing) warn('capabilities', error)
+      capsFailing = true
     }
   }
 
@@ -157,14 +182,15 @@ export function startGroupWatcher(deps: GroupWatcherDeps): GroupWatcher {
   }
 
   const listTimer = setIv(() => {
-    if (stopped || !deps.connected()) return
+    if (stopped || !deps.connected() || listing) return
     if (!capsLoaded) void connect()
     // Capabilities are re-read every tick: a bot created after Crew connected becomes seatable without a restart.
     else void loadCapabilities().then(() => (available ? refreshList() : emitIfChanged()))
   }, LIST_MS)
   const activeTimer = setIv(() => {
     if (stopped || !deps.connected()) return
-    for (const [id, e] of entries) if (isActive(e.state)) void pollRoom(id)
+    // A room whose poll is still queued or running is skipped, so a slow Hermes cannot build a backlog.
+    for (const [id, e] of entries) if ((isActive(e.state) || isClose(id)) && !chains.has(id)) void pollRoom(id)
     emitIfChanged()
   }, ACTIVE_MS)
   const unsubscribe = deps.onConnectionChange(up => {
@@ -180,7 +206,11 @@ export function startGroupWatcher(deps: GroupWatcherDeps): GroupWatcher {
       listeners.add(listener)
       return () => listeners.delete(listener)
     },
-    refreshRoom: id => (entries.has(id) ? pollRoom(id) : refreshList()),
+    refreshRoom(id) {
+      if (!entries.has(id)) return refreshList()
+      keepClose(id)
+      return pollRoom(id)
+    },
     refreshList,
     stop() {
       stopped = true

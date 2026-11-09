@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { setLogSink } from '../src/log.js'
+
 import type { GroupRpc } from '../src/groups/group-rpc.js'
 import { startGroupWatcher, type GroupWatcher } from '../src/groups/group-watcher.js'
 import type { HermesDriverStatus, HermesRoom, HermesRoomState } from '../src/groups/types.js'
@@ -51,6 +53,82 @@ beforeEach(() => {
   } as unknown as GroupRpc
 })
 afterEach(() => { watcher?.stop(); watcher = undefined; vi.useRealTimers() })
+
+describe('group watcher polling windows and guards', () => {
+  it('keeps an idle room in the 2 s set for 20 s after a routed refresh, then stops', async () => {
+    rooms = [mkRoom('r', 10, 1)]
+    const w = start()
+    await vi.advanceTimersByTimeAsync(0)
+    calls.length = 0
+    await w.refreshRoom('r')
+    await vi.advanceTimersByTimeAsync(4000)
+    expect(calls.filter(c => c === 'state:r').length).toBeGreaterThanOrEqual(3)
+    await vi.advanceTimersByTimeAsync(20_000)
+    calls.length = 0
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(calls.filter(c => c === 'state:r')).toEqual([])
+  })
+
+  it('keeps a room polled closely after latest_seq moves on a list tick', async () => {
+    rooms = [mkRoom('r', 10, 1)]
+    start()
+    await vi.advanceTimersByTimeAsync(0)
+    rooms = [mkRoom('r', 11, 2)]
+    await vi.advanceTimersByTimeAsync(5000)
+    calls.length = 0
+    await vi.advanceTimersByTimeAsync(4000)
+    expect(calls.filter(c => c === 'state:r').length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('skips a list tick while the previous list refresh is still running', async () => {
+    let listCalls = 0
+    rpc.list = () => { listCalls += 1; return new Promise(() => undefined) }
+    start()
+    await vi.advanceTimersByTimeAsync(16_000)
+    expect(listCalls).toBe(1)
+  })
+
+  it('does not queue a second poll for a room whose poll is still running', async () => {
+    rooms = [mkRoom('r', 10, 0)]
+    statuses = { r: busy(5) }
+    let release: () => void = () => undefined
+    let hang = false
+    let stateCalls = 0
+    rpc.state = async id => {
+      stateCalls += 1
+      if (hang) await new Promise<void>(r => { release = r })
+      return stateFor(id)
+    }
+    start()
+    await vi.advanceTimersByTimeAsync(0)
+    stateCalls = 0
+    hang = true
+    await vi.advanceTimersByTimeAsync(10_000)
+    hang = false
+    release()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(stateCalls).toBeLessThanOrEqual(2)
+  })
+
+  it('logs a capabilities failure once per streak', async () => {
+    const lines: string[] = []
+    const restore = setLogSink(l => lines.push(l))
+    try {
+      let fail = true
+      rpc.capabilities = async () => { if (fail) throw new Error('down'); return caps }
+      start()
+      await vi.advanceTimersByTimeAsync(15_000)
+      expect(lines.filter(l => l.includes('capabilities'))).toHaveLength(1)
+      fail = false
+      await vi.advanceTimersByTimeAsync(5000)
+      fail = true
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(lines.filter(l => l.includes('capabilities'))).toHaveLength(2)
+    } finally {
+      restore()
+    }
+  })
+})
 
 describe('group watcher', () => {
   it('picks up a newly seatable profile on the next list tick', async () => {
