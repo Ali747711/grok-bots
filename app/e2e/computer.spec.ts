@@ -74,7 +74,8 @@ test('the header thumbnail appears with the Computer tab closed', async ({ page 
 })
 
 test('the use-screen switch round-trips both config keys', async ({ page }) => {
-  await page.goto(`${CREW}/bots/${handle}?panel=computer`)
+  // The switch lives on the profile's Advanced tab.
+  await page.goto(`${CREW}/bots/${handle}?panel=profile&tab=advanced`)
   const toggle = page.getByRole('switch', { name: `Let ${title} use its screen` })
   await expect(toggle).toBeEnabled({ timeout: 30_000 })
   await toggle.click()
