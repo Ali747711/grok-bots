@@ -30,4 +30,16 @@ describe('loadConfig', () => {
   it('rejects a missing HOME', () => {
     expect(() => loadConfig({})).toThrow()
   })
+
+  it('defaults hermesHome to ~/.hermes and expands CREW_HERMES_HOME', () => {
+    expect(loadConfig({ HOME: '/h' }).hermesHome).toBe('/h/.hermes')
+    expect(loadConfig({ HOME: '/h', CREW_HERMES_HOME: '~/other' }).hermesHome).toBe('/h/other')
+    expect(loadConfig({ HOME: '/h', CREW_HERMES_HOME: '/srv/hermes' }).hermesHome).toBe('/srv/hermes')
+  })
+
+  it('refuses a relative CREW_HERMES_HOME or one with a colon or comma', () => {
+    for (const bad of ['relative/dir', 'hermes', '/a:b', '/a,b', '~/a:b']) {
+      expect(() => loadConfig({ HOME: '/h', CREW_HERMES_HOME: bad }), bad).toThrow()
+    }
+  })
 })

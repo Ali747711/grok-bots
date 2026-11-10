@@ -1,10 +1,16 @@
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { createApp } from '../src/app.js'
 import { CSRF_COOKIE } from '../src/auth/routes.js'
 import { signSession } from '../src/auth/session-cookie.js'
 import type { BotDeps } from '../src/bots/create.js'
+import type { SandboxDeps } from '../src/bots/sandbox.js'
 import { HermesRestError, HermesRpcError, HermesUnavailableError } from '../src/hermes/errors.js'
+import type { Docker } from '../src/sandbox/docker.js'
 import { FakeRest, FakeRpc } from './fake-rpc.js'
 import { HOST, makeDeps, ORIGIN } from './helpers.js'
 
@@ -195,6 +201,25 @@ describe('DELETE /crew/bots/:name', () => {
     expect((await send('DELETE', '/crew/bots/scout')).status).toBe(204)
     rest.request = async () => { throw new HermesRestError(404, 'Profile scout does not exist') }
     expect((await send('DELETE', '/crew/bots/scout')).status).toBe(404)
+  })
+
+  it('answers 409 sandbox_cleanup_failed with no path in the body and leaves the bot in place', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'crew-route-'))
+    try {
+      await mkdir(join(home, 'profiles', 'scout', 'sandboxes', 'docker'), { recursive: true })
+      const docker = { status: async () => 'down' } as unknown as Docker
+      const sandbox = { docker, hermesHome: home, groups: () => ({ rooms: [] }), puller: {} } as unknown as SandboxDeps
+      const bots: BotDeps = { rpc: rpc.call, rest: rest as unknown as BotDeps['rest'], refresh: async () => { refreshes += 1 }, now: () => 1, sandbox }
+      const res = await createApp({ ...base, bots }).request('/crew/bots/scout', { method: 'DELETE', headers })
+      expect(res.status).toBe(409)
+      const text = await res.text()
+      expect(JSON.parse(text)).toEqual({ error: 'sandbox_cleanup_failed' })
+      expect(text).not.toContain(home)
+      expect(rest.writes()).toEqual([])
+      expect(refreshes).toBe(0)
+    } finally {
+      await rm(home, { recursive: true, force: true })
+    }
   })
 
   it('answers 503 when bots are not wired', async () => {

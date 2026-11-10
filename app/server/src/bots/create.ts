@@ -3,6 +3,7 @@ import type { HermesRest } from '../hermes/rest-client.js'
 import { log } from '../log.js'
 import { type CrewAvatar, avatarMetaPatch, deriveAvatarType } from './avatar.js'
 import { withBotLock } from './bot-lock.js'
+import type { SandboxDeps } from './sandbox.js'
 import { composeSoul } from './soul.js'
 import { readBotMeta, updateBotMeta } from './ui-meta.js'
 
@@ -34,6 +35,8 @@ export interface BotDeps {
   readonly rest: HermesRest
   refresh(): Promise<void>
   now(): number
+  /** Absent only in tests: delete then skips the sandbox cleanup. */
+  readonly sandbox?: SandboxDeps
 }
 
 /** `profiles.create` refused the name: it exists, or Hermes rejected it (message from Hermes). */
