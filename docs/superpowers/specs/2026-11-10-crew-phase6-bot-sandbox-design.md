@@ -153,3 +153,17 @@ Phase 6 lets the user put any bot in a **sandbox**. Its commands, file tools, co
    - Crew never edits those settings by itself. The Sandbox section lists them, and turning the switch on writes only Crew's own keys.
    - `BotView.sandboxed` becomes `sandbox: 'off'|'on'|'partial'`, computed from raw config with no docker call.
 5. **e2e cleanup.** The e2e bots made sandboxed are deleted through Crew's delete, so rule 2's container removal runs. `deleteTestBots` also removes containers labelled `hermes-profile=e2e<digits>` first.
+6. **Delete needs a Docker cleanup step (re-ruling after facts §10–§11, E8/E9).** Host-user mode was proven live (E8): the terminal runs as uid 1000, the screen starts in the container, and the bot's files are owned by `ali`. Two corrections to rule 2:
+   - **Root-owned leftovers.** The Docker daemon creates root-owned empty mountpoint folders (`home/.hermes/…`) under `<profile>/sandboxes/docker/` for Hermes's read-only mounts, whatever the container user. Hermes's profile delete then fails with 500 after already dropping the bot from the roster (gotcha 24). This also happens to a bot that was sandboxed once and later switched off.
+   - **What persists.** Inside the sandbox, `~` is `/home/pn`, which is lost when the container is removed. Only `/root` (the default working folder) and `/workspace` are kept. The Sandbox notes and the Reset confirm say "Files in the bot's working folder are kept; anything else resets."
+   - **Ruling.** Crew's bot delete runs, in order:
+     1. `docker rm -f` on containers labelled `hermes-profile=<bot>`.
+     2. **Only if** `<HERMES_HOME>/profiles/<bot>/sandboxes/docker` exists (both `sandboxes` and `sandboxes/docker` checked with `lstat` as real directories, not symlinks), the cleanup helper, proven in E9 (0 turns, exit 0 in 180 ms):
+        `docker run --rm --network none --user 0:0 --label crew-cleanup=<bot> --entrypoint rm -v <profile>/sandboxes:/s <image> -rf /s/docker`
+        - `<image>` is the bot's effective `terminal.docker_image` or Hermes's default.
+        - It runs with `execFile`, fixed argv and a 60 s timeout.
+        - Never run it when `sandboxes/` is missing: Docker would create it root-owned (E9 edge).
+     3. `profiles.delete`.
+   - **If the cleanup can't run** (Docker down, image missing, helper fails), the delete stops before `profiles.delete` and returns 409 `sandbox_cleanup_failed`, so the bot stays whole. The message is "Crew couldn't remove <bot>'s sandbox files. Start Docker, or download the sandbox image again, then try again." The error carries no path or docker output.
+   - **Reset and switch-off** remove only the container. They need no cleanup helper, because the profile stays.
+   - **Plan task 1** no longer needs to prove host-user mode (done in E8). The e2e `deleteTestBots` removes `e2e<digits>` containers and then deletes through the same server path or the same helper sequence.
