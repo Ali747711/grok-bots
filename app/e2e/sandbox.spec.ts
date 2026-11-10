@@ -113,6 +113,21 @@ test("the user's own disabled toolsets survive switching on and off", async ({ p
   expect(await toolsets(B)).toEqual(['tts', 'browser'])
 })
 
+/**
+ * What Docker mounts into a bot's container (facts §9 E5): the bot's own sandbox folders read-write and
+ * a few profile folders read-only, all under its profile folder. Nothing may expose a secret or the host.
+ */
+function assertMountsStayInProfile(bot: string, containerId: string): void {
+  const mounts = JSON.parse(execFileSync('docker', ['inspect', '--format', '{{json .Mounts}}', containerId], { encoding: 'utf8', timeout: 5000 })) as { Source: string }[]
+  const profile = join(homedir(), '.hermes', 'profiles', bot)
+  expect(mounts.length).toBeGreaterThan(0)
+  for (const { Source } of mounts) {
+    expect(Source.startsWith(`${profile}/`), `mount outside the profile folder: ${Source}`).toBe(true)
+    expect(/(\.env|auth\.json|config\.yaml|state\.db|docker\.sock)$/.test(Source), `secret mounted: ${Source}`).toBe(false)
+    expect(Source.includes('/webapp/')).toBe(false)
+  }
+}
+
 test("Reset sandbox removes only that bot's container", async ({ page }) => {
   await openProfile(page, B, TITLE_B)
   await flip(page, TITLE_B, true)
@@ -120,6 +135,7 @@ test("Reset sandbox removes only that bot's container", async ({ page }) => {
   await startDisplay(B)
   expect(containersOf(A)).toHaveLength(1)
   expect(containersOf(B)).toHaveLength(1)
+  assertMountsStayInProfile(A, containersOf(A)[0]!)
   await openProfile(page, A, TITLE_A)
   await expect(section(page).getByRole('status')).toHaveText(/^Running · \d+ MB$/, { timeout: 30_000 })
   await section(page).getByRole('button', { name: 'Reset sandbox', exact: true }).click()

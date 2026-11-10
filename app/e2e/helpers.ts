@@ -104,6 +104,12 @@ export function removeTestSandbox(name: string): void {
   for (const id of containersOf(name)) docker(['rm', '-f', id])
   if (!hasSandboxFolder(name)) return
   const sandboxes = join(homedir(), '.hermes', 'profiles', name, 'sandboxes')
+  try {
+    docker(['image', 'inspect', SANDBOX_IMAGE])
+  } catch {
+    // `docker run` would download the 1.2 GB image unasked.
+    throw new Error('The sandbox image is not downloaded; refusing to let docker run pull it')
+  }
   docker([
     'run', '--rm', '--network', 'none', '--user', '0:0', '--label', `crew-cleanup=${name}`,
     '--entrypoint', 'rm', '-v', `${sandboxes}:/s`, SANDBOX_IMAGE, '-rf', '/s/docker'
@@ -134,6 +140,8 @@ export async function deleteTestBots(): Promise<string[]> {
       removeTestSandbox(name)
     } catch {
       // Without Docker a never-sandboxed bot has nothing to clean; a sandboxed one is left for the next run.
+      // Hermes's own DELETE would fail on the root-owned folders and drop the bot from the roster (gotcha 24).
+      if (hasSandboxFolder(name)) continue
     }
     await hermesRest('DELETE', `/api/profiles/${encodeURIComponent(name)}`)
   }
