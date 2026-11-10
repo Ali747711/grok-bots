@@ -35,6 +35,8 @@ interface RoutineRowProps {
   triggerCount?: number
   /** This routine's triggers, listed in a disclosure under the row. */
   triggers?: readonly TriggerView[]
+  /** The bot runs in a sandbox; the Add trigger tip is for bots that don't. */
+  sandboxed?: boolean
 }
 
 /** Every action ends with a re-read; a failure shows as a note on the row. */
@@ -97,7 +99,7 @@ function StatusLine({ routine }: { routine: RoutineView }) {
 }
 
 /** One routine: schedule, next run, last result, pause switch, Run now, Edit, Delete (with confirmation). */
-export function RoutineRow({ routine, onChanged, onEdit, historyOpen, onToggleHistory, triggerCount = 0, triggers }: RoutineRowProps) {
+export function RoutineRow({ routine, onChanged, onEdit, historyOpen, onToggleHistory, triggerCount = 0, triggers, sandboxed = false }: RoutineRowProps) {
   const [confirming, setConfirming] = useState(false)
   const { note, runTick, run, toggle, remove } = useRowActions(routine, onChanged)
 
@@ -129,7 +131,7 @@ export function RoutineRow({ routine, onChanged, onEdit, historyOpen, onToggleHi
           <Button type="button" size="sm" variant="ghost" onClick={() => setConfirming(true)} className={GHOST}>Delete</Button>
         </div>
       )}
-      {triggers && <TriggerSection bot={routine.bot} routine={routine} triggers={triggers} onChanged={onChanged} />}
+      {triggers && <TriggerSection bot={routine.bot} routine={routine} triggers={triggers} sandboxed={sandboxed} onChanged={onChanged} />}
       {historyOpen && <RunHistory bot={routine.bot} routineId={routine.id} timezone={routine.timezone} instruction={routine.instruction} refreshKey={runTick} />}
     </li>
   )

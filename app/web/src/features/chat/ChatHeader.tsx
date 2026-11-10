@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { CrewAvatar } from '@/features/avatars/CrewAvatar'
+import { SandboxBadge } from '@/features/bots/SandboxBadge'
 import { ScreenThumbnail } from '@/features/computer/ScreenThumbnail'
 import type { PanelTab } from '@/features/panel/BotPanel'
 import { cn } from '@/lib/utils'
@@ -25,7 +26,10 @@ export function ChatHeader({ bot, stale, panel = null, onPanel }: ChatHeaderProp
     <header className="flex items-center gap-3 border-b border-border px-5 py-3">
       <CrewAvatar bot={stale ? { ...bot, status: 'idle' } : bot} size={40} decorative />
       <div className="min-w-24 flex-1">
-        <h2 className="truncate text-sm font-semibold">{bot.title}</h2>
+        <div className="flex items-center gap-1.5">
+          <h2 className="truncate text-sm font-semibold">{bot.title}</h2>
+          {bot.sandbox === 'on' && <SandboxBadge />}
+        </div>
         {!stale && (
           <p className={cn('label-mono mt-0.5', bot.status === 'working' && 'text-sky-ink')}>
             <span aria-hidden="true">● </span>

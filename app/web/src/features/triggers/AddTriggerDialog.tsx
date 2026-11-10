@@ -18,6 +18,7 @@ interface AddTriggerDialogProps {
   bot: string
   routine: RoutineView
   onCreated: () => void
+  sandboxed: boolean
 }
 
 const FIELD = 'flex flex-col gap-1.5'
@@ -80,7 +81,7 @@ function eventsOf(form: FormState): string[] {
 }
 
 /** The form and, after Create, the one-time secret view. It lives only while the dialog is open. */
-function AddTriggerBody({ bot, routine, onCreated }: Omit<AddTriggerDialogProps, 'open' | 'onOpenChange'>) {
+function AddTriggerBody({ bot, routine, onCreated, sandboxed }: Omit<AddTriggerDialogProps, 'open' | 'onOpenChange'>) {
   const [form, setForm] = useState<FormState>({ name: '', source: 'github', checked: [], other: '', actions: '', generic: '' })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -129,6 +130,7 @@ function AddTriggerBody({ bot, routine, onCreated }: Omit<AddTriggerDialogProps,
       </fieldset>
       <SourceFields form={form} set={set} />
       <p className="text-xs text-muted-foreground">Leave empty to accept every event.</p>
+      {!sandboxed && <p className="text-xs text-muted-foreground">Tip: turn on the sandbox for bots that act on outside events</p>}
       <Alert><AlertDescription>{WARNING}</AlertDescription></Alert>
       {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
       <div className="flex justify-end">

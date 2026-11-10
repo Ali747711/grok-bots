@@ -93,6 +93,19 @@ describe('ChatView', () => {
     expect(client.calls[0]).toMatchObject({ method: 'session.resume', params: { profile: 'dev', session_id: 'tip-1' } })
   })
 
+  it('shows the Sandboxed badge in the chat header for on only', async () => {
+    const { unmount } = render(<ChatView bot={{ ...dev, sandbox: 'on' }} state={crewState()} crewConnected />)
+    await flush()
+    expect(screen.getByRole('img', { name: 'Sandboxed' })).toBeInTheDocument()
+    unmount()
+    for (const sandbox of ['partial', 'off'] as const) {
+      const r = render(<ChatView bot={{ ...dev, sandbox }} state={crewState()} crewConnected />)
+      await flush()
+      expect(screen.queryByRole('img', { name: 'Sandboxed' })).toBeNull()
+      r.unmount()
+    }
+  })
+
   it('shows the working status in sky in the header, with a 40 px avatar', async () => {
     render(<ChatView bot={{ ...dev, status: 'working' }} state={crewState()} crewConnected />)
     await flush()
@@ -127,7 +140,7 @@ describe('ChatView', () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({ messages: [], estimated_cost_usd: 1.25 })))))
     render(<ChatView bot={{ ...dev, status: 'working' }} state={crewState()} crewConnected />)
     await flush()
-    expect(screen.getByRole('heading', { name: 'Dev' }).parentElement).toHaveClass('min-w-24', 'flex-1')
+    expect(screen.getByRole('heading', { name: 'Dev' }).closest('.min-w-24')).toHaveClass('min-w-24', 'flex-1')
     expect(await screen.findByText(/estimate/)).toHaveClass('min-w-0', 'truncate')
   })
 

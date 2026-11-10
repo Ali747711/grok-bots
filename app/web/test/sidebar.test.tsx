@@ -203,4 +203,19 @@ describe('Sidebar usage polling', () => {
     expect(fetchFn.mock.calls.filter(([url]) => url === '/crew/usage')).toHaveLength(1)
     vi.unstubAllGlobals()
   })
+
+  it('shows the Sandboxed badge on the roster row for on only', () => {
+    const state = crewState()
+    const set = (sandbox: 'on' | 'off' | 'partial') => ({ ...state, bots: state.bots.map(b => (b.name === 'dev' ? { ...b, sandbox } : b)) })
+    const { unmount } = renderSidebar(set('on'))
+    const row = screen.getByRole('button', { name: /Dev/ })
+    expect(within(row).getByRole('img', { name: 'Sandboxed' }).tagName).toBe('SPAN')
+    expect(screen.getAllByRole('img', { name: 'Sandboxed' })).toHaveLength(1)
+    unmount()
+    for (const s of ['partial', 'off'] as const) {
+      const r = renderSidebar(set(s))
+      expect(screen.queryByRole('img', { name: 'Sandboxed' })).toBeNull()
+      r.unmount()
+    }
+  })
 })

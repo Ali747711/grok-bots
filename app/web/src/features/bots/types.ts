@@ -20,6 +20,7 @@ export interface BotDraft {
   readonly avatar: AvatarChoice
   readonly image?: string
   readonly model?: ModelChoice
+  readonly sandbox: boolean
 }
 
 export type StepOutcome = 'ok' | 'skipped' | 'failed'
@@ -27,9 +28,9 @@ export type StepOutcome = 'ok' | 'skipped' | 'failed'
 export interface CreateResult {
   readonly name: string
   readonly complete: boolean
-  readonly steps: { readonly profile: 'ok'; readonly look: StepOutcome; readonly avatar: StepOutcome; readonly chat: StepOutcome }
+  readonly steps: { readonly profile: 'ok'; readonly look: StepOutcome; readonly avatar: StepOutcome; readonly chat: StepOutcome; readonly sandbox: StepOutcome }
   readonly needsModel: boolean
-  readonly error?: { readonly step: 'look' | 'avatar' | 'chat'; readonly message: string }
+  readonly error?: { readonly step: 'look' | 'avatar' | 'chat' | 'sandbox'; readonly message: string }
 }
 
 export interface FinishBody {
