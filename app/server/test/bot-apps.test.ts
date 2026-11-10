@@ -2,10 +2,10 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
-  AppsRefusedError, TOOLS_TTL_MS, forgetBot, readBotApps, rebuildSession, setBotApps, toolsFor, type ConnectorDeps
+  AppsRefusedError, TOOLS_TTL_MS, clampIfNoApprovals, forgetBot, readBotApps, rebuildSession, setBotApps, toolsFor, type ConnectorDeps
 } from '../src/connectors/bot-apps.js'
 import { ComposioError, type Composio, type ToolHint } from '../src/connectors/composio.js'
 import { ConnectorStore, hashToken } from '../src/connectors/store.js'
@@ -194,5 +194,23 @@ describe('bot apps', () => {
     await expect(forgetBot(deps, 'scout')).resolves.toBeUndefined()
     expect(store.record('scout')).toBeUndefined()
     await expect(forgetBot(deps, 'scout')).resolves.toBeUndefined()
+  })
+
+  it('clamps a bot to Read only after its approvals turn off, once', async () => {
+    await setBotApps(deps, 'scout', { github: 'all', slack: 'change' })
+    expect(store.record('scout')?.apps).toEqual({ github: 'all', slack: 'change' })
+    const asking = { approvals: { mode: 'manual' } }
+    clampIfNoApprovals(deps, 'scout', asking)
+    await deps.reconnector.idle('scout')
+    expect(store.record('scout')?.apps).toEqual({ github: 'all', slack: 'change' })
+    const off = { approvals: { mode: 'OFF' } }
+    clampIfNoApprovals(deps, 'scout', off)
+    clampIfNoApprovals(deps, 'scout', { approvals: { mode: false } })
+    await vi.waitFor(() => expect(store.record('scout')?.apps).toEqual({ github: 'read', slack: 'read' }))
+    const creates = calls.filter(c => c.startsWith('create:')).length
+    clampIfNoApprovals(deps, 'scout', off)
+    await new Promise(r => setTimeout(r, 20))
+    expect(calls.filter(c => c.startsWith('create:')).length).toBe(creates)
+    expect(creates).toBe(2)
   })
 })

@@ -379,6 +379,16 @@ describe('watcher request and refresh', () => {
     watcher.stop()
   })
 
+  it('passes the roster names to onRoster after each sync, and survives a throw', async () => {
+    const client = new FakeClient()
+    const seen: (readonly string[])[] = []
+    const watcher = startWatcher({ client, connect: c => c.connect(), settings: fakeSettings, now: () => 1, reconnectDelayMs: () => 0, onRoster: names => { seen.push(names); throw new Error('sweep down') } })
+    await flush(); await flush()
+    expect(seen[0]).toEqual(['default', 'crew-test', 'no-chat'])
+    expect(watcher.state().bots.map(b => b.name)).toEqual(['default', 'crew-test', 'no-chat'])
+    watcher.stop()
+  })
+
   it('sync passes the roster names to sandboxStates and the view carries the state', async () => {
     const client = new FakeClient()
     const seen: (readonly string[])[] = []

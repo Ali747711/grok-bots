@@ -19,8 +19,15 @@ type Obj = Record<string, unknown>
 class ConfigRest {
   configs = new Map<string, Obj>()
   puts: { profile: string; config: Obj }[] = []
-  request = async <T>(method: string, _path: string, opts: { query?: Record<string, string>; body?: unknown } = {}): Promise<T> => {
+  deletes: { path: string; query?: Record<string, string>; body?: unknown }[] = []
+  failDeletes = false
+  request = async <T>(method: string, path: string, opts: { query?: Record<string, string>; body?: unknown } = {}): Promise<T> => {
     const profile = opts.query?.profile ?? ''
+    if (method === 'DELETE') {
+      this.deletes.push({ path, ...(opts.query ? { query: opts.query } : {}), ...(opts.body !== undefined ? { body: opts.body } : {}) })
+      if (this.failDeletes) throw new Error('apps cleanup down')
+      return { ok: true } as T
+    }
     if (method === 'GET') return structuredClone(this.configs.get(profile) ?? {}) as T
     const config = (opts.body as { config: Obj }).config
     this.puts.push({ profile, config })
@@ -56,7 +63,7 @@ describe('createBot', () => {
     expect(rpc.params('session.create')).toEqual({ profile: 'scout', title: 'Bot Chat', hidden: true, follow_profile_config: true })
     expect(rpc.params('setup.runtime_check')).toEqual({ profile: 'scout' })
     expect((rpc.configures[0]!.ui_meta as Record<string, unknown>)['hermes-bots']).toEqual({ crewAvatar: { type: 'square', color: '#7c3aed' }, shape: 'squircle', color: '#7c3aed', custom: true, imageKind: 'shape', title: 'Researcher', created: 1234, sandbox: OFF_MARKER })
-    expect(result).toEqual({ name: 'scout', complete: true, steps: { profile: 'ok', sandbox: 'ok', look: 'ok', avatar: 'skipped', chat: 'ok' }, needsModel: false })
+    expect(result).toEqual({ name: 'scout', complete: true, steps: { profile: 'ok', apps: 'ok', sandbox: 'ok', look: 'ok', avatar: 'skipped', chat: 'ok' }, needsModel: false })
     expect(refreshes).toBe(1)
   })
 
@@ -89,7 +96,7 @@ describe('createBot', () => {
   it('keeps going when the look fails and reports it', async () => {
     rpc.fail('profiles.configure', new Error('disk full'))
     const result = await createBot(deps, draft)
-    expect(result.steps).toEqual({ profile: 'ok', sandbox: 'ok', look: 'failed', avatar: 'skipped', chat: 'ok' })
+    expect(result.steps).toEqual({ profile: 'ok', apps: 'ok', sandbox: 'ok', look: 'failed', avatar: 'skipped', chat: 'ok' })
     expect(result.complete).toBe(false)
     expect(result.error).toEqual({ step: 'look', message: 'disk full' })
     expect(rpc.methods()).toContain('session.create')
@@ -190,11 +197,33 @@ describe('createBot sandbox choice', () => {
     expect(rpc.rows.get('scout')?.meta).toBeUndefined()
   })
 
+  it('removes a crew_apps server and its token cloned from the primary before the bot is used', async () => {
+    await createBot(deps, draft)
+    expect(rest.deletes).toEqual([
+      { path: '/api/mcp/servers/crew_apps', query: { profile: 'scout' } },
+      { path: '/api/env', body: { key: 'MCP_CREW_APPS_API_KEY', profile: 'scout' } }
+    ])
+    expect(rest.deletes.some(d => d.query?.profile === 'default' || (d.body as { profile?: string } | undefined)?.profile === 'default')).toBe(false)
+  })
+
+  it('reports a failed apps step and still runs the later steps; Finish setup retries it', async () => {
+    rest.failDeletes = true
+    const result = await createBot(deps, draft)
+    expect(result.steps).toMatchObject({ apps: 'failed', sandbox: 'ok', look: 'ok', chat: 'ok' })
+    expect(result.error).toEqual({ step: 'apps', message: 'apps cleanup down' })
+    expect(result.complete).toBe(false)
+    rest.failDeletes = false
+    rest.deletes.length = 0
+    const finished = await finishBot(deps, 'scout', {})
+    expect(finished.steps.apps).toBe('ok')
+    expect(rest.deletes).toHaveLength(2)
+  })
+
   it('reports a failed sandbox step and still runs the later steps', async () => {
-    const failing = { request: async () => { throw new Error('config down') } }
+    const failing = { request: async (method: string) => { if (method === 'DELETE') return {}; throw new Error('config down') } }
     deps = { ...deps, rest: failing as unknown as BotDeps['rest'] }
     const result = await createBot(deps, { ...draft, image: 'data:image/png;base64,AAAA' })
-    expect(result.steps).toEqual({ profile: 'ok', sandbox: 'failed', look: 'ok', avatar: 'ok', chat: 'ok' })
+    expect(result.steps).toEqual({ profile: 'ok', apps: 'ok', sandbox: 'failed', look: 'ok', avatar: 'ok', chat: 'ok' })
     expect(result.complete).toBe(false)
     expect(result.error).toEqual({ step: 'sandbox', message: 'config down' })
     expect(rpc.methods()).toContain('session.create')

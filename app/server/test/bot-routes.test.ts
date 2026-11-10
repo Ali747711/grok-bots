@@ -34,7 +34,7 @@ beforeEach(() => {
   configGets = []
   bots = { rpc: rpc.call, rest: { request: async (method: string, _path: string, opts: { query?: Record<string, unknown>; body?: unknown } = {}) => {
     if (method === 'GET') { configGets.push(String(opts.query?.profile)); return {} }
-    puts.push(opts.body)
+    if (method === 'PUT') puts.push(opts.body)
     return { ok: true }
   } } as unknown as BotDeps['rest'], refresh: async () => undefined, now: () => 1 }
   current = createApp({ ...base, bots })

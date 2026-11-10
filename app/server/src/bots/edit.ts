@@ -1,3 +1,4 @@
+import { log } from '../log.js'
 import { type CrewAvatar, avatarMetaPatch, readCrewAvatar } from './avatar.js'
 import { withBotLock } from './bot-lock.js'
 import type { BotDeps } from './create.js'
@@ -205,13 +206,24 @@ export function clearAvatar(deps: BotDeps, name: string): Promise<BotDetail> {
 /** Delete via REST. `{ok:true}` with or without `settlement_pending` is success (F Gotcha 14). */
 export function deleteBot(deps: BotDeps, name: string): Promise<void> {
   if (name === PRIMARY) return Promise.reject(new PrimaryBotError())
-  return withBotLock(name, async () => {
-    // Docker leaves root-owned mount points that make Hermes's own delete fail, so clear them first.
-    const dockerReached = deps.sandbox ? await cleanupBeforeDelete(deps, deps.sandbox, name) : false
-    await deps.rest.request('DELETE', `/api/profiles/${enc(name)}`, { timeoutMs: DELETE_TIMEOUT_MS })
-    // A chat that started during the delete can leave a container behind; sweep once more, never fail the delete.
-    if (deps.sandbox && dockerReached) await removeQuietly(deps.sandbox, name)
-    deps.sandbox?.onChanged?.(name)
-    await refreshQuietly(deps)
-  })
+  return withBotLock(name, () => deleteLocked(deps, name)).then(() => forgetApps(deps, name))
+}
+
+/** After the lock is released: `forgetBot` takes the same lock. Never fails the delete. */
+async function forgetApps(deps: BotDeps, name: string): Promise<void> {
+  try {
+    await deps.apps?.forget(name)
+  } catch (error) {
+    log.warn('forgetting apps after delete failed', { bot: name, error: error instanceof Error ? error.name : 'unknown' })
+  }
+}
+
+async function deleteLocked(deps: BotDeps, name: string): Promise<void> {
+  // Docker leaves root-owned mount points that make Hermes's own delete fail, so clear them first.
+  const dockerReached = deps.sandbox ? await cleanupBeforeDelete(deps, deps.sandbox, name) : false
+  await deps.rest.request('DELETE', `/api/profiles/${enc(name)}`, { timeoutMs: DELETE_TIMEOUT_MS })
+  // A chat that started during the delete can leave a container behind; sweep once more, never fail the delete.
+  if (deps.sandbox && dockerReached) await removeQuietly(deps.sandbox, name)
+  deps.sandbox?.onChanged?.(name)
+  await refreshQuietly(deps)
 }

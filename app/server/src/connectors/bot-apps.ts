@@ -195,3 +195,22 @@ export function forgetBot(deps: ConnectorDeps, bot: string): Promise<void> {
     }
   })
 }
+
+const clamping = new Set<string>()
+
+/**
+ * R9: a bot whose approvals are off can only read. Given the bot's raw config, drops every app above
+ * Read to Read in the background (one in flight per bot); `setBotApps` re-checks under the lock.
+ */
+export function clampIfNoApprovals(deps: ConnectorDeps, bot: string, raw: unknown): void {
+  const mode = ((raw as { approvals?: { mode?: unknown } } | null | undefined)?.approvals)?.mode
+  if (approvalsAsk(mode) || clamping.has(bot)) return
+  const apps = deps.store.record(bot)?.apps
+  if (!apps || Object.values(apps).every(level => level === 'read')) return
+  clamping.add(bot)
+  const reads = Object.fromEntries(Object.keys(apps).map(toolkit => [toolkit, 'read' as AppLevel]))
+  void setBotApps(deps, bot, reads).then(
+    () => { log.info('apps clamped to read: approvals are off', { bot }) },
+    error => { log.warn('apps clamp failed', { bot, error: error instanceof Error ? error.name : 'unknown' }) }
+  ).finally(() => { clamping.delete(bot) })
+}

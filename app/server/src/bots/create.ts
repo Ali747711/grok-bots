@@ -1,3 +1,4 @@
+import { removeAppsServer } from '../connectors/hermes-mcp.js'
 import { HermesRpcError, type Rpc } from '../hermes/errors.js'
 import type { HermesRest } from '../hermes/rest-client.js'
 import { log } from '../log.js'
@@ -25,12 +26,12 @@ export interface BotDraft {
 }
 
 export type StepOutcome = 'ok' | 'skipped' | 'failed'
-type FailedStep = 'sandbox' | 'look' | 'avatar' | 'chat'
+type FailedStep = 'apps' | 'sandbox' | 'look' | 'avatar' | 'chat'
 
 export interface CreateResult {
   readonly name: string
   readonly complete: boolean
-  readonly steps: { readonly profile: 'ok'; readonly sandbox: StepOutcome; readonly look: StepOutcome; readonly avatar: StepOutcome; readonly chat: StepOutcome }
+  readonly steps: { readonly profile: 'ok'; readonly apps: StepOutcome; readonly sandbox: StepOutcome; readonly look: StepOutcome; readonly avatar: StepOutcome; readonly chat: StepOutcome }
   readonly needsModel: boolean
   readonly error?: { readonly step: FailedStep; readonly message: string }
 }
@@ -42,6 +43,8 @@ export interface BotDeps {
   now(): number
   /** Absent only in tests: delete then skips the sandbox cleanup. */
   readonly sandbox?: SandboxDeps
+  /** Absent only in tests: delete then skips forgetting the bot's apps. */
+  readonly apps?: { forget(bot: string): Promise<void> }
 }
 
 /** `profiles.create` refused the name: it exists, or Hermes rejected it (message from Hermes). */
@@ -67,7 +70,7 @@ const titleCase = (name: string): string => name.replace(/[-_]+/g, ' ').trim().r
 /** Run one best-effort step; a failure is recorded and never stops the steps after it. */
 class Steps {
   private first: CreateResult['error']
-  readonly outcome: Record<FailedStep, StepOutcome> = { sandbox: 'skipped', look: 'skipped', avatar: 'skipped', chat: 'skipped' }
+  readonly outcome: Record<FailedStep, StepOutcome> = { apps: 'skipped', sandbox: 'skipped', look: 'skipped', avatar: 'skipped', chat: 'skipped' }
 
   async run(step: FailedStep, action: () => Promise<void>): Promise<void> {
     try {
@@ -152,6 +155,7 @@ const writeLook = (deps: BotDeps, draft: BotDraft, marker: SandboxMarker | undef
 async function runCreate(deps: BotDeps, draft: BotDraft): Promise<CreateResult> {
   await createProfile(deps, draft)
   const steps = new Steps()
+  await steps.run('apps', () => removeAppsServer(deps, draft.name))
   let marker: SandboxMarker | undefined
   await steps.run('sandbox', async () => {
     marker = await applyCreateSandbox(deps, draft.name, draft.sandbox ?? false)
@@ -176,6 +180,7 @@ export function finishBot(deps: BotDeps, name: string, body: FinishBody): Promis
 async function runFinish(deps: BotDeps, name: string, body: FinishBody): Promise<CreateResult> {
   const { revision } = await readBotMeta(deps.rpc, name)
   const steps = new Steps()
+  await steps.run('apps', () => removeAppsServer(deps, name))
   if (revision === 0) {
     const patch = {
       ...avatarMetaPatch(body.avatar ?? { type: deriveAvatarType(name) }),
