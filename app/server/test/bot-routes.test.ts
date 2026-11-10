@@ -49,7 +49,7 @@ describe('POST /crew/bots', () => {
 
   it('sends sandbox false by default', async () => {
     expect((await post('/crew/bots', body)).status).toBe(201)
-    expect(puts).toEqual([{ config: { terminal: { backend: 'local' } } }])
+    expect(puts).toEqual([])
     expect((rpc.configures[0]!.ui_meta as Record<string, Record<string, unknown>>)['hermes-bots']!.sandbox).toEqual({ on: false, addedBrowserDisable: false })
   })
 
