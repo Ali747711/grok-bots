@@ -230,7 +230,8 @@ export async function rawAppsServer(bot: string): Promise<Record<string, unknown
 export async function envKeyNames(bot: string): Promise<string[]> {
   const res = await hermesRest('GET', `/api/env?profile=${encodeURIComponent(bot)}`)
   const body = res.body
-  if (res.status !== 200 || body === null || typeof body !== 'object') return []
+  // An unanswered read must fail the test: an empty list would let a "not contains" check pass.
+  if (res.status !== 200 || body === null || typeof body !== 'object') throw new Error(`Hermes env read answered ${res.status}`)
   return Object.keys(body as Record<string, unknown>)
 }
 
