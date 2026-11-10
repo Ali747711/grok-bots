@@ -1,5 +1,7 @@
 import type { Rpc } from '../hermes/errors.js'
 
+import type { SandboxMarker } from './sandbox-state.js'
+
 const NAMESPACE = 'hermes-bots'
 const CAS_ATTEMPTS = 3
 
@@ -12,6 +14,7 @@ export interface BotMeta {
   readonly created?: number
   readonly custom?: boolean
   readonly hidden?: boolean
+  readonly sandbox?: SandboxMarker
 }
 
 export class BotNotFoundError extends Error {
