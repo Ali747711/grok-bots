@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { PendingStore } from '../src/watcher/pending-store.js'
 import { applyGatewayEvent, routeServerRequest } from '../src/watcher/request-router.js'
+import fixture from './fixtures/app-approval.json'
 import { fakeSettings } from './helpers.js'
 import { startWatcher, type WatcherClient } from '../src/watcher/watcher.js'
 
@@ -70,5 +71,23 @@ describe('approval detail', () => {
     expect(view).toMatchObject({ command, description })
     expect(view.summary.length).toBe(300)
     watcher.stop()
+  })
+
+  it('stores an app approval with only once and deny from events, snapshots and server requests', () => {
+    const store = new PendingStore()
+    const params = { command: fixture.command, description: fixture.description, choices: fixture.choices }
+    applyGatewayEvent({ type: 'approval.request', session_id: 's', payload: { prompt_id: 'a-event', ...params } }, store, ctx)
+    routeServerRequest(request('approval', { session_id: 's', ...params }, 'a-srq'), store, ctx)
+    routeServerRequest(request('approval', { session_id: 's', ...params }, 'a-open'), store, ctx, 'snapshot_prompt')
+    for (const id of ['a-event', 'a-srq', 'a-open']) {
+      expect(store.get(id)).toMatchObject({ choices: ['once', 'deny'], app: { tool: 'GITHUB_CREATE_AN_ISSUE', argsTruncated: false } })
+    }
+  })
+
+  it('leaves a non-app approval untouched', () => {
+    const store = new PendingStore()
+    routeServerRequest(request('approval', { session_id: 's', command: 'ls', choices: ['once', 'always'] }), store, ctx)
+    expect(store.list()[0]).toMatchObject({ choices: ['once', 'always'] })
+    expect(store.list()[0]).not.toHaveProperty('app')
   })
 })

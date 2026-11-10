@@ -4,6 +4,7 @@ import { createApp } from '../src/app.js'
 import { signSession } from '../src/auth/session-cookie.js'
 import { setLogSink } from '../src/log.js'
 import { startWatcher, type WatcherClient } from '../src/watcher/watcher.js'
+import fixture from './fixtures/app-approval.json'
 import { fakeSettings, HOST, makeDeps, ORIGIN } from './helpers.js'
 
 const base = makeDeps()
@@ -108,6 +109,20 @@ describe('POST /crew/requests/:id/answer', () => {
     expect(res.status).toBe(400)
     expect(await res.json()).toEqual({ error: 'bad_choice' })
     expect(client.calls.some(c => c.method === 'approval.respond')).toBe(false)
+  })
+
+  it('refuses always and session for an app approval with 400 bad_choice', async () => {
+    client.emitEvent({
+      type: 'approval.request', session_id: 'run-fixture',
+      payload: { prompt_id: 'app-1', execution_generation: 4, command: fixture.command, description: fixture.description, choices: fixture.choices }
+    })
+    for (const choice of ['always', 'session']) {
+      const res = await post('app-1', { choice })
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({ error: 'bad_choice' })
+    }
+    expect(client.calls.some(c => c.method === 'approval.respond')).toBe(false)
+    expect((await post('app-1', { choice: 'once' })).status).toBe(202)
   })
 
   it('rejects a wrong body shape or oversized text with 400 bad_body', async () => {

@@ -1,4 +1,5 @@
 import type { ServerRequest } from '../vendor/hermes/json-rpc-channel.js'
+import { appPromptOf, type AppPrompt } from './app-prompt.js'
 import type { PendingKind, PendingSource, PendingStore } from './pending-store.js'
 
 const HELD: ReadonlySet<string> = new Set<PendingKind>(['approval', 'clarify', 'sudo', 'secret'])
@@ -37,6 +38,8 @@ export interface ApprovalDetail {
   readonly command?: string
   readonly description?: string
   readonly detailTruncated?: true
+  /** Set for a Crew app tool's trust prompt; the store then keeps only once/deny. */
+  readonly app?: AppPrompt
 }
 
 /** Full command/description of an approval (each capped at DETAIL_MAX); empty for every other kind. */
@@ -45,7 +48,9 @@ export function approvalDetail(kind: PendingKind, params: Params): ApprovalDetai
   const command = text(params.command)
   const description = text(params.description)
   const truncated = (command?.length ?? 0) > DETAIL_MAX || (description?.length ?? 0) > DETAIL_MAX
+  const app = appPromptOf(params)
   return {
+    ...(app ? { app } : {}),
     ...(command ? { command: command.slice(0, DETAIL_MAX) } : {}),
     ...(description ? { description: description.slice(0, DETAIL_MAX) } : {}),
     ...(truncated ? { detailTruncated: true as const } : {})

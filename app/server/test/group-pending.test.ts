@@ -4,6 +4,7 @@ import { answerGroupApproval, groupPendingId, hideGroupDuplicates, syncGroupPend
 import type { GroupRpc } from '../src/groups/group-rpc.js'
 import type { HermesPendingAction } from '../src/groups/types.js'
 import type { PendingView } from '../src/watcher/bot-state.js'
+import fixture from './fixtures/app-approval.json'
 import { PendingStore } from '../src/watcher/pending-store.js'
 
 const approval = (over: Partial<Extract<HermesPendingAction, { kind: 'approval' }>> = {}): HermesPendingAction => ({
@@ -24,6 +25,12 @@ describe('syncGroupPending', () => {
       group: { roomId: 'r1', memberId: 'crew-test', taskId: 't1', requestId: 'q1' }
     })
     expect(groupPendingId('r1', 'q1')).toBe('group:r1:q1')
+  })
+
+  it('stores a group app approval with only once and deny and the app marker', () => {
+    const store = new PendingStore()
+    syncGroupPending(store, map([['r1', [approval({ approval: { command: fixture.command, description: fixture.description, choices: ['once', 'deny'] } })]]]), 1)
+    expect(store.list()[0]).toMatchObject({ choices: ['once', 'deny'], app: { tool: 'GITHUB_CREATE_AN_ISSUE' } })
   })
 
   it('ignores retry/discard actions', () => {
