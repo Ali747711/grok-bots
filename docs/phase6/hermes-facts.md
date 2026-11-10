@@ -341,7 +341,7 @@ The dashboard schema enum is `local, docker, ssh, modal, daytona, vercel_sandbox
 
 - **Config.** The parsed crew-test config is **identical** to the backup (`ruamel` safe-load equality: True; `terminal.backend: local`, `container_memory: 5120`, `approvals.mode: manual`, no `agent.disabled_toolsets` key; the API reports `active: local`, placement `gateway`). The file is **not byte-identical**: 9 comment or blank lines after the `agent:` section (the `personalities` example comments and the `# Gateway Lifecycle` banner, old lines 1406–1414) are gone. Hermes's comment-preserving writer attached that block to the inserted `disabled_toolsets` key and removed it with the key; the raw-config API cannot write comments back (it parses the YAML). A byte-exact fix is `cp -p scratchpad/p6/crew-test-config.before.yaml ~/.hermes/profiles/crew-test/config.yaml`, a direct file write, so it was **not** done without approval.
 - **Docker.** Container `hermes-f991858b` was removed (`docker rm -f`); `docker ps -a` is empty. The image `nousresearch/hermes-sandbox:desktop` was kept.
-- **Files.** `~/.hermes/profiles/crew-test/sandboxes/` was created by this run at 10:30:06. It held the profile container's sandbox, including a **root-owned** `home/.hermes`, and a Hermes-made `prompt-backend-probe/` sandbox with an `.hermes-owner-handback` file. It was deleted with `sudo rm -rf` on that exact path (156 KB). `crew-test/bot-desktop/` has no leftover `sandbox.json`.
+- **Files.** `~/.hermes/profiles/crew-test/sandboxes/` was created by this run at 10:30:06. It held the profile container's sandbox, including a **root-owned** `home/.hermes`, and a Hermes-made `prompt-backend-probe/` sandbox with an `.hermes-owner-handback` file. §10 shows why `home/.hermes` is root-owned: these are the mountpoint dirs Docker creates for the nested read-only mounts, whatever user the container runs as. It was deleted with `sudo rm -rf` on that exact path (156 KB). `crew-test/bot-desktop/` has no leftover `sandbox.json`.
 - **Sessions.** The 5 test sessions (`p6-e1e7, p6-e3, p6-e4, p6-e6, p6-e6b`) were deleted. The `session.delete` RPC does not exist on the canonical protocol ("unknown method"). `DELETE /api/sessions/{id}?profile=crew-test` requires `request_id` plus `expected_revision` (`runtime_revision`) and `expected_generation`; without them it answers 409 `client_upgrade_required` (`HA/hermes_cli/web_server_sessions.py:287-293`).
 - **Final state.** No Xvnc anywhere; docker active; gateway, dashboard and crew PIDs unchanged.
 
@@ -352,3 +352,41 @@ The dashboard schema enum is `local, docker, ssh, modal, daytona, vercel_sandbox
 3. On this arm64 VM a sandboxed bot has **no browser**, because of the Hermes probe bug (gotcha 21). Fixing it needs a Hermes change, an image whose Chromium sits at a path the probe knows, or the user's decision.
 4. Approvals effectively disappear for a sandboxed bot (E7). Crew's approvals UI and the crew-test e2e fixture assume the local backend (gotcha 22).
 5. Container processes run as host uid 0 (root shell) or 1000 (`ali`, desktop). Without userns-remap, a container escape lands as one of those (§5).
+
+---------------------------------------------------------------------------
+## 10. Live E8 (host-user sandbox)
+
+Context: design ruling §11.2 (`docs/superpowers/specs/2026-11-10-crew-phase6-bot-sandbox-design.md`) runs the sandbox as the host user (`terminal.docker_run_as_host_user: true`). This run proves that live on a throwaway bot.
+
+### 10.1 How it was run (2026-11-10, about 10:44–10:53 KST)
+
+- **Bot.** `e2e61110`, created with Crew's own params over 9120: `profiles.create {name:"e2e61110", description:"e2e", clone_from:"default", share_auth:true, no_skills:false}` → `{ok:true, path:".../profiles/e2e61110"}` in 757 ms. It inherited `model: anthropic/claude-haiku-5.5` (openrouter) and `approvals.mode: smart` from default.
+- **Config.** One sparse write: `PUT /api/config?profile=e2e61110 {"config":{"terminal":{"backend":"docker","container_memory":3072,"docker_run_as_host_user":true},"agent":{"disabled_toolsets":["browser"]}}}` → `{ok:true}`. The API then reported `active: docker`.
+- **Model turns.** 1 of the allowed 2, through the gateway path (fresh hidden session, `prompt.submit`).
+- **Not touched.** No service restarts (gateway, dashboard and crew PIDs 457306, 1515 and 406588 unchanged). default, reese, x, telegram and crew-test were not touched.
+
+### 10.2 Results
+
+| Step | Result | Evidence |
+|---|---|---|
+| 1. Config | Written and live without a restart: `terminal.backend docker`, `container_memory 3072`, `docker_run_as_host_user true`, `agent.disabled_toolsets [browser]`, `bot_desktop.placement auto`. | `hermes -p e2e61110 config get …`; `GET /api/tools/terminal/backends` |
+| 2. Terminal | **Works.** `id` → `uid=1000(pn) gid=1000(pn) groups=1000(pn)`. `touch /root/x` → no error (`/root` is the host bind mount, owned 1000:1000, mode 775). `echo hi > ~/p6-owner.txt` → `-rw-r--r-- 1 1000 1000 … /home/pn/p6-owner.txt`. `pip --version` → `pip 26.2.1 … (python 3.13)`. No approval card. | Turn tool result; `docker exec -u 1000:1000` |
+| 2. Container | `docker inspect`: `User=1000:1000`, `CapAdd=[CHOWN DAC_OVERRIDE FOWNER]` (SETUID/SETGID dropped, as `docker.py:400-409` says), `WorkingDir=/root`. **`HOME=/home/pn`**, which is the image's passwd home for uid 1000. It is **not** the persisted `/root`: `~` lives in the container's writable layer and is lost on `docker rm`. Only `/root` (the default cwd) and `/workspace` persist on the host. | `docker inspect`; `/proc/mounts` in the container |
+| 3. Screen | **Works.** `display.start` → `running:true, display:":20", placement:"terminal:docker"` in 1.9 s. `docker top`: docker-init, sleep, Xvnc, dbus-daemon, xfce4-panel, xfwm4 and xfdesktop all run as uid 1000. The only Xvnc on the machine is inside the container (`/proc/<pid>/cgroup` contains docker). `display.thumbnail` → 7,403-char JPEG data URL in 289 ms. Container with the desktop: 104.7 MiB, 43 pids. `display.stop {force:true}` → `stopped:true` in 664 ms. | `display.*` over 9120; `docker top`; `docker stats` |
+| 4. Host ownership | **Mixed.** Everything the bot wrote is 1000:1000 (`…/profile_e2e61110-<hash>/home/x`, the `home` and `workspace` dirs). But **30 entries are root-owned (0:0)**: `home/.hermes` and `home/.hermes/{skills,images,attachments,composer-pastes,cache,cache/{audio,delegation,documents,generated,images,screenshots,spillover,videos,web}}`, in both the profile sandbox and `prompt-backend-probe/`. These are the **mountpoint directories that the Docker daemon (root) creates** inside the bind-mounted `/root` for Hermes's nested read-only mounts at `/root/.hermes/…` (`docker.py:546-575`; `credential_files.py:167-207, 255-305`). `--user` does not affect them. They are empty, but `ali` cannot delete them, because `home/.hermes` itself is root-owned 755. | `find … -printf '%U:%G'` |
+| 4. Probe sandbox | `prompt-backend-probe/` comes from Hermes's prompt-time backend probe. On every new session it creates a one-shot container (`task_id="prompt-backend-probe"`, a `uname` probe) and force-removes it (`HA/agent/prompt_builder.py:840-869`). Its sandbox dir stays, with the same root-owned mountpoints. | source + `find` |
+| 5. Cleanup, Crew's order | `docker rm -f $(docker ps -aq --filter label=hermes-profile=e2e61110)` → removed `hermes-b579522f` (the only one; the probe container was already gone). Then Crew's delete path `DELETE /api/profiles/e2e61110` (`app/server/src/bots/edit.ts:202-208`) → **HTTP 500** `{"detail":"Could not remove profile directory /home/ali/.hermes/profiles/e2e61110: [Errno 13] Permission denied: '/home/ali/.hermes/profiles/e2e61110/sandboxes/docker/profile_e2e61110-679f69c19a11/home/.hermes/skills'"}`. | curl `-w %{http_code}` |
+| 5. After the failed delete | The bot was **already gone from the roster** (`GET /api/profiles` → default, crew-test, reese, telegram, x), but its folder remained: 44 entries, 30 of them root-owned, including `sandboxes/`, `workspace/`, `platforms/`, `audio_cache/` and `image_cache/`. Hermes's `shutil.rmtree` stopped at the first error. Its `_rmtree_make_writable` handler only `chmod`s, which cannot help with root-owned dirs (`HA/hermes_cli/profiles_remove.py:54-80`). No wrapper script or registry leftovers. Removed with `sudo rm -rf` on exactly `~/.hermes/profiles/e2e61110` (authorized). | `find`; `ls ~/.hermes/profiles` |
+
+Final state: no containers (image kept), no Xvnc, profile folder gone, services not restarted.
+
+### 10.3 Verdict
+
+- **Terminal: works** in host-user mode (uid 1000, pip present, files on the persisted mounts owned by `ali`).
+- **Screen: works** in host-user mode (Xvnc and Xfce as uid 1000 inside the container, thumbnail OK).
+- **Delete without sudo: fails.** The cause is not the container user. Docker creates root-owned mountpoint dirs on the host for Hermes's nested read-only mounts under the persisted `/root`. Crew's `docker rm -f` then `DELETE /api/profiles/<bot>` returns 500 and leaves the folder, while the bot is already gone from the roster. §9's root-mode run had the same root-owned `home/.hermes`, so this is not specific to host-user mode.
+- Facts for the controller's re-ruling (no choice made here):
+  1. ali is in the docker group, so a root cleanup without sudo is possible through Docker itself, after removing the bot's containers and before `profiles.delete`, e.g. `docker run --rm -v ~/.hermes/profiles/<bot>/sandboxes:/s nousresearch/hermes-sandbox:desktop rm -rf /s/docker` (UNVERIFIED).
+  2. `container_persistent: false` puts `/root` on tmpfs, so the mountpoints are never created on the host, but the bot then loses its persistent `/root` and `/workspace` (`docker.py:917-919`) (UNVERIFIED for this effect).
+  3. Even with persistence, `~` (`/home/pn`) is not persisted in host-user mode; only `/root` (the default cwd) and `/workspace` are.
+- **Gotcha 24:** for a sandboxed bot, today's Crew delete would show a failure (Hermes answers 500) even though Hermes has already removed the bot from the roster. Root-owned files are left behind in `~/.hermes/profiles/<bot>/`.
