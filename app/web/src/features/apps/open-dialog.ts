@@ -19,3 +19,17 @@ export function useDialogRequests(onOpen: (which: CrewDialog) => void): void {
     return () => window.removeEventListener(EVENT, handler)
   }, [onOpen])
 }
+
+const KEY_EVENT = 'crew:key-changed'
+
+/** The Composio key was saved or removed: panels that read apps load again. */
+export function notifyKeyChanged(): void {
+  window.dispatchEvent(new CustomEvent(KEY_EVENT))
+}
+
+export function useKeyChanged(onChange: () => void): void {
+  useEffect(() => {
+    window.addEventListener(KEY_EVENT, onChange)
+    return () => window.removeEventListener(KEY_EVENT, onChange)
+  }, [onChange])
+}

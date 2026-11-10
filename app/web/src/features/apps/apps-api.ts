@@ -25,8 +25,9 @@ export const codeOf = (e: unknown): string | undefined => {
 }
 
 /** Why an apps call failed. */
-export function appsErrorText(e: unknown): string {
+export function appsErrorText(e: unknown, appName = 'this app'): string {
   const code = codeOf(e)
+  if (code === 'app_unsupported') return `Crew can't connect ${appName} yet.`
   if (code === 'no_key') return 'Set the key in Settings'
   if (code === 'key_rejected') return 'Key not accepted'
   if (code === 'composio_unavailable') return "Couldn't reach Composio"

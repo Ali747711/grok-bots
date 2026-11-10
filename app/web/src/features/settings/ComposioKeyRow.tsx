@@ -3,10 +3,21 @@ import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { appsErrorText, getKey, removeKey, saveKey } from '@/features/apps/apps-api'
+import { codeOf, getKey, removeKey, saveKey } from '@/features/apps/apps-api'
+import { notifyKeyChanged } from '@/features/apps/open-dialog'
+import { CrewApiError } from '@/lib/crew-json'
 import { ConfirmAction } from '@/features/triggers/ConfirmAction'
 
 const INPUT_ID = 'composio-key-input'
+
+/** Why saving the key failed. */
+function saveErrorText(e: unknown): string {
+  const code = codeOf(e)
+  if (code === 'bad_body') return "That doesn't look like a Composio key."
+  if (code === 'key_rejected') return 'Key not accepted'
+  if (e instanceof CrewApiError && e.status === 503) return 'Hermes is offline'
+  return "Couldn't save the key. Try again."
+}
 
 /** The Composio key. The key lives only in the input, which is cleared after every attempt. */
 export function ComposioKeyRow() {
@@ -39,8 +50,9 @@ export function ComposioKeyRow() {
     try {
       await saveKey(key)
       toast.success('Key saved')
+      notifyKeyChanged()
     } catch (e) {
-      if (alive.current) setError(appsErrorText(e))
+      if (alive.current) setError(saveErrorText(e))
     }
     if (!alive.current) return
     setValue('')
@@ -54,8 +66,9 @@ export function ComposioKeyRow() {
     try {
       await removeKey()
       toast.success('Key removed')
-    } catch (e) {
-      if (alive.current) setError(appsErrorText(e))
+      notifyKeyChanged()
+    } catch {
+      if (alive.current) setError("Couldn't remove the key. Try again.")
     }
     if (!alive.current) return
     setConfirming(false)

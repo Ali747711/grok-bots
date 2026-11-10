@@ -6,6 +6,8 @@ vi.mock('sonner', () => ({ toast }))
 
 import { AppsDialog } from '@/features/apps/AppsDialog'
 
+import { ComposioKeyRow } from '@/features/settings/ComposioKeyRow'
+
 import { bot } from './fixtures'
 
 const json = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status }))
@@ -146,5 +148,68 @@ describe('AppsDialog', () => {
     fireEvent.click(buttons[buttons.length - 1]!)
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('GitHub disconnected'))
     expect(fn.mock.calls.some(([u, i]) => u === '/crew/connectors/apps/ca_1' && i?.method === 'DELETE')).toBe(true)
+  })
+
+  it('shows Loading apps… before the list resolves', async () => {
+    let release: (r: Response) => void = () => undefined
+    stub(url => (url === '/crew/connectors/apps' ? new Promise<Response>(r => { release = r }) : undefined))
+    open()
+    expect(screen.getByText('Loading apps…')).toBeInTheDocument()
+    await act(async () => { release(new Response(JSON.stringify(LIST))) })
+    expect(await screen.findByText('GitHub')).toBeInTheDocument()
+    expect(screen.queryByText('Loading apps…')).toBeNull()
+  })
+
+  it('closes Apps before it asks for Settings', async () => {
+    stub(url => (url === '/crew/connectors/apps' ? json({ error: 'no_key' }, 409) : undefined))
+    const order: string[] = []
+    window.addEventListener('crew:open-dialog', () => order.push('open'), { once: true })
+    const onOpenChange = vi.fn((o: boolean) => order.push(`apps:${o}`))
+    open(onOpenChange)
+    fireEvent.click(await screen.findByRole('button', { name: 'Set the key in Settings' }))
+    expect(order).toEqual(['apps:false', 'open'])
+  })
+
+  it('re-reads and lists the apps after a key is saved from Settings', async () => {
+    let saved = false
+    stub((url, init) => {
+      if (url === '/crew/connectors/apps') return saved ? json(LIST) : json({ error: 'no_key' }, 409)
+      if (url === '/crew/connectors/key' && init?.method === 'PUT') { saved = true; return json({ configured: true }) }
+      if (url === '/crew/connectors/key') return json({ configured: saved })
+      return undefined
+    })
+    render(<><AppsDialog open onOpenChange={vi.fn()} bots={[]} /><ComposioKeyRow /></>)
+    expect(await screen.findByText('No Composio key yet.')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Composio API key'), { target: { value: 'ak_test_key_123' } })
+    // The modal Apps dialog hides the row beside it from the accessibility tree.
+    fireEvent.click(screen.getByRole('button', { name: 'Save key', hidden: true }))
+    expect(await screen.findByText('GitHub')).toBeInTheDocument()
+    expect(screen.queryByText('No Composio key yet.')).toBeNull()
+  })
+
+  it('names no bots when another account of the app is still connected', async () => {
+    const list = { apps: [
+      { id: 'ca_1', toolkit: 'github', name: 'GitHub', status: 'connected' },
+      { id: 'ca_3', toolkit: 'github', name: 'GitHub', status: 'failed' }
+    ], usage: { github: ['dev'] } }
+    stub(url => (url === '/crew/connectors/apps' ? json(list) : undefined))
+    open(vi.fn(), [{ name: 'dev', title: 'Scout Bot' }])
+    await screen.findAllByText('GitHub')
+    fireEvent.click(screen.getAllByRole('button', { name: /Disconnect/ })[1]!)
+    expect(await screen.findByText("Disconnecting revokes Crew's access to your GitHub account.")).toBeInTheDocument()
+  })
+
+  it("says Crew can't connect an app without managed sign-in", async () => {
+    stub((url, init) => {
+      if (url === '/crew/connectors/apps') return json({ apps: [], usage: {} })
+      if (url.startsWith('/crew/connectors/toolkits')) return json({ toolkits: [{ slug: 'weird', name: 'Weird' }] })
+      if (url === '/crew/connectors/connect' && init?.method === 'POST') return json({ error: 'app_unsupported' }, 409)
+      return undefined
+    })
+    open()
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect an app' }))
+    await act(async () => { await vi.advanceTimersByTimeAsync(350) })
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect' }))
+    expect(await screen.findByText("Crew can't connect Weird yet.")).toBeInTheDocument()
   })
 })

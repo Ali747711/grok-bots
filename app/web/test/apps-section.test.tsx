@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { AppsList, BotAppsView } from '@/features/apps/apps-types'
@@ -181,5 +181,29 @@ describe('AppsSection', () => {
     window.removeEventListener('crew:open-dialog', on)
     expect(seen).toEqual(['settings'])
     expect(screen.queryByText('No apps connected yet.')).toBeNull()
+  })
+
+  it('shows no access select until the apps list is known', async () => {
+    let release: (r: Response) => void = () => undefined
+    stub({ list: () => new Promise<Response>(r => { release = r }), get: () => reply(view({ apps: [entry()] })) })
+    open()
+    expect((await sw()).getAttribute('aria-checked')).toBe('true')
+    expect(screen.queryByRole('combobox', { name: 'GitHub access' })).toBeNull()
+    release(new Response(JSON.stringify(list())))
+    expect(await screen.findByRole('combobox', { name: 'GitHub access' })).toBeTruthy()
+  })
+
+  it('re-reads after a key is saved elsewhere', async () => {
+    let keyed = false
+    stub({
+      list: () => (keyed ? reply(list()) : reply({ error: 'no_key' }, 409)),
+      get: () => reply(view({ keyConfigured: keyed }))
+    })
+    open()
+    expect(await screen.findByRole('button', { name: 'Set the key in Settings' })).toBeTruthy()
+    keyed = true
+    act(() => { window.dispatchEvent(new CustomEvent('crew:key-changed')) })
+    expect(await sw()).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Set the key in Settings' })).toBeNull()
   })
 })

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { appsErrorText, codeOf, connect, listApps, pollConnect } from './apps-api'
 import type { AppsList, Toolkit } from './apps-types'
+import { useKeyChanged } from './open-dialog'
 
 /** The connected apps. `error` is a server code ('no_key', 'key_rejected') or a display text. */
 export function useApps() {
@@ -25,6 +26,7 @@ export function useApps() {
     }
   }, [])
   useEffect(() => { void reload() }, [reload])
+  useKeyChanged(useCallback(() => { void reload() }, [reload]))
   return { list, error, reload }
 }
 
@@ -67,7 +69,7 @@ export function useSignIn() {
       setState('waiting')
     } catch (e) {
       if (!alive.current) return
-      setFailure(codeOf(e) === 'already_connected' ? 'Already connected' : appsErrorText(e))
+      setFailure(codeOf(e) === 'already_connected' ? 'Already connected' : appsErrorText(e, t.name))
       setState('failed')
     }
   }, [])

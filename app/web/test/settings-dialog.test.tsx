@@ -127,4 +127,34 @@ describe('Composio key row', () => {
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Key removed'))
     expect(await screen.findByText('Not set')).toBeInTheDocument()
   })
+
+  const saveWith = async (reply: Promise<Response>) => {
+    stubFetch(() => json({}), init => (init.method === 'PUT' ? reply : json({ configured: false })))
+    open()
+    await screen.findByText('Not set')
+    fireEvent.change(keyInput(), { target: { value: 'ak_test_key_123' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save key' }))
+    return screen.findByRole('alert')
+  }
+
+  it('says That doesn\'t look like a Composio key. for a 400', async () => {
+    expect(await saveWith(json({ error: 'bad_body' }, 400))).toHaveTextContent("That doesn't look like a Composio key.")
+  })
+
+  it('says Hermes is offline for a 503 on Save', async () => {
+    expect(await saveWith(json({ error: 'hermes_offline' }, 503))).toHaveTextContent('Hermes is offline')
+  })
+
+  it('says Couldn\'t save the key. Try again. for anything else on Save', async () => {
+    expect(await saveWith(json({ error: 'composio_unavailable' }, 502))).toHaveTextContent("Couldn't save the key. Try again.")
+  })
+
+  it('says Couldn\'t remove the key. Try again. when Remove fails', async () => {
+    stubFetch(() => json({}), init => (init.method === 'DELETE' ? json({ error: 'apps_failed' }, 502) : json({ configured: true })))
+    open()
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove key' }))
+    const buttons = await screen.findAllByRole('button', { name: 'Remove key' })
+    fireEvent.click(buttons[buttons.length - 1]!)
+    expect(await screen.findByText("Couldn't remove the key. Try again.")).toBeInTheDocument()
+  })
 })

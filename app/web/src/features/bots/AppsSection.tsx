@@ -7,7 +7,7 @@ import { Switch } from '@/components/ui/switch'
 import { appsErrorText, getBotApps, setBotApps } from '@/features/apps/apps-api'
 import type { AppEntry, AppLevel, BotAppsView } from '@/features/apps/apps-types'
 import { AppTile } from '@/features/apps/AppTile'
-import { openDialog } from '@/features/apps/open-dialog'
+import { openDialog, useKeyChanged } from '@/features/apps/open-dialog'
 import { useApps } from '@/features/apps/use-apps'
 
 import { AppsNotes } from './AppsNotes'
@@ -15,7 +15,7 @@ import { AppsNotes } from './AppsNotes'
 const LEVEL_LABEL: Readonly<Record<AppLevel, string>> = { read: 'Read only', change: 'Read and change', all: 'Everything' }
 const LEVEL_ORDER: readonly AppLevel[] = ['read', 'change', 'all']
 
-interface Row { toolkit: string; name: string; connected: boolean; entry: AppEntry | undefined }
+interface Row { toolkit: string; name: string; connected: boolean; known: boolean; entry: AppEntry | undefined }
 
 function levelsMap(view: BotAppsView | null): Record<string, AppLevel> {
   return Object.fromEntries((view?.apps ?? []).map(a => [a.toolkit, a.level]))
@@ -36,7 +36,7 @@ function AppRow({ row, bot, title, offered, busy, onChange }: {
         <AppTile name={row.name} />
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="truncate">{row.name}</span>
-          {!row.connected && <span className="text-xs text-muted-foreground">Not connected</span>}
+          {row.known && !row.connected && <span className="text-xs text-muted-foreground">Not connected</span>}
         </div>
         <Switch
           checked={on}
@@ -46,7 +46,7 @@ function AppRow({ row, bot, title, offered, busy, onChange }: {
           className="data-checked:bg-foreground data-unchecked:border-muted-foreground"
         />
       </div>
-      {entry && row.connected && (
+      {entry && row.known && row.connected && (
         <Select value={entry.level} items={items} disabled={busy} onValueChange={v => v !== null && v !== entry.level && onChange(row.toolkit, v as AppLevel)}>
           <SelectTrigger aria-label={`${row.name} access`} className="w-full"><SelectValue /></SelectTrigger>
           <SelectContent>
@@ -77,6 +77,7 @@ function useBotApps(bot: string) {
     }
   }, [bot])
   useEffect(() => { void reload() }, [reload])
+  useKeyChanged(useCallback(() => { void reload() }, [reload]))
   return { view, setView, reload }
 }
 
@@ -93,7 +94,8 @@ export function AppsSection({ bot, title, sandboxed }: { bot: string; title: str
     return slugs.map(toolkit => ({
       toolkit,
       name: connected.get(toolkit) ?? bySlug.get(toolkit)?.name ?? toolkit,
-      connected: list === null || connected.has(toolkit),
+      connected: connected.has(toolkit),
+      known: list !== null,
       entry: bySlug.get(toolkit)
     }))
   }, [list, view])

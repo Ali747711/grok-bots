@@ -42,6 +42,7 @@ describe('appsErrorText', () => {
     expect(appsErrorText(err(409, 'key_rejected'))).toBe('Key not accepted')
     expect(appsErrorText(err(502, 'composio_unavailable'))).toBe("Couldn't reach Composio")
     expect(appsErrorText(err(409, 'level_unavailable'))).toBe("This bot doesn't ask before actions, so it can only read in apps.")
+    expect(appsErrorText(err(409, 'app_unsupported'), 'Foo')).toBe("Crew can't connect Foo yet.")
     expect(appsErrorText(err(503, 'hermes_offline'))).toBe('Hermes is offline')
     expect(appsErrorText(err(502, 'apps_failed'))).toBe("Couldn't change the apps. Try again.")
     expect(appsErrorText(new Error('x'))).toBe("Couldn't change the apps. Try again.")
