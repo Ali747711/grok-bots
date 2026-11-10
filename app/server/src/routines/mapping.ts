@@ -1,7 +1,11 @@
 import { z } from 'zod'
 
+import type { TriggerRun } from '../triggers/types.js'
 import { fromHermesSchedule, type ScheduleSpec, toHermesSchedule } from './schedule.js'
 
+export const TRIGGER_ONLY_REASON = 'crew:trigger-only'
+/** A yearly schedule that never matters: the routine only runs when a trigger fires it. */
+export const TRIGGER_ONLY_CRON = '0 3 1 1 *'
 const TAG_RE = /^\[bot:[a-z0-9][a-z0-9_-]*\]\s*/i
 const SYNTHESIZED_RE = /^(COMPLETED|FAILED|CANCELLED|MISSED) · (.*)$/s
 const LAST_STATUSES = ['ok', 'error', 'delivery_failed', 'blocked_config'] as const
@@ -14,6 +18,8 @@ export interface RoutineInput {
   readonly deliverToChat: boolean
   /** Edit only: the user changed the zone select, so the zone is sent even if the schedule is unchanged. */
   readonly timezoneChanged?: boolean
+  /** Absent means a schedule. When `triggered`, `schedule` is ignored. */
+  readonly runs?: 'schedule' | 'triggered'
 }
 
 export interface RoutineView {
@@ -35,6 +41,8 @@ export interface RoutineView {
   readonly state: string | null
   /** A terminal job (`completed` or `error`, Hermes `is_terminal_job`): it will not fire again. */
   readonly finished: boolean
+  /** Runs only when a trigger fires it (paused with Crew's marker). */
+  readonly triggerOnly: boolean
 }
 
 export interface RunView {
@@ -45,6 +53,8 @@ export interface RunView {
   readonly title: string
   readonly sessionId: string | null
   readonly error: string | null
+  /** Set on rows that Crew built from a trigger event. */
+  readonly trigger?: { readonly id: string; readonly name: string; readonly eventType: string }
 }
 
 // Unknown fields pass through and every field but `id` may be missing or null, so a Hermes change
@@ -58,6 +68,7 @@ export const jobSchema = z.object({
   profile_name: str,
   enabled: z.boolean().nullish(),
   state: str,
+  paused_reason: str,
   /** Hermes attaches the newest claimed/running execution to every listed job (null when idle). */
   live_execution: z.unknown().optional(),
   deliver: str,
@@ -105,7 +116,18 @@ export function scheduleOf(job: Job): ScheduleSpec {
   return fromHermesSchedule({ kind: sched.kind, run_at: sched.run_at, minutes: sched.minutes, expr: sched.expr }, job.timezone || serverZone())
 }
 
-export function viewOf(bot: string, job: Job, running: boolean, repausing: boolean): RoutineView {
+/** The routine's own title: the name without the `[bot:<name>]` tag. */
+export const titleOf = (job: Job): string => (job.name ?? '').replace(TAG_RE, '')
+export const isPausedJob = (job: Job): boolean => job.enabled === false || job.state === 'paused'
+
+/** What Hermes is told: a triggered routine always carries the never-matching yearly schedule. */
+export const effectiveSchedule = (input: RoutineInput): ScheduleSpec => (input.runs === 'triggered' ? { kind: 'cron', expr: TRIGGER_ONLY_CRON } : input.schedule)
+
+/**
+ * `triggerOnlyHint`: Hermes clears the marker while it force-runs a paused job, so Crew keeps
+ * showing the routine as trigger-only until it has put the marker back.
+ */
+export function viewOf(bot: string, job: Job, running: boolean, repausing: boolean, triggerOnlyHint = false): RoutineView {
   const sched = job.schedule
   const zone = job.timezone || serverZone()
   const spec = scheduleOf(job)
@@ -113,7 +135,7 @@ export function viewOf(bot: string, job: Job, running: boolean, repausing: boole
   return {
     id: job.id,
     bot,
-    title: (job.name ?? '').replace(TAG_RE, ''),
+    title: titleOf(job),
     instruction: job.prompt ?? '',
     schedule: spec,
     scheduleText: sched?.display ?? job.schedule_display ?? toHermesSchedule(spec, zone),
@@ -127,7 +149,8 @@ export function viewOf(bot: string, job: Job, running: boolean, repausing: boole
     lastError: job.last_error || job.last_delivery_error || job.last_fire_error || null,
     running: running || Boolean(job.live_execution),
     state: job.state ?? null,
-    finished: isFinished(job.state)
+    finished: isFinished(job.state),
+    triggerOnly: job.paused_reason === TRIGGER_ONLY_REASON || triggerOnlyHint
   }
 }
 
@@ -150,12 +173,31 @@ export function routineBody(bot: string, input: RoutineInput): Record<string, un
   return {
     name: `[bot:${bot}] ${input.title}`,
     prompt: input.instruction,
-    schedule: toHermesSchedule(input.schedule, input.timezone),
+    schedule: toHermesSchedule(effectiveSchedule(input), input.timezone),
     timezone: input.timezone,
     deliver: input.deliverToChat ? 'bot-chat' : 'local'
   }
 }
 
+/** Create body: an event-only routine starts paused with Crew's marker. */
+export function createBody(bot: string, input: RoutineInput): Record<string, unknown> {
+  return { ...routineBody(bot, input), ...(input.runs === 'triggered' ? { paused: true, paused_reason: TRIGGER_ONLY_REASON } : {}) }
+}
+
+/** A trigger event shown as a run row; `finished` is a completed run, `started` one still going. */
+export function triggerRunView({ triggerId, triggerName, event }: TriggerRun): RunView {
+  const status: RunView['status'] = event.outcome === 'finished' ? 'completed' : event.outcome === 'started' ? 'running' : 'failed'
+  return {
+    id: `trigger:${event.id}`,
+    status,
+    startedAt: event.at,
+    endedAt: event.endedAt,
+    title: `${triggerName} · ${event.eventType}`,
+    sessionId: event.runId,
+    error: event.detail,
+    trigger: { id: triggerId, name: triggerName, eventType: event.eventType }
+  }
+}
 
 export const jobKey = (bot: string, id: string): string => `${bot}/${id}`
 export const jobPath = (id: string): string => `/api/cron/jobs/${enc(id)}`
@@ -167,7 +209,7 @@ export const jobPath = (id: string): string => `/api/cron/jobs/${enc(id)}`
  */
 export function routineUpdates(bot: string, input: RoutineInput, current: Job): Record<string, unknown> {
   const full = routineBody(bot, input)
-  const scheduleChanged = JSON.stringify(input.schedule) !== JSON.stringify(scheduleOf(current))
+  const scheduleChanged = JSON.stringify(effectiveSchedule(input)) !== JSON.stringify(scheduleOf(current))
   const sendZone = input.timezoneChanged === true || (scheduleChanged && input.timezone !== (current.timezone ?? null))
   const changed: Record<string, unknown> = {}
   if (full.name !== current.name) changed.name = full.name

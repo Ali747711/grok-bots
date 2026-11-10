@@ -22,6 +22,8 @@ export interface RoutineInput {
   readonly deliverToChat: boolean
   /** Edit only: true when the user changed the zone or the schedule (the server keeps a stored zone otherwise). */
   readonly timezoneChanged?: boolean
+  /** Always sent on save: the server keeps the current mode when it is absent. */
+  readonly runs?: 'schedule' | 'triggered'
 }
 
 export type LastStatus = 'ok' | 'error' | 'delivery_failed' | 'blocked_config'
@@ -45,6 +47,8 @@ export interface RoutineView {
   readonly state: string | null
   /** A one-time routine that ran (or a job Hermes retired): it can no longer be paused, resumed or run. */
   readonly finished: boolean
+  /** Runs only when a trigger fires it; it has no schedule and no pause switch. */
+  readonly triggerOnly: boolean
 }
 
 export interface RunView {
@@ -55,4 +59,6 @@ export interface RunView {
   readonly title: string
   readonly sessionId: string | null
   readonly error: string | null
+  /** Set on rows that Crew built from a trigger event. */
+  readonly trigger?: { readonly id: string; readonly name: string; readonly eventType: string }
 }

@@ -4,6 +4,7 @@ import { HermesRestError } from '../src/hermes/errors.js'
 import type { HermesRest, RestMethod, RestOptions } from '../src/hermes/rest-client.js'
 import { setLogSink } from '../src/log.js'
 import { createRoutineService, type RoutineInput, type RoutineService } from '../src/routines/service.js'
+import type { TriggerEvent, TriggerRun } from '../src/triggers/types.js'
 
 interface Call { method: string; path: string; query?: Record<string, string>; body?: unknown; timeoutMs?: number }
 
@@ -43,7 +44,7 @@ describe('list', () => {
     expect(views).toEqual([{
       id: 'abc123', bot: 'scout', title: 'Morning brief', instruction: 'Summarise the news', schedule: { kind: 'daily', time: '09:00' }, scheduleText: '0 9 * * *',
       timezone: 'Asia/Seoul', deliverToChat: false, enabled: true, nextRunAt: Date.parse(iso), lastRunAt: Date.parse('2026-11-08T00:00:00+00:00'),
-      lastStatus: 'ok', lastError: null, running: false, state: 'scheduled', finished: false
+      lastStatus: 'ok', lastError: null, running: false, state: 'scheduled', finished: false, triggerOnly: false
     }])
   })
 
@@ -347,5 +348,191 @@ describe('runNow on a paused routine', () => {
     cron.handler = call => { if (call.path.endsWith('/pause')) throw new Error('down'); return call.path.endsWith('/trigger') ? job() : paused() }
     try { await svc.runNow('scout', 'abc123') } finally { restore() }
     expect(lines.map(l => JSON.parse(l)).filter(l => l.level === 'warn')).toEqual([expect.objectContaining({ msg: 're-pause after run now failed', jobId: 'abc123' })])
+  })
+})
+
+const MARKER = 'crew:trigger-only'
+const oneShot = (id: string) => job({ id, name: `[trigger:${'a'.repeat(32)}] Morning brief · push` })
+
+describe('event-only routines', () => {
+  const putBodies = () => cron.calls.filter(c => c.method === 'PUT').map(c => c.body)
+  const pauseCalls = () => cron.calls.filter(c => c.path.endsWith('/pause'))
+  const triggered: RoutineInput = { ...input, runs: 'triggered' }
+  afterEach(() => { vi.useRealTimers() })
+
+  it('hides [trigger:...] one-shots from the routine list', async () => {
+    cron.handler = () => [job(), oneShot('shot1')]
+    expect((await svc.list('scout')).map(v => v.id)).toEqual(['abc123'])
+  })
+
+  it('creates an event-only routine paused with the yearly schedule and the marker', async () => {
+    cron.handler = () => job()
+    await svc.create('scout', triggered)
+    expect(cron.last().body).toMatchObject({ schedule: '0 3 1 1 *', paused: true, paused_reason: MARKER, name: '[bot:scout] Morning brief' })
+    await svc.create('scout', input)
+    expect(cron.last().body).not.toHaveProperty('paused')
+  })
+
+  it('shows a trigger-only routine as triggerOnly and a normally paused one as not', async () => {
+    cron.handler = () => [job({ id: 'a', enabled: false, state: 'paused', paused_reason: MARKER }), job({ id: 'b', enabled: false, state: 'paused', paused_reason: 'vacation' }), job({ id: 'c' })]
+    expect((await svc.list('scout')).map(v => v.triggerOnly)).toEqual([true, false, false])
+  })
+
+  it('switches a routine to event-only: changes, pause, then the marker', async () => {
+    cron.handler = () => job()
+    await svc.update('scout', 'abc123', triggered)
+    expect(cron.calls.map(c => [c.method, c.path])).toEqual([
+      ['GET', '/api/cron/jobs/abc123'], ['POST', '/api/cron/jobs/abc123/pause'], ['PUT', '/api/cron/jobs/abc123'], ['PUT', '/api/cron/jobs/abc123'], ['GET', '/api/cron/jobs/abc123']
+    ])
+    expect(putBodies()).toEqual([{ updates: { paused_reason: MARKER } }, { updates: { schedule: '0 3 1 1 *' } }])
+  })
+
+  it('pauses first, so a failed switch never leaves the routine active on the yearly schedule', async () => {
+    let hermes: Record<string, unknown> = job()
+    cron.handler = call => {
+      if (call.method === 'POST' && call.path.endsWith('/pause')) throw new HermesRestError(502, 'gateway down')
+      if (call.method === 'PUT') hermes = { ...hermes, schedule: { kind: 'cron', expr: (call.body as { updates: { schedule?: string } }).updates.schedule ?? '0 9 * * *' } }
+      return hermes
+    }
+    await expect(svc.update('scout', 'abc123', triggered)).rejects.toMatchObject({ status: 502 })
+    expect(cron.calls.filter(c => c.method === 'PUT')).toEqual([])
+    expect(hermes).toMatchObject({ enabled: true })
+    expect((hermes.schedule as { expr: string }).expr).toBe('0 9 * * *')
+  })
+
+  it('switches an event-only routine back to a schedule and resumes it', async () => {
+    cron.handler = () => job({ enabled: false, state: 'paused', paused_reason: MARKER, schedule: { kind: 'cron', expr: '0 3 1 1 *', display: '0 3 1 1 *' }, schedule_display: '0 3 1 1 *' })
+    await svc.update('scout', 'abc123', { ...input, runs: 'schedule' })
+    expect(putBodies()).toEqual([{ updates: { schedule: '0 9 * * *' } }])
+    expect(cron.calls.map(c => [c.method, c.path.replace('/api/cron/jobs/abc123', '')])).toEqual([['GET', ''], ['PUT', ''], ['POST', '/resume'], ['GET', '']])
+  })
+
+  it('editing an event-only routine without changing the mode sends no pause or marker', async () => {
+    cron.handler = () => job({ enabled: false, state: 'paused', paused_reason: MARKER, schedule: { kind: 'cron', expr: '0 3 1 1 *', display: '0 3 1 1 *' }, schedule_display: '0 3 1 1 *' })
+    await svc.update('scout', 'abc123', { ...triggered, instruction: 'Rephrased' })
+    expect(putBodies()).toEqual([{ updates: { prompt: 'Rephrased' } }])
+    expect(pauseCalls()).toHaveLength(0)
+  })
+
+  const markedPaused = () => job({ enabled: false, state: 'paused', paused_reason: MARKER })
+  let settle: () => void
+  const scripted = () => {
+    cron.handler = call => {
+      if (call.path.endsWith('/trigger')) return new Promise<void>(resolve => { settle = resolve }).then(() => job())
+      if (call.path.endsWith('/pause') || call.path.endsWith('/resume') || call.method === 'PUT') return job()
+      return call.path === '/api/cron/jobs' ? [markedPaused()] : markedPaused()
+    }
+  }
+
+  it('re-pauses a trigger-only routine with its marker after Run now', async () => {
+    vi.useFakeTimers()
+    scripted()
+    const started = svc.runNow('scout', 'abc123')
+    await vi.advanceTimersByTimeAsync(3_000)
+    await started
+    // Hermes cleared the marker and enabled the job while it runs; Crew still shows it as trigger-only.
+    cron.handler = call => (call.path === '/api/cron/jobs' ? [job({ enabled: true, state: 'scheduled' })] : job())
+    const [view] = await svc.list('scout')
+    expect(view).toMatchObject({ triggerOnly: true, enabled: false })
+    cron.calls = []
+    settle()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(cron.calls.map(c => [c.method, c.path])).toEqual([['POST', '/api/cron/jobs/abc123/pause'], ['PUT', '/api/cron/jobs/abc123']])
+    expect(cron.calls[1]!.body).toEqual({ updates: { paused_reason: MARKER } })
+  })
+
+  it('a user resume during Run now drops the marker restore', async () => {
+    vi.useFakeTimers()
+    scripted()
+    const started = svc.runNow('scout', 'abc123')
+    await vi.advanceTimersByTimeAsync(3_000)
+    await started
+    await svc.resume('scout', 'abc123')
+    cron.calls = []
+    settle()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(cron.calls).toEqual([])
+  })
+
+  it('does not restore a marker on a routine that was only normally paused', async () => {
+    vi.useFakeTimers()
+    cron.handler = call => (call.path.endsWith('/trigger') ? job() : job({ enabled: false, state: 'paused', paused_reason: 'vacation' }))
+    const started = svc.runNow('scout', 'abc123')
+    await vi.advanceTimersByTimeAsync(0)
+    await started
+    expect(cron.calls.filter(c => c.method === 'PUT')).toEqual([])
+    expect(pauseCalls()).toHaveLength(1)
+  })
+
+  it('merges trigger runs into the history, newest first, limit after merging', async () => {
+    const ev = (n: number, over: Partial<TriggerEvent>): TriggerEvent => ({ id: `e${n}`, at: n * 1000, deliveryId: null, eventType: 'push', action: null, outcome: 'finished', jobId: 'j', runId: null, endedAt: n * 1000 + 500, detail: null, ...over })
+    const runs: TriggerRun[] = [
+      { triggerId: 't', triggerName: 'Pushes', event: ev(2, { runId: 's2' }) },
+      { triggerId: 't', triggerName: 'Pushes', event: ev(4, { outcome: 'failed', runId: 's4', detail: 'boom' }) }
+    ]
+    const merged = createRoutineService({ rest: cron.rest, now: () => 1_000, triggerRuns: (bot, id) => (bot === 'scout' && id === 'abc123' ? runs : []) })
+    cron.handler = () => ({ runs: [
+      { id: 'r3', source: 'cron', title: 'Morning brief', started_at: 3, ended_at: 3.5 },
+      { id: 'r1', source: 'cron', title: 'Morning brief', started_at: 1, ended_at: 1.5 }
+    ] })
+    const out = await merged.runs('scout', 'abc123', 3)
+    expect(out.map(r => r.id)).toEqual(['trigger:e4', 'r3', 'trigger:e2'])
+    expect(out[2]).toEqual({ id: 'trigger:e2', status: 'completed', startedAt: 2000, endedAt: 2500, title: 'Pushes · push', sessionId: 's2', error: null, trigger: { id: 't', name: 'Pushes', eventType: 'push' } })
+    expect(out[0]).toMatchObject({ status: 'failed', error: 'boom' })
+  })
+
+  describe('mode switch while Run now is in flight (Hermes semantics: pause/resume/trigger clear the reason)', () => {
+    let hermes: Record<string, unknown>
+    let release: () => void
+    const yearly = { kind: 'cron', expr: '0 3 1 1 *', display: '0 3 1 1 *' }
+    const fake = () => {
+      cron.handler = call => {
+        const sub = call.path.replace('/api/cron/jobs/abc123', '')
+        if (call.method === 'POST' && sub === '/trigger') {
+          hermes = { ...hermes, enabled: true, state: 'scheduled', paused_reason: null }
+          return new Promise<void>(resolve => { release = resolve }).then(() => hermes)
+        }
+        if (call.method === 'POST' && sub === '/pause') hermes = { ...hermes, enabled: false, state: 'paused', paused_reason: null }
+        if (call.method === 'POST' && sub === '/resume') hermes = { ...hermes, enabled: true, state: 'scheduled', paused_reason: null }
+        if (call.method === 'PUT') {
+          const u = (call.body as { updates: Record<string, unknown> }).updates
+          hermes = { ...hermes, ...(u.schedule ? { schedule: { kind: 'cron', expr: u.schedule, display: u.schedule }, schedule_display: u.schedule } : {}), ...(u.prompt ? { prompt: u.prompt } : {}), ...(u.paused_reason ? { paused_reason: u.paused_reason } : {}) }
+        }
+        return call.path === '/api/cron/jobs' ? [hermes] : hermes
+      }
+    }
+    const runningNow = async () => {
+      vi.useFakeTimers()
+      fake()
+      const started = svc.runNow('scout', 'abc123')
+      await vi.advanceTimersByTimeAsync(3_000)
+      await started
+    }
+    const settleRun = async () => { release(); await vi.advanceTimersByTimeAsync(0) }
+
+    it('case A: a trigger-only routine switched to a schedule stays on its schedule after the run settles', async () => {
+      hermes = job({ enabled: false, state: 'paused', paused_reason: MARKER, schedule: yearly, schedule_display: '0 3 1 1 *' })
+      await runningNow()
+      await svc.update('scout', 'abc123', { ...input, runs: 'schedule' })
+      await settleRun()
+      expect(hermes).toMatchObject({ enabled: true, state: 'scheduled', paused_reason: null })
+      expect((hermes.schedule as { expr: string }).expr).toBe('0 9 * * *')
+    })
+
+    it('case B: a paused routine switched to event-only ends paused with the marker after the run settles', async () => {
+      hermes = job({ enabled: false, state: 'paused', paused_reason: 'vacation' })
+      await runningNow()
+      await svc.update('scout', 'abc123', triggered)
+      await settleRun()
+      expect(hermes).toMatchObject({ enabled: false, state: 'paused', paused_reason: MARKER })
+    })
+  })
+
+  it('an edit without runs keeps a trigger-only routine event-only', async () => {
+    cron.handler = () => job({ enabled: false, state: 'paused', paused_reason: MARKER, schedule: { kind: 'cron', expr: '0 3 1 1 *', display: '0 3 1 1 *' }, schedule_display: '0 3 1 1 *' })
+    await svc.update('scout', 'abc123', { ...input, instruction: 'Rephrased' })
+    expect(putBodies()).toEqual([{ updates: { prompt: 'Rephrased' } }])
+    expect(cron.calls.map(c => c.method)).toEqual(['GET', 'PUT'])
+    expect(pauseCalls()).toHaveLength(0)
   })
 })

@@ -11,6 +11,8 @@ import { botRoutes } from './http/bot-routes.js'
 import { screenRoutes } from './http/screen-routes.js'
 import { routineRoutes } from './http/routine-routes.js'
 import { groupRoutes, type GroupRouteDeps } from './http/group-routes.js'
+import { hookRoutes } from './http/hook-routes.js'
+import { triggerRoutes, type TriggerRouteDeps } from './http/trigger-routes.js'
 import { hostGuard } from './http/host-guard.js'
 import { originGuard } from './http/origin-guard.js'
 import { type CrewEnv, sessionGuard } from './http/session-guard.js'
@@ -39,22 +41,28 @@ export interface AppDeps {
   /** Absent in tests that don't need it; /crew/routines then answers 503 hermes_offline. */
   readonly routines?: RoutineService
   readonly watcher?: CrewStateSource
+  /** Absent in tests that don't need it; /hooks/:id then answers 503 triggers_unavailable. */
+  readonly triggers?: TriggerRouteDeps
   /** Absent in tests that don't need it; /crew/groups then answers 503 hermes_offline. */
   readonly groups?: GroupRouteDeps
 }
+
+/** Trigger hooks come from outside browsers and prove themselves by signature: no cookie, Origin or CSRF. */
+export const HOOK_PATHS = ['POST /hooks/*'] as const
 
 export const PUBLIC_PATHS = [
   'GET /crew/health',
   'GET /login',
   'POST /crew/login',
-  'POST /crew/admin/login-ticket'
+  'POST /crew/admin/login-ticket',
+  ...HOOK_PATHS
 ] as const
 
 /** Build the Crew HTTP app. Guard order: host → origin/CSRF → session → routes. */
 export function createApp(deps: AppDeps): Hono<CrewEnv> {
   const app = new Hono<CrewEnv>()
   app.use('*', hostGuard(deps.config.allowedHosts))
-  app.use('*', originGuard(deps.config.allowedOrigins))
+  app.use('*', originGuard(deps.config.allowedOrigins, HOOK_PATHS))
   app.use('*', sessionGuard(deps.secrets.cookie, deps.now, PUBLIC_PATHS))
   app.get('/crew/health', c => c.json({ ok: true }))
   app.on(['GET', 'POST'], '/crew/whoami', c => c.json({ sid: c.get('sid') }))
@@ -68,8 +76,10 @@ export function createApp(deps: AppDeps): Hono<CrewEnv> {
   app.route('/', botRoutes(deps.bots))
   app.route('/', botEditRoutes(deps.bots))
   app.route('/', screenRoutes(deps.bots))
+  app.route('/', hookRoutes(deps.triggers?.hooks))
   app.route('/', routineRoutes(deps.routines, deps.now))
   app.route('/', groupRoutes(deps.groups))
+  app.route('/', triggerRoutes(deps.triggers))
   app.route('/', authRoutes(deps))
   app.route('/', restProxy(deps))
   // Last: the SPA answers every remaining GET, so later-mounted routes would be shadowed.

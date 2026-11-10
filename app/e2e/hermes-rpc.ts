@@ -223,3 +223,42 @@ export async function deleteTestGroups(): Promise<string[]> {
   }
   return done
 }
+
+// ---- Triggers (Phase 5). Only crew-test's jobs are ever read or deleted. ----
+
+const TEST_BOT = 'crew-test'
+
+export interface CronJob {
+  id: string
+  name: string
+  paused_reason?: string | null
+  schedule?: unknown
+  enabled?: boolean
+  state?: string | null
+  last_run_at?: unknown
+}
+
+export async function cronJobsOf(bot: string): Promise<CronJob[]> {
+  const res = await hermesRest('GET', `/api/cron/jobs?profile=${encodeURIComponent(bot)}`)
+  if (res.status !== 200 || !Array.isArray(res.body)) throw new Error(`cron list answered ${res.status}`)
+  return res.body as CronJob[]
+}
+
+async function deleteJobsNamed(startsWith: string): Promise<number> {
+  const jobs = (await cronJobsOf(TEST_BOT)).filter(j => j.name.startsWith(startsWith))
+  for (const job of jobs) await hermesRest('DELETE', `/api/cron/jobs/${encodeURIComponent(job.id)}?profile=${TEST_BOT}`)
+  return jobs.length
+}
+
+/** Leftover one-shots of trigger events on crew-test (their names start `[trigger:`). */
+export const deleteTriggerJobs = (): Promise<number> => deleteJobsNamed('[trigger:')
+
+/** Routines the specs made on crew-test: Hermes names them `[bot:crew-test] <title>`. */
+export const deleteTestRoutines = (prefix: string): Promise<number> => deleteJobsNamed(`[bot:${TEST_BOT}] ${prefix}`)
+
+/** The messages of one session, as Hermes stores them (the stored prompt of a triggered run is the first). */
+export async function sessionMessages(bot: string, sessionId: string): Promise<{ role: string; content: string }[]> {
+  const res = await hermesRest('GET', `/api/sessions/${encodeURIComponent(sessionId)}/messages?profile=${encodeURIComponent(bot)}&limit=50&order=oldest`)
+  const rows = (res.body as { messages?: { role: string; content: unknown }[] } | null)?.messages ?? []
+  return rows.map(r => ({ role: r.role, content: typeof r.content === 'string' ? r.content : JSON.stringify(r.content) }))
+}

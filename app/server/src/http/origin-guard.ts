@@ -4,6 +4,7 @@ import type { MiddlewareHandler } from 'hono'
 
 import { CSRF_COOKIE } from '../auth/routes.js'
 import { parseCookieHeader } from './cookies.js'
+import { routeMatches } from './session-guard.js'
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 /** Authenticated by the X-Crew-Admin secret; called by the CLI, which sends no Origin. */
@@ -20,12 +21,13 @@ function sameValue(a: string, b: string): boolean {
 /**
  * For state-changing requests: require one of Crew's exact Origins (missing and `null` are refused),
  * then a double-submit CSRF token (`X-Crew-CSRF` header equal to the `crew_csrf` cookie).
+ * `open` routes (the trigger hooks) skip both: they come from outside browsers and prove themselves by signature.
  */
-export function originGuard(allowedOrigins: readonly string[]): MiddlewareHandler {
+export function originGuard(allowedOrigins: readonly string[], open: readonly string[] = []): MiddlewareHandler {
   const allowed = new Set(allowedOrigins)
   return async (c, next) => {
     const route = `${c.req.method} ${c.req.path}`
-    if (SAFE_METHODS.has(c.req.method) || ORIGIN_EXEMPT.has(route)) return next()
+    if (SAFE_METHODS.has(c.req.method) || ORIGIN_EXEMPT.has(route) || routeMatches(open, c.req.method, c.req.path)) return next()
 
     const origin = c.req.header('origin')
     if (!origin || !allowed.has(origin)) return c.json({ error: 'bad_origin' }, 403)

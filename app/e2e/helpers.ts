@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process'
+import { createHmac } from 'node:crypto'
 
 import { type Page, expect } from '@playwright/test'
 
@@ -71,4 +72,56 @@ export async function createBotInDialog(page: Page, title: string, handle: strin
   await page.getByLabel('Handle').fill(handle)
   await page.getByRole('button', { name: 'Create', exact: true }).click()
   await expect(page).toHaveURL(new RegExp(`/bots/${handle}$`), { timeout: 120_000 })
+}
+
+/** A request to Crew's API as the logged-in page: the Origin and CSRF header the browser sends on writes. */
+export async function crewApi(page: Page, method: string, path: string, data?: unknown): Promise<{ status: number; body: any }> {
+  const csrf = (await page.context().cookies(CREW)).find(c => c.name === 'crew_csrf')?.value ?? ''
+  const res = await page.request.fetch(`${CREW}${path}`, {
+    method,
+    headers: { 'X-Crew-CSRF': csrf, Origin: CREW },
+    ...(data === undefined ? {} : { data })
+  })
+  const text = await res.text()
+  let body: unknown = null
+  try {
+    body = text ? JSON.parse(text) : null
+  } catch {
+    body = text
+  }
+  return { status: res.status(), body }
+}
+
+/** A hook request exactly as a sender makes it: Node fetch, so no cookie. */
+export async function postHook(url: string, body: string, headers: Record<string, string>): Promise<{ status: number; body: any }> {
+  const res = await fetch(url, { method: 'POST', headers, body })
+  const text = await res.text()
+  let parsed: unknown = null
+  try {
+    parsed = text ? JSON.parse(text) : null
+  } catch {
+    parsed = text
+  }
+  return { status: res.status, body: parsed }
+}
+
+export const hmacHex = (secret: string, data: string): string => createHmac('sha256', secret).update(data).digest('hex')
+
+export function githubHeaders(body: string, secret: string, event: string, delivery: string): Record<string, string> {
+  return {
+    'content-type': 'application/json',
+    'x-github-event': event,
+    'x-github-delivery': delivery,
+    'x-hub-signature-256': `sha256=${hmacHex(secret, body)}`
+  }
+}
+
+/** `ts` null leaves the timestamp header out (the signature then covers `.<body>`). */
+export function genericHeaders(body: string, secret: string, ts: string | null, event?: string): Record<string, string> {
+  return {
+    'content-type': 'application/json',
+    ...(ts === null ? {} : { 'x-crew-timestamp': ts }),
+    'x-crew-signature': `sha256=${hmacHex(secret, `${ts ?? ''}.${body}`)}`,
+    ...(event ? { 'x-crew-event': event } : {})
+  }
 }
