@@ -13,9 +13,9 @@ const keepUrl = (url: string): string => (url.startsWith(MENTION_SCHEME) ? url :
 const components: Components = {
   a: ({ node: _node, href, children, ...props }) =>
     href?.startsWith(MENTION_SCHEME) ? (
-      <span className="rounded bg-sky-soft px-0.5 text-sky-ink">{children}</span>
+      <span className="rounded bg-raised px-0.5 text-foreground">{children}</span>
     ) : (
-      <a {...props} href={href} target="_blank" rel="noopener noreferrer" className="text-sky-ink underline underline-offset-2">{children}</a>
+      <a {...props} href={href} target="_blank" rel="noopener noreferrer" className="text-foreground underline underline-offset-2">{children}</a>
     ),
   p: ({ node: _node, ...props }) => <p {...props} className="my-2 first:mt-0 last:mb-0" />,
   ul: ({ node: _node, ...props }) => <ul {...props} className="my-2 list-disc pl-5" />,

@@ -33,14 +33,14 @@ interface SidebarProps {
 const noop = (): void => undefined
 
 function SectionLabel({ children }: { children: string }) {
-  return <div className="label-mono px-2 pt-3.5 pb-1">{children}</div>
+  return <div className="text-xs font-medium text-muted-foreground px-2 pt-3.5 pb-1">{children}</div>
 }
 
 function HiddenSection({ bots, row }: { bots: readonly BotView[]; row: (bot: BotView) => ReactNode }) {
   if (bots.length === 0) return null
   return (
     <Collapsible>
-      <CollapsibleTrigger className="label-mono w-full px-2 pt-3.5 pb-1 text-left">
+      <CollapsibleTrigger className="text-xs font-medium text-muted-foreground w-full px-2 pt-3.5 pb-1 text-left">
         {`Hidden (${bots.length})`}
       </CollapsibleTrigger>
       <CollapsibleContent className="flex flex-col gap-1">{bots.map(row)}</CollapsibleContent>
@@ -102,7 +102,7 @@ function NeedsYouRow({ count, active, onClick }: NeedsYouRowProps) {
       aria-current={active ? 'page' : undefined}
       className={cn(
         'flex w-full items-center gap-2.5 rounded-2xl p-2 text-left text-sm font-medium transition-colors hover:bg-muted',
-        active && 'bg-sky-soft shadow-[inset_3px_0_0_var(--sky)] hover:bg-sky-soft'
+        active && 'bg-raised hover:bg-raised'
       )}
     >
       <span>Needs you</span>

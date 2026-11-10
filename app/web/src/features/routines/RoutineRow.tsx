@@ -17,10 +17,10 @@ import type { LastStatus, RoutineView } from './types'
 import { formatInZone } from './use-schedule-preview'
 
 const RESULT: Record<LastStatus, { text: string; tone: string }> = {
-  ok: { text: 'OK', tone: 'bg-ok-soft text-ok-ink' },
-  error: { text: 'Error', tone: 'bg-danger-soft text-danger-ink' },
-  delivery_failed: { text: 'Delivery failed', tone: 'bg-danger-soft text-danger-ink' },
-  blocked_config: { text: 'Config problem', tone: 'bg-warn-soft text-warn-ink' }
+  ok: { text: 'OK', tone: 'bg-status-working/15 text-foreground' },
+  error: { text: 'Error', tone: 'bg-destructive/10 text-destructive' },
+  delivery_failed: { text: 'Delivery failed', tone: 'bg-destructive/10 text-destructive' },
+  blocked_config: { text: 'Config problem', tone: 'bg-status-waiting/15 text-foreground' }
 }
 
 export { GHOST }
@@ -91,8 +91,8 @@ function StatusLine({ routine }: { routine: RoutineView }) {
   const text = routine.triggerOnly ? 'Only when triggered' : routine.finished ? 'Done' : routine.enabled ? (routine.nextRunAt !== null ? `Next · ${formatInZone(routine.nextRunAt, routine.timezone)}` : '') : 'Paused'
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="label-mono">{text}</span>
-      {routine.finished && routine.lastRunAt !== null && <span className="label-mono">{formatInZone(routine.lastRunAt, routine.timezone)}</span>}
+      <span className="text-xs font-medium text-muted-foreground">{text}</span>
+      {routine.finished && routine.lastRunAt !== null && <span className="text-xs font-medium text-muted-foreground">{formatInZone(routine.lastRunAt, routine.timezone)}</span>}
       {result && <Badge title={routine.lastError ?? undefined} className={cn('h-5 px-2 text-xs ring-1 ring-border', result.tone)}>{result.text}</Badge>}
     </div>
   )

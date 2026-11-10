@@ -23,7 +23,7 @@ function EventRow({ event, timezone, onOpenRun }: { event: TriggerEvent; timezon
   return (
     <li className="flex flex-col gap-1 rounded-xl bg-muted p-2.5 text-sm">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="label-mono">{formatInZone(event.at, timezone)}</span>
+        <span className="text-xs font-medium text-muted-foreground">{formatInZone(event.at, timezone)}</span>
         <span className="min-w-0 flex-1 truncate">{event.action ? `${event.eventType} · ${event.action}` : event.eventType}</span>
         <OutcomeBadge outcome={event.outcome} />
       </div>

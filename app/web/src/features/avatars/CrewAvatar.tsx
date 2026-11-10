@@ -29,12 +29,12 @@ export function CrewAvatar({ bot, size, interactive = true, decorative = false }
   return (
     <div className="relative flex-none" aria-hidden={decorative || undefined} style={{ width: size, height: size }}>
       {look.kind === 'photo' ? (
-        <div className={cn('size-full overflow-hidden rounded-[30%]', state === 'working' && 'ring-2 ring-sky', dim)}>
+        <div className={cn('size-full overflow-hidden rounded-[30%]', state === 'working' && 'ring-2 ring-status-working', dim)}>
           <img src={`/crew/avatars/${encodeURIComponent(bot.name)}`} alt={decorative ? '' : bot.title} onError={() => setBrokenKey(photoKey)} className="size-full object-cover" />
         </div>
       ) : (
         // Reduced motion freezes the working animation, so a ring (as on photos) keeps the state visible.
-        <div className={cn('size-full', state === 'working' && 'rounded-[30%] motion-reduce:ring-2 motion-reduce:ring-sky', dim)}>
+        <div className={cn('size-full', state === 'working' && 'rounded-[30%] motion-reduce:ring-2 motion-reduce:ring-status-working', dim)}>
           <BotAvatar
             shading="fabric"
             aria-label={decorative ? undefined : bot.title}
@@ -48,7 +48,7 @@ export function CrewAvatar({ bot, size, interactive = true, decorative = false }
         </div>
       )}
       {bot.status === 'needs_you' && (
-        <span aria-label="Needs you" role="img" className="absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full border-2 border-card bg-needs" />
+        <span aria-label="Needs you" role="img" className="absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full border-2 border-card bg-status-waiting" />
       )}
     </div>
   )

@@ -23,7 +23,7 @@ export function ScreenThumbnail({ bot, hidden, onOpen }: ScreenThumbnailProps) {
   if (thumb.suppressed) {
     const text = view.control === 'you' ? "You're in control" : 'Someone is in control'
     // min-w-0 + truncate: the chip gives way before the bot name does.
-    return <button type="button" onClick={onOpen} title={text} className="min-w-0 truncate rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/50">{text}</button>
+    return <button type="button" onClick={onOpen} title={text} className="min-w-0 truncate rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring">{text}</button>
   }
   if (!thumb.src) return null
   return (
@@ -33,7 +33,7 @@ export function ScreenThumbnail({ bot, hidden, onOpen }: ScreenThumbnailProps) {
       aria-label={`Open ${bot.title}'s screen`}
       data-stale={thumb.stale ? 'true' : undefined}
       title={thumb.stale ? 'This preview may be out of date' : undefined}
-      className={cn('h-8 w-[3.2rem] shrink-0 overflow-hidden rounded border border-border bg-muted outline-none focus-visible:ring-3 focus-visible:ring-ring/50', thumb.stale && 'opacity-50')}
+      className={cn('h-8 w-[3.2rem] shrink-0 overflow-hidden rounded border border-border bg-muted outline-none focus-visible:ring-3 focus-visible:ring-ring', thumb.stale && 'opacity-50')}
     >
       <img src={thumb.src} alt={`${bot.title}'s screen`} className="size-full object-cover" />
     </button>

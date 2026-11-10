@@ -25,7 +25,7 @@ async function copy(text: string) {
 function CopyRow({ label, value, button }: { label: string; value: string; button: string }) {
   return (
     <div className="flex flex-col gap-1">
-      <div className="label-mono">{label}</div>
+      <div className="text-xs font-medium text-muted-foreground">{label}</div>
       <div className="flex items-start gap-2">
         <code className="min-w-0 flex-1 break-all rounded-lg bg-muted p-2 font-mono text-xs">{value}</code>
         <Button type="button" size="sm" variant="outline" onClick={() => void copy(value)}>{button}</Button>

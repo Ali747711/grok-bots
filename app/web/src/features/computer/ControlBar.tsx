@@ -24,7 +24,7 @@ const CHIP: Record<ScreenControl, string> = {
 export function ControlBar({ control, connected, botTitle, onTake, onHandBack, onForce }: ControlBarProps) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Badge role="status" aria-live="polite" variant="outline" className={cn(control === 'you' && 'border-contrast-danger text-destructive', control === 'bot' && 'border-sky text-sky-ink')}>{CHIP[control]}</Badge>
+      <Badge role="status" aria-live="polite" variant="outline" className={cn(control === 'you' && 'border-destructive text-destructive', control === 'bot' && 'border-border text-foreground')}>{CHIP[control]}</Badge>
       {control !== 'you' && <Button size="sm" onClick={onTake} disabled={!connected}>Take control</Button>}
       {control === 'you' && <Button size="sm" variant="outline" onClick={onHandBack}>Hand back</Button>}
       {control === 'someone' && <Button size="sm" variant="outline" onClick={onForce}>Give control back to {botTitle}</Button>}

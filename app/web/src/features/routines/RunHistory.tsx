@@ -39,7 +39,7 @@ function RunSummary({ run, timezone }: { run: RunView; timezone: string | null }
         <span className="text-xs text-muted-foreground">{formatInZone(run.startedAt, timezone)}</span>
         <span className="ml-auto text-xs text-muted-foreground">{durationText(run)}</span>
       </span>
-      {run.error && <span className="mt-1 block text-xs text-danger-ink">{run.error}</span>}
+      {run.error && <span className="mt-1 block text-xs text-destructive">{run.error}</span>}
     </>
   )
 }

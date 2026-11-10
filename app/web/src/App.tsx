@@ -32,7 +32,7 @@ function NotFound() {
   return (
     <div className={`${centered} content-center justify-items-center gap-3`}>
       <p className="text-base font-medium text-foreground">Bot not found</p>
-      <Link to="/" className="text-sky-ink underline underline-offset-2">Back to your bots</Link>
+      <Link to="/" className="text-foreground underline underline-offset-2">Back to your bots</Link>
     </div>
   )
 }

@@ -31,7 +31,7 @@ export function ChatHeader({ bot, stale, panel = null, onPanel }: ChatHeaderProp
           {bot.sandbox === 'on' && <SandboxBadge />}
         </div>
         {!stale && (
-          <p className={cn('label-mono mt-0.5', bot.status === 'working' && 'text-sky-ink')}>
+          <p className={cn('text-xs font-medium text-muted-foreground mt-0.5', bot.status === 'working' && 'text-foreground')}>
             <span aria-hidden="true">● </span>
             {STATUS_TEXT[bot.status]}
           </p>

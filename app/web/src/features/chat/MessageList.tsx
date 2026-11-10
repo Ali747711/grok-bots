@@ -12,7 +12,7 @@ function Item({ item, onRetry }: { item: ChatItem; onRetry?: (submissionId: stri
     case 'user':
       return (
         <div className="flex max-w-[80%] flex-col items-end gap-1 self-end">
-          <div className="rounded-[16px_16px_4px_16px] bg-contrast px-3.5 py-2.5 whitespace-pre-wrap text-contrast-foreground">{item.text}</div>
+          <div className="rounded-[16px_16px_4px_16px] bg-raised px-3.5 py-2.5 whitespace-pre-wrap text-foreground">{item.text}</div>
           {item.delivery === 'checking' && <p className="text-xs text-muted-foreground">Delivery uncertain — checking…</p>}
           {item.delivery === 'not_sent' && (
             <p className="text-xs text-muted-foreground">

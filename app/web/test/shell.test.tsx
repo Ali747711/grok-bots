@@ -1,5 +1,5 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import { describe, expect, it } from 'vitest'
 
 import { Shell } from '@/layout/Shell'
 
@@ -29,19 +29,24 @@ const mockMedia = (width: number) => {
   })) as typeof window.matchMedia
 }
 
-describe('Shell blocks and canvas', () => {
-  afterEach(() => { delete document.documentElement.dataset.theme })
-
-  it('renders three rounded blocks on the sky canvas', () => {
+describe('Shell blocks', () => {
+  it('renders three rounded shell panels straight on the page canvas', () => {
     mockMedia(1440)
     const { container } = render(<Shell {...parts} panelOpen />)
     for (const el of [screen.getByRole('complementary', { name: 'Sidebar' }), screen.getByRole('main'), screen.getByRole('region', { name: 'Panel' })]) {
-      expect(el).toHaveClass('rounded-block')
-      expect(el.className).toMatch(/\bbg-card(\/95)?\b/)
+      expect(el).toHaveClass('rounded-3xl', 'bg-shell', 'shadow-panel')
     }
-    const canvas = container.querySelector('[data-canvas]')
-    expect(canvas).toHaveAttribute('aria-hidden', 'true')
+    // The body's --background is the canvas; there is no decorative layer any more.
+    expect(container.querySelector('[aria-hidden="true"]')).toBeNull()
     expect(container.firstElementChild!.className).toContain('grid-cols-[272px_minmax(0,1fr)_400px]')
+  })
+
+  it('lifts the narrow-window overlay with its own shadow', () => {
+    mockMedia(1100)
+    render(<Shell {...parts} panelOpen />)
+    const panel = screen.getByRole('region', { name: 'Panel' })
+    expect(panel).toHaveClass('bg-shell', 'shadow-2xl')
+    expect(panel).not.toHaveClass('shadow-panel')
   })
 
   it.each([1000, 1100, 1200, 1279])('opens the panel as an overlay below 1280 px (%i px)', width => {
@@ -63,16 +68,5 @@ describe('Shell blocks and canvas', () => {
     mockMedia(1440)
     render(<Shell {...parts} panelOpen />)
     expect(screen.getByRole('region', { name: 'Panel' })).not.toHaveAttribute('data-overlay')
-  })
-
-  it('switches the canvas when the theme changes', async () => {
-    mockMedia(1440)
-    document.documentElement.dataset.theme = 'light'
-    const { container } = render(<Shell {...parts} panelOpen={false} />)
-    expect(container.querySelector('[data-canvas]')).toHaveAttribute('data-variant', 'sky')
-    act(() => { document.documentElement.dataset.theme = 'dark' })
-    await waitFor(() => expect(container.querySelector('[data-canvas]')).toHaveAttribute('data-variant', 'flat'))
-    act(() => { document.documentElement.dataset.theme = 'light' })
-    await waitFor(() => expect(container.querySelector('[data-canvas]')).toHaveAttribute('data-variant', 'sky'))
   })
 })

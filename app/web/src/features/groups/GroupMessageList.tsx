@@ -25,7 +25,7 @@ function UserBubble({ item, onRetry }: { item: Extract<GroupItem, { kind: 'user'
   return (
     <div className="flex max-w-[80%] flex-col items-end gap-1 self-end">
       {fromOther && <span className="text-xs text-muted-foreground">{item.author}</span>}
-      <div className="rounded-[16px_16px_4px_16px] bg-contrast px-3.5 py-2.5 whitespace-pre-wrap text-contrast-foreground">{item.text}</div>
+      <div className="rounded-[16px_16px_4px_16px] bg-raised px-3.5 py-2.5 whitespace-pre-wrap text-foreground">{item.text}</div>
       {item.status === 'unknown' && (
         <p className="text-xs text-muted-foreground">
           Delivery uncertain.{' '}

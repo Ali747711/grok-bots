@@ -250,10 +250,10 @@ describe('RoutinesPanel finished routines and row errors', () => {
     const rows = await screen.findAllByRole('listitem')
     expect(rows[0]).toHaveClass('bg-muted', 'rounded-2xl')
     expect(within(rows[0]!).getByRole('switch', { name: 'Daily digest enabled' })).toBeChecked()
-    expect(within(rows[0]!).getByText('OK')).toHaveClass('bg-ok-soft', 'text-ok-ink', 'ring-1', 'ring-border')
+    expect(within(rows[0]!).getByText('OK')).toHaveClass('bg-status-working/15', 'text-foreground', 'ring-1', 'ring-border')
     for (const name of ['History', 'Edit', 'Delete']) expect(within(rows[0]!).getByRole('button', { name })).toHaveClass('hover:bg-card', 'dark:hover:bg-card')
-    expect(within(rows[1]!).getByText('Config problem')).toHaveClass('bg-warn-soft', 'text-warn-ink')
-    expect(within(rows[0]!).getByText(/^Next/)).toHaveClass('label-mono')
+    expect(within(rows[1]!).getByText('Config problem')).toHaveClass('bg-status-waiting/15', 'text-foreground')
+    expect(within(rows[0]!).getByText(/^Next/)).toHaveClass('text-xs', 'text-muted-foreground')
   })
 
   it('W2: a finished routine shows Done with no switch and no Run now', async () => {

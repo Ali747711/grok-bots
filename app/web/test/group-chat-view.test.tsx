@@ -48,7 +48,7 @@ describe('GroupChatView', () => {
     api.fetchGroupEvents.mockResolvedValue({ events: [ev(1, { text: 'ask @x and @ghost, also @x.' })], cursor: 1, latestSeq: 1, hasMore: false, epoch: 1 })
     mount(state(room()))
     const reply = await screen.findByTestId('member-message')
-    const marks = [...reply.querySelectorAll('.bg-sky-soft')].map(n => n.textContent)
+    const marks = [...reply.querySelectorAll('.bg-raised')].map(n => n.textContent)
     expect(marks).toEqual(['@x'])
     expect(reply.textContent).toContain('@ghost')
   })

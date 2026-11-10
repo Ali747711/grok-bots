@@ -27,8 +27,8 @@ describe('NeedsYouPage', () => {
     expect(link).toHaveAttribute('href', '/bots/dev')
     expect(within(link).getByTestId('stub')).toHaveAttribute('data-size', '32')
     expect(link.querySelector('[aria-hidden="true"]')).not.toBeNull()
-    expect(within(link).getByText('Open chat')).toHaveClass('text-sky-ink')
-    expect(link.closest('ul')!.parentElement).not.toHaveClass('rounded-block')
+    expect(within(link).getByText('Open chat')).toBeInTheDocument()
+    expect(link.closest('ul')!.parentElement).not.toHaveClass('rounded-3xl')
   })
 
   it.each([

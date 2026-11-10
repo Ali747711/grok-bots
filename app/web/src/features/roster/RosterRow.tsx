@@ -22,14 +22,14 @@ export function RosterRow({ bot, active, showStatus, onSelect }: RosterRowProps)
       onClick={() => onSelect(bot.name)}
       className={cn(
         'flex w-full items-center gap-2.5 rounded-2xl p-2 text-left transition-colors hover:bg-muted',
-        active && 'bg-sky-soft shadow-[inset_3px_0_0_var(--sky)] hover:bg-sky-soft'
+        active && 'bg-raised hover:bg-raised'
       )}
     >
       {/* A stale roster must not show live status, so the avatar sees an idle copy (hidden/old bots still sleep). */}
       <CrewAvatar bot={showStatus ? bot : { ...bot, status: 'idle' }} size={36} decorative />
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5">
-          <span className={cn('truncate text-sm font-semibold', active && 'text-sky-ink')}>{bot.title}</span>
+          <span className={cn('truncate text-sm font-semibold', active && 'text-foreground')}>{bot.title}</span>
           {bot.sandbox === 'on' && <SandboxBadge />}
           {bot.setupIncomplete && (
             <Badge variant="secondary" className="h-4 px-1.5 text-[10px] text-muted-foreground">

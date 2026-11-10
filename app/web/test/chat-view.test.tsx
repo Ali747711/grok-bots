@@ -53,16 +53,16 @@ describe('MessageList', () => {
 })
 
 describe('MessageList: look', () => {
-  it('renders user messages as contrast bubbles and bot replies as prose', () => {
+  it('renders user messages as raised bubbles and bot replies as prose', () => {
     const items: ChatItem[] = [
       { kind: 'user', id: 'u', text: 'hi there' },
       { kind: 'assistant', id: 'a', text: '[docs](https://example.com) and `code`' }
     ]
     render(<MessageList items={items} />)
-    expect(screen.getByText('hi there')).toHaveClass('bg-contrast', 'text-contrast-foreground', 'rounded-[16px_16px_4px_16px]')
+    expect(screen.getByText('hi there')).toHaveClass('bg-raised', 'text-foreground', 'rounded-[16px_16px_4px_16px]')
     const reply = screen.getByText('docs').closest('div')!
-    expect(reply.closest('.bg-contrast')).toBeNull()
-    expect(screen.getByText('docs')).toHaveClass('text-sky-ink')
+    expect(reply.closest('.bg-raised')).toBeNull()
+    expect(screen.getByRole('link', { name: 'docs' })).toHaveAttribute('href', 'https://example.com')
     expect(screen.getByText('code').closest('code')).toBeInTheDocument()
   })
 })
@@ -106,10 +106,11 @@ describe('ChatView', () => {
     }
   })
 
-  it('shows the working status in sky in the header, with a 40 px avatar', async () => {
+  it('shows the working status in the header, with a 40 px avatar', async () => {
     render(<ChatView bot={{ ...dev, status: 'working' }} state={crewState()} crewConnected />)
     await flush()
-    expect(screen.getByText('Working')).toHaveClass('text-sky-ink', 'label-mono')
+    expect(screen.getByText('Working')).toHaveClass('text-foreground', 'text-xs')
+    expect(screen.getByText('Working')).not.toHaveClass('text-muted-foreground')
     expect(screen.getByTestId('stub')).toHaveAttribute('data-size', '40')
   })
 

@@ -6,12 +6,12 @@ import { cn } from '@/lib/utils'
 import type { TriggerOutcome } from './types'
 
 const MUTED = 'bg-muted text-muted-foreground'
-const DANGER = 'bg-danger-soft text-danger-ink'
-const WARN = 'bg-warn-soft text-warn-ink'
+const DANGER = 'bg-destructive/10 text-destructive'
+const WARN = 'bg-status-waiting/15 text-foreground'
 
 export const OUTCOME: Record<TriggerOutcome, { text: string; tone: string; Icon: LucideIcon }> = {
-  started: { text: 'Started', tone: 'bg-sky-soft text-sky-ink', Icon: CircleDot },
-  finished: { text: 'Finished', tone: 'bg-ok-soft text-ok-ink', Icon: CircleCheck },
+  started: { text: 'Started', tone: 'bg-raised text-foreground', Icon: CircleDot },
+  finished: { text: 'Finished', tone: 'bg-status-working/15 text-foreground', Icon: CircleCheck },
   failed: { text: 'Failed', tone: DANGER, Icon: CircleX },
   blocked: { text: "Blocked by Hermes's safety check", tone: WARN, Icon: ShieldAlert },
   ignored: { text: 'Ignored by the filter', tone: MUTED, Icon: Funnel },

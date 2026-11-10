@@ -39,12 +39,12 @@ export function GroupRow({ group, bots, active, stale, onSelect }: GroupRowProps
       onClick={() => onSelect(group.id)}
       className={cn(
         'flex w-full items-center gap-2.5 rounded-2xl p-2 text-left transition-colors hover:bg-muted',
-        active && 'bg-sky-soft shadow-[inset_3px_0_0_var(--sky)] hover:bg-sky-soft'
+        active && 'bg-raised hover:bg-raised'
       )}
     >
       <StackedAvatars bots={members} size={30} />
       <span className="min-w-0 flex-1">
-        <span className={cn('block truncate text-sm font-semibold', active && 'text-sky-ink')}>{group.name}</span>
+        <span className={cn('block truncate text-sm font-semibold', active && 'text-foreground')}>{group.name}</span>
         <span className="block truncate text-xs text-muted-foreground">{previewText(group, bots, stale)}</span>
       </span>
     </button>

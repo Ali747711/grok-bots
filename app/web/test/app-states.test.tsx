@@ -77,8 +77,8 @@ export const rawColours = (source: string): string[] => source.match(RAW_COLOUR)
 // Colour literals outside class names (inline styles, canvas code): hex, rgb(), hsl(), oklch().
 const LITERAL = /#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|oklch)\(/g
 export const colourLiterals = (source: string): string[] => source.match(LITERAL) ?? []
-// The only places that may hold colour data: the sky canvas gradient and the avatar swatches.
-const LITERAL_ALLOWED = [join('layout', 'SkyCanvas.tsx'), join('features', 'avatars', 'avatar-model.ts')]
+// The only place that may hold colour data: the avatar swatches.
+const LITERAL_ALLOWED = [join('features', 'avatars', 'avatar-model.ts')]
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
@@ -94,7 +94,7 @@ describe('theme tokens only', () => {
     const planted = rawColours('className="text-red-600 hover:bg-white dark:border-[#fff] data-checked:text-black/80"')
     expect(planted).toEqual(['text-red-600', 'hover:bg-white', 'dark:border-[#fff]', 'data-checked:text-black'])
     expect(rawColours('bg-[rgb(1,2,3)] text-[oklch(0.5_0_0)] bg-[hsl(0,0%,0%)] border-[#abc]')).toHaveLength(4)
-    expect(rawColours('bg-sky text-sky-ink bg-sky-soft bg-needs bg-contrast text-contrast-foreground bg-ok-soft text-danger-ink border-contrast-line')).toEqual([])
+    expect(rawColours('bg-shell text-faint bg-raised bg-control ring-watermelon bg-status-working')).toEqual([])
   })
 
   it('catches planted colour literals', () => {
@@ -102,7 +102,7 @@ describe('theme tokens only', () => {
     expect(colourLiterals("const url = '/login#ticket=abc' // not a colour")).toEqual([])
   })
 
-  it('keeps colour literals to the sky canvas and the avatar swatches', () => {
+  it('keeps colour literals to the avatar swatches', () => {
     const hits = sourceFiles(SRC)
       .filter(file => !LITERAL_ALLOWED.includes(relative(SRC, file)))
       .flatMap(file => colourLiterals(readFileSync(file, 'utf8')).map(hit => `${relative(SRC, file)}: ${hit}`))

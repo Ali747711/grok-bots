@@ -29,7 +29,7 @@ function GroupNotFound() {
   return (
     <div className="grid flex-1 content-center justify-items-center gap-3 text-sm text-muted-foreground">
       <p className="text-base font-medium text-foreground">Group not found</p>
-      <Link to="/" className="text-sky-ink underline underline-offset-2">Back to your bots</Link>
+      <Link to="/" className="text-foreground underline underline-offset-2">Back to your bots</Link>
     </div>
   )
 }

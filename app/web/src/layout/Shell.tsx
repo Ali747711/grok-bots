@@ -2,8 +2,6 @@ import { type ReactNode, useEffect, useState } from 'react'
 
 import { cn } from '@/lib/utils'
 
-import { SkyCanvas } from './SkyCanvas'
-
 interface ShellProps {
   sidebar: ReactNode
   main: ReactNode
@@ -28,9 +26,11 @@ function useNarrow(): boolean {
   return narrow
 }
 
-const BLOCK = 'min-h-0 min-w-0 rounded-block bg-card/95 shadow-sm'
+const BLOCK = 'min-h-0 min-w-0 rounded-3xl bg-shell'
+// tailwind-merge does not know `shadow-panel` is a box shadow, so a block takes exactly one of the two.
+const FLOAT = 'shadow-panel'
 
-/** Three rounded blocks on the sky canvas: roster, chat, and the panel (an overlay on narrow windows). */
+/** Three rounded shell panels on the page canvas: roster, chat, and the panel (an overlay on narrow windows). */
 export function Shell({ sidebar, main, panel, panelOpen }: ShellProps) {
   const overlay = useNarrow() && panelOpen
   const threeColumns = panelOpen && !overlay
@@ -41,11 +41,10 @@ export function Shell({ sidebar, main, panel, panelOpen }: ShellProps) {
         threeColumns ? 'grid-cols-[272px_minmax(0,1fr)_400px]' : 'grid-cols-[272px_minmax(0,1fr)]'
       )}
     >
-      <SkyCanvas />
-      <aside aria-label="Sidebar" className={cn(BLOCK, 'flex flex-col overflow-y-auto px-2.5 py-3.5')}>
+      <aside aria-label="Sidebar" className={cn(BLOCK, FLOAT, 'flex flex-col overflow-y-auto px-2.5 py-3.5')}>
         {sidebar}
       </aside>
-      <main className={cn(BLOCK, 'flex flex-col overflow-hidden')}>{main}</main>
+      <main className={cn(BLOCK, FLOAT, 'flex flex-col overflow-hidden')}>{main}</main>
       {panelOpen && (
         <section
           aria-label="Panel"
@@ -53,7 +52,7 @@ export function Shell({ sidebar, main, panel, panelOpen }: ShellProps) {
           className={cn(
             BLOCK,
             'flex flex-col overflow-y-auto',
-            overlay && 'absolute inset-y-3 right-3 z-20 w-[min(400px,calc(100%-24px))] bg-card shadow-2xl'
+            overlay ? 'absolute inset-y-3 right-3 z-20 w-[min(400px,calc(100%-24px))] shadow-2xl' : FLOAT
           )}
         >
           {panel}

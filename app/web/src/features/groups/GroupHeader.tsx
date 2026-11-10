@@ -26,7 +26,7 @@ export function GroupHeader({ group, bots, stale, panelOpen, onPanel, onStop }: 
       <StackedAvatars bots={members} size={34} />
       <div className="min-w-24 flex-1">
         <h2 className="truncate text-sm font-semibold">{group.name}</h2>
-        <p className="label-mono mt-0.5">{`${group.members.length} bots · ${ROUTING_LABEL[group.routing]} replies`}</p>
+        <p className="text-xs font-medium text-muted-foreground mt-0.5">{`${group.members.length} bots · ${ROUTING_LABEL[group.routing]} replies`}</p>
       </div>
       {group.working && !stale && <Button type="button" size="sm" variant="outline" className="rounded-full" onClick={onStop}>Stop</Button>}
       <Button

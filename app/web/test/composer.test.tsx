@@ -35,7 +35,7 @@ describe('Composer', () => {
     expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
   })
 
-  it('uses the lime round send button and keeps the disabled reason visible', () => {
+  it('uses the primary round send button and keeps the disabled reason visible', () => {
     const { rerender } = render(<Composer {...base} />)
     expect(screen.getByRole('button', { name: 'Send' })).toHaveClass('bg-primary', 'rounded-full')
     rerender(<Composer {...base} disabledReason="Hermes is offline" />)

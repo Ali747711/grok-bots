@@ -17,9 +17,9 @@ export function durationText(run: Pick<RunView, 'startedAt' | 'endedAt' | 'statu
 
 /** Badge colours per run status, from theme tokens. */
 export const RUN_TONE: Record<RunView['status'], string> = {
-  running: 'bg-sky-soft text-sky-ink',
+  running: 'bg-raised text-foreground',
   completed: 'bg-muted text-foreground',
-  failed: 'bg-danger-soft text-danger-ink',
+  failed: 'bg-destructive/10 text-destructive',
   cancelled: 'bg-muted text-muted-foreground',
   missed: 'bg-muted text-muted-foreground'
 }

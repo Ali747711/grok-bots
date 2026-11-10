@@ -30,7 +30,7 @@ function Step({ step }: { step: WorkStep }) {
       <div className="flex flex-wrap items-baseline gap-2">
         <span className="font-medium">{step.name}</span>
         <span className="min-w-0 break-all text-muted-foreground">{step.summary}</span>
-        {step.isError && <span className="text-xs font-medium text-danger-ink">Failed</span>}
+        {step.isError && <span className="text-xs font-medium text-destructive">Failed</span>}
       </div>
       {step.detail && <StepDetail detail={step.detail} />}
     </li>

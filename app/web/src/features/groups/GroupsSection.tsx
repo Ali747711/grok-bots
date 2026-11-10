@@ -22,7 +22,7 @@ export function GroupsSection({ state, selectedGroupId, stale, onSelect, onNewGr
   return (
     <section role="group" aria-label="Groups" className="flex flex-col gap-1">
       <div className="flex items-center justify-between pt-3.5 pr-1 pb-1 pl-2">
-        <span className="label-mono">Groups</span>
+        <span className="text-xs font-medium text-muted-foreground">Groups</span>
         {groups.available && onNewGroup && (
           <Button type="button" variant="ghost" size="icon-xs" aria-label="New group" onClick={onNewGroup}>
             <PlusIcon />

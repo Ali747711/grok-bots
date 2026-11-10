@@ -63,7 +63,7 @@ export function Composer({ onSend, onStop, running, disabledReason, stopDisabled
             className="max-h-40 min-h-9 flex-1 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 dark:bg-transparent"
           />
           {running ? (
-            <Button type="button" disabled={stopDisabled} onClick={onStop} className="rounded-full bg-contrast text-contrast-foreground hover:bg-contrast/90">Stop</Button>
+            <Button type="button" disabled={stopDisabled} onClick={onStop} className="rounded-full bg-raised text-foreground hover:bg-hover">Stop</Button>
           ) : (
             <SendButton disabled={disabled || !text.trim()} onClick={submit} />
           )}

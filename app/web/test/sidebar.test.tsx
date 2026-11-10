@@ -110,18 +110,19 @@ describe('Sidebar', () => {
     expect(within(screen.getByText(long).closest('button')!).getByTestId('stub').parentElement!.parentElement).toHaveStyle({ width: '36px', height: '36px' })
   })
 
-  it('marks the selected bot with the sky style', () => {
+  it('marks the selected bot with the raised fill', () => {
     renderSidebar(crewState(), 'dev')
     const row = screen.getByRole('button', { name: /Dev/ })
     expect(row).toHaveAttribute('data-selected', 'true')
-    expect(row).toHaveClass('bg-sky-soft')
+    expect(row).toHaveClass('bg-raised')
     expect(screen.getByRole('button', { name: /Researcher/ })).not.toHaveAttribute('data-selected')
   })
 
-  it('shows mono section labels and the lime needs-you count', () => {
+  it('shows quiet sentence-case section labels and the primary needs-you count', () => {
     renderSidebar(crewState({ pending: [pending('a')] }))
-    expect(within(screen.getByRole('group', { name: 'Primary' })).getByText('Primary')).toHaveClass('label-mono')
-    expect(within(screen.getByRole('group', { name: 'Bots' })).getByText('Bots')).toHaveClass('label-mono')
+    expect(within(screen.getByRole('group', { name: 'Primary' })).getByText('Primary')).toHaveClass('text-xs', 'text-muted-foreground')
+    expect(within(screen.getByRole('group', { name: 'Bots' })).getByText('Bots')).toHaveClass('text-xs', 'text-muted-foreground')
+    expect(within(screen.getByRole('group', { name: 'Bots' })).getByText('Bots')).not.toHaveClass('uppercase')
     expect(screen.getByTestId('needs-you-count')).toHaveClass('bg-primary', 'text-primary-foreground')
   })
 
@@ -140,7 +141,7 @@ describe('Sidebar', () => {
   it('marks the Needs you row like a selected bot when its page is open', () => {
     render(<Sidebar state={crewState()} selected={null} onSelect={() => undefined} needsYouActive />)
     const row = screen.getByRole('button', { name: /Needs you/ })
-    expect(row).toHaveClass('bg-sky-soft')
+    expect(row).toHaveClass('bg-raised')
     expect(row).toHaveAttribute('aria-current', 'page')
     expect(row).toHaveAttribute('data-selected', 'true')
   })

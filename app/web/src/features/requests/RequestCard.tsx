@@ -20,8 +20,8 @@ const FAILURES: Record<string, string> = {
   not_connected: 'Hermes was offline',
   stale_generation: 'This request is no longer current'
 }
-const SECONDARY = 'text-contrast-foreground/70'
-const DARK_INPUT = 'border-contrast-line bg-contrast-muted text-contrast-foreground placeholder:text-contrast-foreground/60 dark:bg-contrast-muted'
+const SECONDARY = 'text-muted-foreground'
+const INPUT = 'border-border bg-control text-foreground placeholder:text-muted-foreground dark:bg-control'
 const SCOPED = new Set(['session', 'always'])
 /** Same limit the server enforces on answers. */
 const ANSWER_MAX = 4000
@@ -35,15 +35,15 @@ function ApprovalDetail({ entry }: { entry: PendingView }) {
   if (entry.command === undefined && entry.description === undefined) return <p className="mb-2 font-medium break-words">{entry.summary}</p>
   return (
     <div className="mb-2 space-y-2">
-      {(hasHidden(entry.command) || hasHidden(entry.description)) && <p className="text-xs font-medium text-contrast-danger">This command contains hidden characters.</p>}
+      {(hasHidden(entry.command) || hasHidden(entry.description)) && <p className="text-xs font-medium text-destructive">This command contains hidden characters.</p>}
       {entry.description && <p className="font-medium break-words whitespace-pre-wrap"><RevealHidden text={entry.description} /></p>}
       {entry.command && (
-        <pre data-testid="approval-command" className="max-h-[40vh] overflow-auto rounded-lg bg-contrast-muted p-2.5 font-mono text-xs break-all whitespace-pre-wrap">
+        <pre data-testid="approval-command" className="max-h-[40vh] overflow-auto rounded-lg bg-control p-2.5 font-mono text-xs break-all whitespace-pre-wrap">
           <RevealHidden text={entry.command} />
         </pre>
       )}
-      {entry.app?.argsTruncated && <p className="text-xs font-medium text-contrast-danger">Hermes shows only the start of this request.</p>}
-      {entry.detailTruncated && <p className="text-xs font-medium text-contrast-danger">This command is too long to show in full. Review it in the Hermes app.</p>}
+      {entry.app?.argsTruncated && <p className="text-xs font-medium text-destructive">Hermes shows only the start of this request.</p>}
+      {entry.detailTruncated && <p className="text-xs font-medium text-destructive">This command is too long to show in full. Review it in the Hermes app.</p>}
     </div>
   )
 }
@@ -64,7 +64,7 @@ function ApprovalControls({ entry, disabled, send }: { entry: PendingView; disab
               key={choice}
               type="button"
               size="sm"
-              variant={choice === 'once' ? 'default' : 'contrast-outline'}
+              variant={choice === 'once' ? 'default' : 'outline'}
               title={hint || undefined}
               disabled={disabled}
               onClick={() => void send({ choice })}
@@ -93,14 +93,14 @@ function ClarifyControls({ entry, disabled, retry, send }: { entry: PendingView;
       {entry.choices && entry.choices.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {entry.choices.map(c => (
-            <Button key={c} type="button" size="sm" variant="contrast-outline" disabled={disabled} onClick={() => void send({ answer: c })}>{c}</Button>
+            <Button key={c} type="button" size="sm" variant="outline" disabled={disabled} onClick={() => void send({ answer: c })}>{c}</Button>
           ))}
         </div>
       )}
       <div className="flex gap-2">
         <Input
           aria-label="Your answer"
-          className={DARK_INPUT}
+          className={INPUT}
           value={text}
           disabled={disabled}
           maxLength={ANSWER_MAX}
@@ -108,7 +108,7 @@ function ClarifyControls({ entry, disabled, retry, send }: { entry: PendingView;
           onKeyDown={e => { if (isSubmitKey(e)) void submit() }}
         />
         <Button type="button" size="sm" disabled={disabled || !text.trim()} onClick={() => void submit()}>{retry ? 'Try again' : 'Send'}</Button>
-        <Button type="button" size="sm" variant="contrast-outline" disabled={disabled} onClick={() => void send({ answer: '' })}>Skip</Button>
+        <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => void send({ answer: '' })}>Skip</Button>
       </div>
       {text.length >= COUNT_FROM && <p className={`text-right text-xs ${SECONDARY}`}>{text.length.toLocaleString('en-US')} / {ANSWER_MAX.toLocaleString('en-US')}</p>}
     </div>
@@ -132,7 +132,7 @@ function SecretControls({ entry, disabled, retry, send }: { entry: PendingView; 
       <div className="flex gap-2">
         <Input
           id={inputId}
-          className={DARK_INPUT}
+          className={INPUT}
           type="password"
           autoComplete="off"
           value={value}
@@ -168,8 +168,8 @@ export function RequestCard({ entry, onAnswer, botTitle }: RequestCardProps) {
   }
 
   return (
-    <div data-testid="request-card" className="rounded-2xl border border-contrast-border bg-contrast p-4 text-sm text-contrast-foreground">
-      <p className="label-mono mb-2 text-primary">
+    <div data-testid="request-card" className="rounded-2xl border border-border bg-raised p-4 text-sm text-foreground">
+      <p className="mb-2 text-xs font-medium text-primary">
         <span aria-hidden="true">● </span>
         Needs you
       </p>
@@ -186,7 +186,7 @@ export function RequestCard({ entry, onAnswer, botTitle }: RequestCardProps) {
         </>
       )}
       {disabled && <p role="status" className={`mt-2 text-xs ${SECONDARY}`}>Sending…</p>}
-      {retry && entry.answerable && <p className="mt-2 text-xs font-medium text-contrast-danger">Couldn’t send: {FAILURES[entry.error ?? ''] ?? entry.error ?? 'unknown error'}. Try again.</p>}
+      {retry && entry.answerable && <p className="mt-2 text-xs font-medium text-destructive">Couldn’t send: {FAILURES[entry.error ?? ''] ?? entry.error ?? 'unknown error'}. Try again.</p>}
       {message && <p className={`mt-2 text-xs ${SECONDARY}`}>{message}</p>}
     </div>
   )

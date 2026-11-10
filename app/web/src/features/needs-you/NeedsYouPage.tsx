@@ -43,7 +43,7 @@ export function NeedsYouPage({ state, crewConnected = true, now = Date.now }: { 
                         <span className="ml-auto shrink-0">{formatAge(entry.receivedAt, now())}</span>
                       </span>
                       <span className="mt-0.5 block text-sm break-words">{entry.summary}</span>
-                      <span className="mt-1 block text-xs font-medium text-sky-ink">Open chat</span>
+                      <span className="mt-1 block text-xs font-medium text-foreground">Open chat</span>
                     </span>
                   </Link>
                 </li>
