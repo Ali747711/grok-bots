@@ -59,7 +59,14 @@ const where = () => screen.getByTestId('where').textContent
 const panel = () => screen.queryByRole('region', { name: 'Panel' })
 const remembered = () => window.localStorage.getItem(SIDE_PANEL_KEY)
 const message = () => screen.getByRole('textbox', { name: 'Message' })
-const row = (name: string) => document.querySelector<HTMLElement>(`[data-bot="${name}"]`)!
+// The rail row's main button (the row also holds pin and hide).
+const row = (name: string) => document.querySelector<HTMLElement>(`[data-bot="${name}"] button`)!
+/** The rail reaches the Needs-you page through "Open all (n)", which is there only while a request is open. */
+const withOpenRequest = () => {
+  const request = { id: 'q', kind: 'approval', profile: 'gone', sessionId: 's', summary: 'rm', receivedAt: 1, source: 'event', state: 'open', answerable: true } as const
+  hook.value = { ...hook.value, state: { ...hook.value.state!, pending: [request] } }
+}
+const openNeedsYou = () => fireEvent.click(screen.getByRole('button', { name: 'Open all (1)' }))
 const press = (init: KeyboardEventInit, target: Element = document.body) => fireEvent.keyDown(target, init)
 const toggleSide = (target?: Element) => press({ key: '\\', ctrlKey: true }, target)
 
@@ -317,6 +324,7 @@ describe('one chat session and drafts', () => {
   })
 
   it('keeps a composer draft per bot across the profile and a bot switch', async () => {
+    withOpenRequest()
     renderAt('/bots/dev')
     await waitFor(() => expect(message()).toBeEnabled())
     fireEvent.change(message(), { target: { value: 'dev draft' } })
@@ -327,7 +335,7 @@ describe('one chat session and drafts', () => {
     fireEvent.click(row('researcher'))
     expect(message()).toHaveValue('')
     fireEvent.change(message(), { target: { value: 'research draft' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Needs you' }))
+    openNeedsYou()
     fireEvent.click(row('dev'))
     expect(message()).toHaveValue('dev draft')
     fireEvent.click(row('researcher'))
@@ -373,6 +381,7 @@ describe('window shortcuts', () => {
   })
 
   it('⌘\\ and Esc do nothing while the user holds control of the screen, and ⌘\\ nothing off a bot page', async () => {
+    withOpenRequest()
     renderAt('/bots/dev?panel=computer')
     await screen.findByTestId('screen-body')
     setLiveControlHeld(true)
@@ -380,13 +389,27 @@ describe('window shortcuts', () => {
     press({ key: 'Escape' })
     expect(where()).toBe('/bots/dev?panel=computer')
     setLiveControlHeld(false)
-    fireEvent.click(screen.getByRole('button', { name: 'Needs you' }))
+    openNeedsYou()
     toggleSide()
     expect(where()).toBe('/needs-you')
     expect(remembered()).toBeNull()
   })
 
+  it('⌥digit opens the rail bot at that position and keeps the page\'s panel', async () => {
+    renderAt('/bots/default?panel=routines')
+    await screen.findByRole('heading', { name: 'Hermes' })
+    // Rail order: Needs you (researcher), Pinned (the primary), Crew (dev).
+    press({ key: '3', code: 'Digit3', altKey: true })
+    expect(where()).toBe('/bots/dev?panel=routines')
+    press({ key: '1', code: 'Digit1', altKey: true }, message())
+    expect(where()).toBe('/bots/dev?panel=routines')
+    setLiveControlHeld(true)
+    press({ key: '1', code: 'Digit1', altKey: true })
+    expect(where()).toBe('/bots/dev?panel=routines')
+  })
+
   it('Esc leaves the profile and the Needs-you page, but not from a field or an open dialog', async () => {
+    withOpenRequest()
     renderAt('/bots/dev?panel=profile&tab=advanced')
     const name = await screen.findByLabelText('Name')
     press({ key: 'Escape' }, name)
@@ -396,7 +419,7 @@ describe('window shortcuts', () => {
 
     // From the queue, Esc goes back to the last bot page as it was.
     fireEvent.click(screen.getByRole('button', { name: 'Routines' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Needs you' }))
+    openNeedsYou()
     expect(where()).toBe('/needs-you')
     fireEvent.click(screen.getByRole('button', { name: '+ New bot' }))
     press({ key: 'Escape' }, await screen.findByRole('dialog'))

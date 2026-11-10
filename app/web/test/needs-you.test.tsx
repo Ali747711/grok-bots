@@ -39,14 +39,14 @@ describe('NeedsYouPage', () => {
     renderPage(crewState({ ...over, bots, pending: [pending('a', 'dev', 'approval', 'x', 5), pending('b', 'res', 'approval', 'y', 6)] }), connected)
     expect(screen.getAllByTestId('stub')).toHaveLength(2)
     for (const stub of screen.getAllByTestId('stub')) expect(stub).not.toHaveAttribute('data-state', 'working')
-    expect(screen.queryByRole('img', { name: 'Needs you', hidden: true })).toBeNull()
+    expect(document.querySelector('.bg-status-waiting, .bg-status-working')).toBeNull()
   })
 
   it('shows live status on the rows while connected (control)', () => {
     const bots = [bot({ name: 'dev', title: 'Dev', status: 'working' }), bot({ name: 'res', title: 'Res', status: 'needs_you' })]
     renderPage(crewState({ bots, pending: [pending('a', 'dev', 'approval', 'x', 5), pending('b', 'res', 'approval', 'y', 6)] }))
     expect(within(screen.getByText('x').closest('a')!).getByTestId('stub')).toHaveAttribute('data-state', 'working')
-    expect(within(screen.getByText('y').closest('a')!).getByRole('img', { name: 'Needs you', hidden: true })).toBeInTheDocument()
+    expect(screen.getByText('y').closest('a')!.querySelector('.bg-status-waiting')).not.toBeNull()
   })
 
   it('lists entries across bots and links to the chat', () => {

@@ -11,7 +11,7 @@ import { GroupPanel } from '@/features/groups/GroupPanel'
 import { NewGroupDialog } from '@/features/groups/NewGroupDialog'
 import { NeedsYouPage } from '@/features/needs-you/NeedsYouPage'
 import { PanelBoundary } from '@/features/panel/PanelBoundary'
-import { Sidebar } from '@/features/roster/Sidebar'
+import { Rail } from '@/features/rail/Rail'
 import { SidePanel } from '@/features/side-panel/SidePanel'
 import { Shell } from '@/layout/Shell'
 import type { CrewState } from '@/state/types'
@@ -87,7 +87,7 @@ export default function App() {
     <ChatSessionProvider bot={bot}>
       <Shell
         rail={
-          <Sidebar
+          <Rail
             state={state}
             crewConnected={connected}
             selected={selected}

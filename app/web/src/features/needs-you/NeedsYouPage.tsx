@@ -35,7 +35,7 @@ export function NeedsYouPage({ state, crewConnected = true, now = Date.now }: { 
               return (
                 <li key={entry.id}>
                   <Link to={to} className="flex items-start gap-3 rounded-2xl p-2.5 hover:bg-muted">
-                    {bot && <CrewAvatar bot={stale ? { ...bot, status: 'idle' } : bot} size={32} decorative />}
+                    {bot && <CrewAvatar bot={stale ? { ...bot, status: 'idle' } : bot} size={32} decorative showStatus={!stale} />}
                     <span className="min-w-0 flex-1">
                       <span className="flex items-baseline gap-2 text-xs text-muted-foreground">
                         <span className="min-w-0 truncate text-sm font-semibold text-foreground">{room ? `${who} in ${room.name}` : who}</span>

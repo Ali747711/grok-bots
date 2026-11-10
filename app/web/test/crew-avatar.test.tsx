@@ -70,11 +70,41 @@ describe('CrewAvatar', () => {
     expect(screen.getByTestId('stub').parentElement).not.toHaveClass('motion-reduce:ring-2')
   })
 
-  it('shows the waiting dot only when the bot needs you', () => {
-    const { rerender } = render(<CrewAvatar bot={bot({ name: 'x', status: 'needs_you' })} size={34} />)
-    expect(screen.getByRole('img', { name: 'Needs you' })).toHaveClass('bg-status-waiting')
-    rerender(<CrewAvatar bot={bot({ name: 'x', status: 'idle' })} size={34} />)
-    expect(screen.queryByLabelText('Needs you')).toBeNull()
+  it.each([
+    ['idle', 'Idle', 'bg-status-idle'],
+    ['working', 'Working', 'bg-status-working'],
+    ['needs_you', 'Needs you', 'bg-status-waiting']
+  ] as const)('shows a corner status dot for %s when showStatus is set', (status, label, colour) => {
+    render(<CrewAvatar bot={bot({ name: 'x', status })} size={32} showStatus />)
+    const text = screen.getByText(label)
+    expect(text).toHaveClass('sr-only')
+    const corner = text.parentElement!
+    expect(corner).toHaveClass('absolute', 'rounded-full')
+    expect(corner.querySelector(`.${colour}`)).not.toBeNull()
+  })
+
+  it('has no status dot without showStatus, not even for a bot that needs you', () => {
+    const { container } = render(<CrewAvatar bot={bot({ name: 'x', status: 'needs_you' })} size={32} />)
+    expect(container.querySelector('.bg-status-waiting')).toBeNull()
+    expect(screen.queryByText('Needs you')).toBeNull()
+    expect(screen.queryByRole('img', { name: 'Needs you' })).toBeNull()
+  })
+
+  it('pulses only the working dot, and only where motion is allowed', () => {
+    const pulse = () => document.querySelector('.motion-safe\\:animate-status-pulse')
+    const { rerender } = render(<CrewAvatar bot={bot({ name: 'x', status: 'working' })} size={32} showStatus />)
+    expect(pulse()).not.toBeNull()
+    expect(document.querySelector('.animate-status-pulse')).toBeNull()
+    rerender(<CrewAvatar bot={bot({ name: 'x', status: 'needs_you' })} size={32} showStatus />)
+    expect(pulse()).toBeNull()
+    rerender(<CrewAvatar bot={bot({ name: 'x', status: 'idle' })} size={32} showStatus />)
+    expect(pulse()).toBeNull()
+  })
+
+  it('keeps the working ring on a photo beside its status dot', () => {
+    render(<CrewAvatar bot={bot({ name: 'x', status: 'working', imageKind: 'photo', hasAvatar: true })} size={32} showStatus />)
+    expect(document.querySelector('img')!.parentElement).toHaveClass('ring-2', 'ring-status-working')
+    expect(screen.getByText('Working')).toHaveClass('sr-only')
   })
 
   it('names the avatar and the photo with the bot title', () => {
@@ -94,10 +124,10 @@ describe('CrewAvatar', () => {
     expect(screen.getByRole('img')).toBeInTheDocument()
   })
 
-  it('hides a decorative avatar, its photo and its needs-you dot from assistive tech', () => {
-    const { container, rerender } = render(<CrewAvatar bot={bot({ name: 'x', status: 'needs_you' })} size={34} decorative />)
+  it('hides a decorative avatar, its photo and its status dot from assistive tech', () => {
+    const { container, rerender } = render(<CrewAvatar bot={bot({ name: 'x', status: 'needs_you' })} size={34} decorative showStatus />)
     expect(container.firstElementChild).toHaveAttribute('aria-hidden', 'true')
-    expect(screen.queryByRole('img', { name: 'Needs you' })).toBeNull()
+    expect(container.firstElementChild).toContainElement(screen.getByText('Needs you'))
     rerender(<CrewAvatar bot={bot({ name: 'x', title: 'Scout Bot', imageKind: 'photo', hasAvatar: true })} size={34} decorative />)
     expect(document.querySelector('img')).toHaveAttribute('alt', '')
     expect(screen.queryByAltText('Scout Bot')).toBeNull()
