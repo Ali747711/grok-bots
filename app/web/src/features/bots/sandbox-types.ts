@@ -1,4 +1,7 @@
 // Copies of the server's shapes (app/server/src/bots/sandbox*.ts, sandbox/docker.ts, sandbox/pull.ts). Never import from the server.
+/** Copy of the server's managed image (sandbox/docker.ts DEFAULT_IMAGE). */
+export const DEFAULT_IMAGE = 'nousresearch/hermes-sandbox:desktop'
+
 export type SandboxState = 'off' | 'on' | 'partial'
 export type DockerState = 'ok' | 'missing' | 'down'
 export type PullError = 'no_space' | 'network' | 'failed'

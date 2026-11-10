@@ -7,7 +7,7 @@ import { useImageStatus } from './use-sandbox'
 
 /** Download the sandbox image once. Calls `onReady` when it turns present. */
 export function ImageDownload({ onReady }: { onReady: () => void }) {
-  const { status, start, starting } = useImageStatus()
+  const { status, start, starting, failure } = useImageStatus()
   const told = useRef(false)
   const present = status?.present === true
   useEffect(() => {
@@ -25,10 +25,11 @@ export function ImageDownload({ onReady }: { onReady: () => void }) {
       </Button>
       {pulling && (
         <>
-          <progress className="h-2 w-full accent-primary" max={100} {...(progressValue(status?.progress ?? null))} />
+          <progress aria-label="Download progress" className="h-2 w-full accent-primary" max={100} {...(progressValue(status?.progress ?? null))} />
           <span className="text-muted-foreground">{progressText(status?.progress ?? null)}</span>
         </>
       )}
+      {failure && <span data-testid="image-failure" className="text-destructive">{failure}</span>}
       {!pulling && error && <span className="text-destructive">{PULL_ERROR_TEXT[error]}</span>}
     </div>
   )

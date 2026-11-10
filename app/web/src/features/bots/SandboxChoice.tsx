@@ -37,12 +37,13 @@ function Idle({ onReadyChange }: { onReadyChange: (ready: boolean) => void }) {
 
 /** Mounted only while ticked, so the image status is read only then. */
 function SandboxState({ onReadyChange }: { onReadyChange: (ready: boolean) => void }) {
-  const { status } = useImageStatus()
+  const { status, failure } = useImageStatus()
   const docker = status?.docker
   // ImageDownload runs its own status hook; its onReady tells this one the download finished.
   const [downloaded, setDownloaded] = useState(false)
   const ready = docker === 'ok' && (status?.present === true || downloaded)
   useEffect(() => { onReadyChange(ready) }, [ready, onReadyChange])
+  if (!status && failure) return <p role="alert" className="text-xs text-destructive">{failure}</p>
   if (!status || ready) return null
   if (docker !== 'ok') return <p className="text-xs text-muted-foreground">Docker isn&apos;t available on this computer</p>
   return (

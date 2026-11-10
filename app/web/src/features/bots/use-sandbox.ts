@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { checkReason, getImage, getSandbox, pullImage } from './sandbox-api'
+import { checkReason, getImage, getSandbox, pullImage, sandboxErrorText } from './sandbox-api'
 import type { ImageStatus, SandboxView } from './sandbox-types'
 
 /** The bot's sandbox as Hermes holds it. `error` is the reason it couldn't be checked. */
@@ -32,6 +32,7 @@ const POLL_MS = 1000
 export function useImageStatus() {
   const [status, setStatus] = useState<ImageStatus | null>(null)
   const [starting, setStarting] = useState(false)
+  const [failure, setFailure] = useState<string | null>(null)
   const busy = useRef(false)
   const alive = useRef(true)
   useEffect(() => {
@@ -41,9 +42,12 @@ export function useImageStatus() {
   const read = useCallback(async (fetcher: () => Promise<ImageStatus>) => {
     try {
       const next = await fetcher()
-      if (alive.current) setStatus(next)
-    } catch {
+      if (!alive.current) return
+      setStatus(next)
+      setFailure(null)
+    } catch (e) {
       // Keep the last status: the next poll or click tries again.
+      if (alive.current) setFailure(sandboxErrorText(e))
     }
   }, [])
   useEffect(() => { void read(getImage) }, [read])
@@ -64,5 +68,5 @@ export function useImageStatus() {
       if (alive.current) setStarting(false)
     }
   }, [read])
-  return { status, start, starting }
+  return { status, start, starting, failure }
 }

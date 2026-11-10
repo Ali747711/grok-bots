@@ -110,11 +110,29 @@ describe('SandboxSection', () => {
     stub({ get: () => reply(view({ imagePresent: false })), image: () => reply(status) })
     open()
     expect(await screen.findByText('Downloading… 1 of 4 parts')).toBeTruthy()
-    expect(document.querySelector('progress')).toBeTruthy()
+    expect(screen.getByLabelText('Download progress')).toBeTruthy()
     expect((screen.getByRole('button', { name: 'Download (about 1.2 GB)' }) as HTMLButtonElement).disabled).toBe(true)
     status = img({ present: false, pulling: false, error: 'no_space' })
     expect(await screen.findByText("There isn't enough disk space for the sandbox image.", {}, { timeout: 3000 })).toBeTruthy()
     expect((screen.getByRole('button', { name: 'Download again' }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it("shows why a download couldn't start", async () => {
+    stub({
+      get: () => reply(view({ imagePresent: false })),
+      image: () => reply(img({ present: false })),
+      pull: () => reply({ error: 'docker_unavailable' }, 409)
+    })
+    open()
+    fireEvent.click(await screen.findByRole('button', { name: 'Download (about 1.2 GB)' }))
+    expect(await screen.findByText("Docker isn't available on this computer", { selector: '[data-testid="image-failure"]' })).toBeTruthy()
+  })
+
+  it('still offers Download for a default-image bot when the image status fails', async () => {
+    stub({ get: () => reply(view({ imagePresent: false })), image: () => reply({}, 500) })
+    open()
+    expect(await screen.findByRole('button', { name: 'Download (about 1.2 GB)' })).toBeTruthy()
+    expect(screen.queryByText(/This bot uses its own image/)).toBeNull()
   })
 
   it('shows the pinned-image note instead of Download', async () => {

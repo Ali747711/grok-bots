@@ -269,6 +269,19 @@ describe('NewBotDialog', () => {
       expect(JSON.parse(String(call(fn, '/crew/bots')?.[1]?.body)).sandbox).toBe(false)
     })
 
+    it('says why when the image status fails and keeps Create off', async () => {
+      vi.stubGlobal('fetch', vi.fn((url: string) => {
+        if (url === '/api/model/options') return json(MODELS)
+        if (url === '/crew/sandbox/image') return json({}, 500)
+        return json({})
+      }))
+      setup()
+      type('Name', 'Scout')
+      fireEvent.click(box())
+      expect(await screen.findByText("Couldn't change the sandbox. Try again.")).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled()
+    })
+
     it('offers the download first when the image is missing and keeps Create off', async () => {
       stubSandbox({ present: false })
       setup()

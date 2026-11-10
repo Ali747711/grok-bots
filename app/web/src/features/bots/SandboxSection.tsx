@@ -8,12 +8,12 @@ import { ImageDownload } from './ImageDownload'
 import { ResetSandbox } from './ResetSandbox'
 import { sandboxErrorText, setSandbox } from './sandbox-api'
 import { SandboxNotes } from './SandboxNotes'
-import type { SandboxView } from './sandbox-types'
-import { useImageStatus, useSandbox } from './use-sandbox'
+import { DEFAULT_IMAGE, type SandboxView } from './sandbox-types'
+import { useSandbox } from './use-sandbox'
 
 /** The one-line state of the sandbox, in the order the plan fixes. */
-function StatusLine({ view, error, imageName, onReady }: {
-  view: SandboxView | null; error: string | null; imageName: string | null; onReady: () => void
+function StatusLine({ view, error, onReady }: {
+  view: SandboxView | null; error: string | null; onReady: () => void
 }) {
   let line: React.ReactNode = null
   if (error) line = `Couldn't check the sandbox: ${error}`
@@ -23,7 +23,7 @@ function StatusLine({ view, error, imageName, onReady }: {
       line = (
         <div className="flex flex-col gap-2">
           <span>The sandbox image isn&apos;t downloaded</span>
-          {view.image === imageName
+          {view.image === DEFAULT_IMAGE
             ? <ImageDownload onReady={onReady} />
             : <span className="text-muted-foreground">This bot uses its own image, {view.image}. Download it with Docker.</span>}
         </div>
@@ -36,7 +36,6 @@ function StatusLine({ view, error, imageName, onReady }: {
 
 export function SandboxSection({ bot, title }: { bot: string; title: string }) {
   const { view, error, reload } = useSandbox(bot)
-  const { status } = useImageStatus()
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
   const on = view !== null && view.state !== 'off'
@@ -57,7 +56,7 @@ export function SandboxSection({ bot, title }: { bot: string; title: string }) {
   return (
     <section className="flex flex-col gap-2">
       <h3 className="text-sm font-medium">Sandbox</h3>
-      <StatusLine view={view} error={error} imageName={status?.image ?? null} onReady={() => void reload()} />
+      <StatusLine view={view} error={error} onReady={() => void reload()} />
       <div className="flex items-center justify-between text-sm">
         <span>Run {title}&apos;s tools in a sandbox</span>
         <Switch
