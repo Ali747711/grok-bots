@@ -58,12 +58,21 @@ describe('shortcut guard', () => {
     expect(shouldIgnoreShortcut(seen[0]!)).toBe(true)
   })
 
-  it('ignores Esc while focus is inside a dialog, menu or listbox', () => {
-    document.body.innerHTML = '<div role="dialog"><button id="a"></button></div><div role="listbox"><button id="b"></button></div><button id="c"></button>'
-    expect(shouldIgnoreShortcut(keydownOn(document.getElementById('a')!, { key: 'Escape' }))).toBe(true)
-    expect(shouldIgnoreShortcut(keydownOn(document.getElementById('b')!, { key: 'Escape' }))).toBe(true)
-    expect(shouldIgnoreShortcut(keydownOn(document.getElementById('a')!, { key: 'd' }))).toBe(false)
-    expect(shouldIgnoreShortcut(keydownOn(document.getElementById('c')!, { key: 'Escape' }))).toBe(false)
+  it('ignores every shortcut while the target or focus is inside a dialog, alert dialog, menu or listbox', () => {
+    document.body.innerHTML = '<div role="dialog"><button id="a"></button></div><div role="listbox"><button id="b"></button></div>'
+      + '<div role="menu"><button id="m"></button></div><div role="alertdialog"><button id="x"></button></div><button id="c"></button>'
+    for (const id of ['a', 'b', 'm', 'x']) {
+      const el = document.getElementById(id)!
+      expect(shouldIgnoreShortcut(keydownOn(el, { key: 'Escape' })), `Esc in ${id}`).toBe(true)
+      expect(shouldIgnoreShortcut(keydownOn(el, { key: 'd' })), `d in ${id}`).toBe(true)
+      expect(shouldIgnoreShortcut(keydownOn(el, { key: '\\', ctrlKey: true })), `mod-\\ in ${id}`).toBe(true)
+    }
+    const outside = document.getElementById('c')!
+    expect(shouldIgnoreShortcut(keydownOn(outside, { key: 'Escape' }))).toBe(false)
+    expect(shouldIgnoreShortcut(keydownOn(outside, { key: 'd' }))).toBe(false)
+    // Focus inside an open listbox while the event is aimed at the body (typing to pick an option).
+    document.getElementById('b')!.focus()
+    expect(shouldIgnoreShortcut(keydownOn(document.body, { key: 'd' }))).toBe(true)
   })
 
   it('uses ⌘ on Apple and Ctrl elsewhere', async () => {

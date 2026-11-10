@@ -5,7 +5,7 @@ import { liveControlHeld } from '@/lib/live-control'
 const IS_APPLE = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
 
 const LIVE_VIEW = '[data-testid="live-view"]'
-const ESC_SCOPES = '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]'
+const POPUP_SCOPES = '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]'
 
 function elementOf(node: EventTarget | Element | null): Element | null {
   return node instanceof Element ? node : null
@@ -24,10 +24,14 @@ export function isInsideLiveView(node: EventTarget | Element | null): boolean {
   return elementOf(node)?.closest(LIVE_VIEW) != null
 }
 
+/** True inside an open dialog, menu or listbox: keys there belong to the popup (its own Esc closes it). */
+function isInsidePopup(node: EventTarget | Element | null): boolean {
+  return elementOf(node)?.closest(POPUP_SCOPES) != null
+}
+
 /**
  * Whether a window shortcut must stand down: the user is typing, is inside the bot's screen or holds
- * control of it, or something already handled the key. Esc also stands down inside open popups,
- * which close themselves.
+ * control of it, is inside an open dialog, menu or listbox, or something already handled the key.
  */
 export function shouldIgnoreShortcut(event: KeyboardEvent): boolean {
   if (event.defaultPrevented) return true
@@ -35,10 +39,7 @@ export function shouldIgnoreShortcut(event: KeyboardEvent): boolean {
   const active = typeof document === 'undefined' ? null : document.activeElement
   if (isInsideLiveView(event.target) || isInsideLiveView(active)) return true
   if (liveControlHeld()) return true
-  if (event.key === 'Escape') {
-    return elementOf(event.target)?.closest(ESC_SCOPES) != null || active?.closest(ESC_SCOPES) != null
-  }
-  return false
+  return isInsidePopup(event.target) || isInsidePopup(active)
 }
 
 /** The platform's command modifier: ⌘ on Apple devices, Ctrl elsewhere (Ctrl edits text on macOS). */

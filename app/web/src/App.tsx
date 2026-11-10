@@ -76,7 +76,8 @@ export default function App() {
   const showSide = (next: SidePanelTab | null) => showPanel(next)
 
   useAppShortcuts({
-    ...(selected && panel !== 'profile' ? { toggleSide: () => showSide(sideTab ? null : 'computer') } : {}),
+    // Offered only for a bot that is loaded: a missing bot's page has no side panel to show.
+    ...(bot && panel !== 'profile' ? { toggleSide: () => showSide(sideTab ? null : 'computer') } : {}),
     ...(selected && panel === 'profile' ? { leave: () => navigate(botUrl(selected, null)) } : {}),
     ...(onNeedsYou ? { leave: () => navigate(lastBotUrl.current ?? '/') } : {})
   })

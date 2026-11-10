@@ -395,6 +395,23 @@ describe('window shortcuts', () => {
     expect(remembered()).toBeNull()
   })
 
+  it('⌘\\ also answers to the Backslash key of another layout, and only once the bot is loaded', async () => {
+    renderAt('/bots/dev')
+    await screen.findByRole('heading', { name: 'Dev' })
+    // A Korean layout types ₩ on that key.
+    press({ key: '₩', code: 'Backslash', ctrlKey: true })
+    expect(where()).toBe('/bots/dev?panel=computer')
+    press({ key: '₩', code: 'Backslash', ctrlKey: true })
+    expect(where()).toBe('/bots/dev')
+  })
+
+  it('⌘\\ does nothing on the page of a bot that is not there', () => {
+    renderAt('/bots/new-one')
+    toggleSide()
+    expect(where()).toBe('/bots/new-one')
+    expect(remembered()).toBeNull()
+  })
+
   it('⌥digit opens the rail bot at that position and keeps the page\'s panel', async () => {
     renderAt('/bots/default?panel=routines')
     await screen.findByRole('heading', { name: 'Hermes' })
@@ -455,11 +472,14 @@ describe('window shortcuts', () => {
     expect(document.documentElement.dataset.theme).toBe('dark')
     expect(where()).toBe('/bots/dev')
     expect(name).toHaveFocus()
-    // ⌥digit and ⌘K also stand down on the panel's buttons.
+    // Every window shortcut also stands down on the panel's buttons.
     const close = within(dialog).getByRole('button', { name: 'Close' })
     close.focus()
     press({ key: '2', code: 'Digit2', altKey: true }, close)
     press({ key: 'k', ctrlKey: true }, close)
+    press({ key: 'd' }, close)
+    toggleSide(close)
+    expect(document.documentElement.dataset.theme).toBe('dark')
     expect(where()).toBe('/bots/dev')
     expect(close).toHaveFocus()
     expect(screen.getByRole('dialog', { name: 'New bot' })).toBeInTheDocument()

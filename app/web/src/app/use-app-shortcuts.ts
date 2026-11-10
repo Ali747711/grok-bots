@@ -10,12 +10,13 @@ interface AppShortcutActions {
 
 /**
  * The app's window shortcuts: ⌘\, Esc and `d` (light / dark). Every one stands down while the user types
- * in a field, is inside the bot's screen or holds control of it (R7).
+ * in a field, is inside the bot's screen or holds control of it, or is inside an open dialog, menu or listbox (R7).
  */
 export function useAppShortcuts({ toggleSide, leave }: AppShortcutActions): void {
   useWindowKeydown(event => {
     if (event.repeat || shouldIgnoreShortcut(event)) return
-    if (isModKey(event) && !event.altKey && event.key === '\\') {
+    // The code is matched as well: other layouts type another character on that key (₩ on a Korean one).
+    if (isModKey(event) && !event.altKey && (event.key === '\\' || event.code === 'Backslash')) {
       if (!toggleSide) return
       event.preventDefault()
       toggleSide()
