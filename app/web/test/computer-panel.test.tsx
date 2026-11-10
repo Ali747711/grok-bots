@@ -42,7 +42,8 @@ class FakeSocket {
 
 import { pageDialBudget } from '@/features/computer/dial-budget'
 import { ComputerPanel } from '@/features/computer/ComputerPanel'
-import { BotPanel } from '@/features/panel/BotPanel'
+import { SidePanel } from '@/features/side-panel/SidePanel'
+import { liveControlHeld } from '@/lib/live-control'
 
 const hashOf = (id: string) => createHash('sha256').update(id).digest('hex').slice(0, 12)
 let lease: { holder: string; viewer_hash: string | null; since: number; epoch: number }
@@ -242,7 +243,7 @@ describe('ComputerPanel', () => {
 
   it('hands back and closes 1000 when the Computer tab is left', async () => {
     overrides = { running: true }
-    const el = (tab: 'computer' | 'routines') => <MemoryRouter><BotPanel bot={scout} tab={tab} /></MemoryRouter>
+    const el = (tab: 'computer' | 'routines') => <MemoryRouter><SidePanel bot={scout} tab={tab} onTab={() => undefined} onClose={() => undefined} /></MemoryRouter>
     const { rerender } = render(el('computer'))
     await waitFor(() => expect(screen.getByRole('button', { name: 'Take control' })).toBeEnabled())
     fireEvent.click(screen.getByRole('button', { name: 'Take control' }))
@@ -250,5 +251,22 @@ describe('ComputerPanel', () => {
     rerender(el('routines'))
     await waitFor(() => expect(calls('display.lease.release')).toHaveLength(1))
     expect(FakeSocket.instances[0]!.closedWith).toContain(1000)
+  })
+
+  it('hands control back and closes 1000 when the side panel closes while the user holds control', async () => {
+    overrides = { running: true }
+    // What the shell does: the side slot is empty once the panel is closed.
+    const el = (open: boolean) => <MemoryRouter>{open ? <SidePanel bot={scout} tab="computer" onTab={() => undefined} onClose={() => undefined} /> : null}</MemoryRouter>
+    const { rerender } = render(el(true))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Take control' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: 'Take control' }))
+    await screen.findByText("You're in control")
+    expect(liveControlHeld()).toBe(true)
+    expect(calls('display.lease.release')).toHaveLength(0)
+    rerender(el(false))
+    expect(screen.queryByTestId('live-view')).toBeNull()
+    await waitFor(() => expect(calls('display.lease.release')).toHaveLength(1))
+    expect(FakeSocket.instances[0]!.closedWith).toContain(1000)
+    expect(liveControlHeld()).toBe(false)
   })
 })

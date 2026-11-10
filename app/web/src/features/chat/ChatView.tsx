@@ -1,13 +1,14 @@
+import type { BotPanel } from '@/app/panel-params'
 import { Skeleton } from '@/components/ui/skeleton'
-import type { PanelTab } from '@/features/panel/BotPanel'
 import { submitAnswer } from '@/features/requests/answer-request'
 import { RequestCard } from '@/features/requests/RequestCard'
-import { useChatSession } from '@/features/chat/use-chat-session'
 import type { BotView, CrewState } from '@/state/types'
 
+import { useBotChat } from './chat-session-context'
 import { ChatHeader } from './ChatHeader'
 import { Composer } from './Composer'
 import { composerDisabledReason, DEFAULT_MAX_WORKING_BOTS } from './disabled-reason'
+import { draftKey } from './draft-store'
 import { MessageList } from './MessageList'
 
 interface ChatViewProps {
@@ -15,8 +16,9 @@ interface ChatViewProps {
   state: CrewState
   /** Browser-to-Crew stream is up. */
   crewConnected: boolean
-  panel?: PanelTab | null
-  onPanel?: (tab: PanelTab) => void
+  panel?: BotPanel | null
+  /** A header button was clicked: the panel to show next, or null to close the open one. */
+  onPanel?: (next: BotPanel | null) => void
 }
 
 function ChatSkeleton() {
@@ -29,9 +31,9 @@ function ChatSkeleton() {
   )
 }
 
-/** One bot's chat: header, transcript, composer. */
-export function ChatView({ bot, state, crewConnected, panel, onPanel }: ChatViewProps) {
-  const { session, items, canSend, connected, running, loaded, notice } = useChatSession(bot)
+/** One bot's chat: header, transcript, composer. The session itself is opened above the shell (ChatSessionProvider). */
+export function ChatView({ bot, state, crewConnected, panel = null, onPanel }: ChatViewProps) {
+  const { session, items, canSend, connected, running, loaded, notice } = useBotChat(bot.name)
   const stale = state.hermes !== 'connected' || !crewConnected
   const othersWorking = state.bots.filter(b => b.name !== bot.name && b.status === 'working').length
   // Oldest first; they leave when Hermes settles them (they drop out of state.pending).
@@ -54,6 +56,7 @@ export function ChatView({ bot, state, crewConnected, panel, onPanel }: ChatView
         </div>
       )}
       <Composer
+        draftKey={draftKey.bot(bot.name)}
         disabledReason={reason}
         running={running}
         stopDisabled={!connected}

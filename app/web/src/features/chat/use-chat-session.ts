@@ -22,24 +22,38 @@ export interface ChatSnapshot {
   notice: string | null
 }
 
-const EMPTY: ChatSnapshot = { session: null, items: [], canSend: false, connected: false, running: false, loaded: false, notice: null }
+export const EMPTY_CHAT: ChatSnapshot = { session: null, items: [], canSend: false, connected: false, running: false, loaded: false, notice: null }
 
-/** One ChatSession per open bot page: created on enter, closed on leave. */
-export function useChatSession(bot: BotView): ChatSnapshot {
-  const [snapshot, setSnapshot] = useState<ChatSnapshot>(EMPTY)
+/** A snapshot and the bot it belongs to, so a reader never shows one bot's chat under another's name. */
+export interface OwnedChat {
+  name: string | null
+  snapshot: ChatSnapshot
+}
+
+const NONE: OwnedChat = { name: null, snapshot: EMPTY_CHAT }
+
+/** One ChatSession for the selected bot: opened when a bot is selected, closed when it changes or none is. */
+export function useChatSession(bot: BotView | null): OwnedChat {
+  const [chat, setChat] = useState<OwnedChat>(NONE)
   const latestBot = useRef(bot)
   latestBot.current = bot
+  const name = bot?.name ?? null
 
   useEffect(() => {
+    const opened = latestBot.current
+    if (name === null || opened === null) {
+      setChat(NONE)
+      return undefined
+    }
     const client = connectGateway()
-    const session = new ChatSession(client, latestBot.current)
+    const session = new ChatSession(client, opened)
     let openError: string | null = null
     let cancelled = false
     let loaded = false
     const publish = () => {
       if (cancelled) return
       loaded = loaded || session.canSend || openError !== null
-      setSnapshot({ session, items: session.items, canSend: session.canSend, connected: session.connected, running: session.running, loaded, notice: openError ?? session.error })
+      setChat({ name, snapshot: { session, items: session.items, canSend: session.canSend, connected: session.connected, running: session.running, loaded, notice: openError ?? session.error } })
     }
     const unsubscribe = session.subscribe(publish)
 
@@ -67,7 +81,7 @@ export function useChatSession(bot: BotView): ChatSnapshot {
       unsubscribe()
       session.close()
     }
-  }, [bot.name])
+  }, [name])
 
-  return snapshot
+  return chat
 }

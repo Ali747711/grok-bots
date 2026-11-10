@@ -4,6 +4,7 @@ import type { KeyboardEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { draftKey, useDraft } from '@/features/chat/draft-store'
 import type { BotView, GroupView } from '@/state/types'
 
 import { MentionPopover, optionId } from './MentionPopover'
@@ -41,7 +42,8 @@ function optionsFor(view: GroupView, bots: readonly BotView[], titleOf: (id: str
 
 /** Message box for a group: Enter sends, "@" lists members, a line says who will answer, New topic starts a thread. */
 export function GroupComposer({ view, members, titleOf, firstInTopic, running, disabledReason, onSend, onStop, topicFull = false, armed: armedProp, onArmed }: GroupComposerProps) {
-  const [text, setText] = useState('')
+  // The unsent text outlives this view (another page, another group) for the life of the tab.
+  const [text, setText] = useDraft(draftKey.group(view.id))
   const [caret, setCaret] = useState(0)
   const [active, setActive] = useState(0)
   const [dismissed, setDismissed] = useState<number | null>(null)

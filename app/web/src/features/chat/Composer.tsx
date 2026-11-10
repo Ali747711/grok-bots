@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from 'react'
+import type { KeyboardEvent } from 'react'
 
 import { ArrowUp } from 'lucide-react'
 
@@ -6,7 +6,11 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
+import { useDraft } from './draft-store'
+
 interface ComposerProps {
+  /** Where the unsent text is kept (`bot:<handle>`), so it survives leaving the conversation. */
+  draftKey: string
   onSend: (text: string) => void
   onStop: () => void
   running: boolean
@@ -31,8 +35,8 @@ function SendButton({ disabled, onClick }: { disabled: boolean; onClick: () => v
 }
 
 /** Message box: Enter sends, Shift+Enter adds a line, Stop replaces Send while the bot is running. */
-export function Composer({ onSend, onStop, running, disabledReason, stopDisabled = false }: ComposerProps) {
-  const [text, setText] = useState('')
+export function Composer({ draftKey, onSend, onStop, running, disabledReason, stopDisabled = false }: ComposerProps) {
+  const [text, setText] = useDraft(draftKey)
   const disabled = disabledReason !== null
 
   const submit = () => {

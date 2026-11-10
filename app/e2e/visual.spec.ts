@@ -29,8 +29,27 @@ async function openBot(page: Page, name: string): Promise<void> {
   await expect(page.getByTestId('chat-skeleton')).toHaveCount(0)
 }
 
+/** The conversation with the side panel on Screen; a new test bot's screen is off, so the tab shows Start screen. */
+async function openSide(page: Page, name: string): Promise<void> {
+  await page.goto(`${CREW}/bots/${name}?panel=computer`)
+  await expect(page.getByRole('textbox', { name: 'Message' })).toBeVisible()
+  await expect(page.getByTestId('chat-skeleton')).toHaveCount(0)
+  await expect(page.getByRole('tab', { name: 'Screen' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('region', { name: 'Panel' }).getByRole('button', { name: 'Start screen', exact: true })).toBeVisible({ timeout: 30_000 })
+}
+
+/** The profile in the work area, in place of the conversation. */
+async function openProfile(page: Page, name: string, title: string): Promise<void> {
+  await page.goto(`${CREW}/bots/${name}?panel=profile`)
+  await expect(page.getByRole('button', { name: 'Back to chat' })).toBeVisible()
+  await expect(page.getByRole('main').getByLabel('Name', { exact: true })).toHaveValue(title)
+  await expect(page.getByRole('region', { name: 'Panel' })).toHaveCount(0)
+}
+
 const SCREENS: Screen[] = [
-  { id: 'workspace', task: 4, open: page => openBot(page, BOT) }
+  { id: 'workspace', task: 4, open: page => openBot(page, BOT) },
+  { id: 'workspace-side', task: 6, open: page => openSide(page, BOT) },
+  { id: 'profile', task: 6, open: page => openProfile(page, BOT, BOT_TITLE) }
 ]
 
 test.describe.configure({ mode: 'serial' })

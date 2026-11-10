@@ -1,8 +1,10 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
+import type { ReactElement } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { MessageList } from '@/features/chat/MessageList'
 import type { ChatItem } from '@/chat/types'
+import type { BotView } from '@/state/types'
 
 import { JsonRpcGatewayError } from '@/vendor/hermes/json-rpc-channel'
 
@@ -18,6 +20,9 @@ const client = new FakeClient()
 vi.mock('@/chat/gateway', () => ({ connectGateway: () => client }))
 
 const { ChatView } = await import('@/features/chat/ChatView')
+const { ChatSessionProvider } = await import('@/features/chat/chat-session-context')
+/** The app opens the session above the shell; a lone ChatView gets the same provider for its own bot. */
+const chat = (view: ReactElement<{ bot: BotView }>) => <ChatSessionProvider bot={view.props.bot}>{view}</ChatSessionProvider>
 const flush = () => act(() => new Promise<void>(resolve => setTimeout(resolve, 0)))
 
 beforeEach(() => {
@@ -84,7 +89,7 @@ describe('MessageList: delivery state', () => {
 
 describe('ChatView', () => {
   it('opens the chat, shows history and the header status', async () => {
-    render(<ChatView bot={{ ...dev, status: 'working' }} state={crewState()} crewConnected />)
+    render(chat(<ChatView bot={{ ...dev, status: 'working' }} state={crewState()} crewConnected />))
     await flush()
     expect(screen.getByText('earlier question')).toBeInTheDocument()
     expect(screen.getByText('answer').tagName).toBe('STRONG')
@@ -94,12 +99,12 @@ describe('ChatView', () => {
   })
 
   it('shows the Sandboxed badge in the chat header for on only', async () => {
-    const { unmount } = render(<ChatView bot={{ ...dev, sandbox: 'on' }} state={crewState()} crewConnected />)
+    const { unmount } = render(chat(<ChatView bot={{ ...dev, sandbox: 'on' }} state={crewState()} crewConnected />))
     await flush()
     expect(screen.getByRole('img', { name: 'Sandboxed' })).toBeInTheDocument()
     unmount()
     for (const sandbox of ['partial', 'off'] as const) {
-      const r = render(<ChatView bot={{ ...dev, sandbox }} state={crewState()} crewConnected />)
+      const r = render(chat(<ChatView bot={{ ...dev, sandbox }} state={crewState()} crewConnected />))
       await flush()
       expect(screen.queryByRole('img', { name: 'Sandboxed' })).toBeNull()
       r.unmount()
@@ -107,7 +112,7 @@ describe('ChatView', () => {
   })
 
   it('shows the working status in the header, with a 40 px avatar', async () => {
-    render(<ChatView bot={{ ...dev, status: 'working' }} state={crewState()} crewConnected />)
+    render(chat(<ChatView bot={{ ...dev, status: 'working' }} state={crewState()} crewConnected />))
     await flush()
     expect(screen.getByText('Working')).toHaveClass('text-foreground', 'text-xs')
     expect(screen.getByText('Working')).not.toHaveClass('text-muted-foreground')
@@ -119,7 +124,7 @@ describe('ChatView', () => {
     ['Crew stream down', {}, false]
   ])('hides live status in the header while stale (%s)', async (_label, over, connected) => {
     for (const status of ['working', 'needs_you'] as const) {
-      const { unmount } = render(<ChatView bot={{ ...dev, status }} state={crewState(over)} crewConnected={connected} />)
+      const { unmount } = render(chat(<ChatView bot={{ ...dev, status }} state={crewState(over)} crewConnected={connected} />))
       await flush()
       expect(screen.queryByText(/^(Working|Needs you)$/)).toBeNull()
       expect(screen.getByTestId('stub')).not.toHaveAttribute('data-state', 'working')
@@ -129,7 +134,7 @@ describe('ChatView', () => {
   })
 
   it('marks the pressed panel button with the foreground fill and hides the avatar from assistive tech', async () => {
-    render(<ChatView bot={dev} state={crewState()} crewConnected panel="routines" onPanel={() => undefined} />)
+    render(chat(<ChatView bot={dev} state={crewState()} crewConnected panel="routines" onPanel={() => undefined} />))
     await flush()
     expect(screen.getByRole('button', { name: 'Routines' })).toHaveClass('bg-foreground', 'text-background')
     expect(screen.getByRole('button', { name: 'Routines' }).className).not.toMatch(/dark:bg-input|bg-primary/)
@@ -137,16 +142,36 @@ describe('ChatView', () => {
     expect(screen.getByTestId('stub').closest('[aria-hidden="true"]')).not.toBeNull()
   })
 
+  it('reports a header button as the next panel, and null for the open one', async () => {
+    const onPanel = vi.fn()
+    render(chat(<ChatView bot={dev} state={crewState()} crewConnected panel="routines" onPanel={onPanel} />))
+    await flush()
+    fireEvent.click(screen.getByRole('button', { name: 'Computer' }))
+    expect(onPanel).toHaveBeenLastCalledWith('computer')
+    fireEvent.click(screen.getByRole('button', { name: 'Routines' }))
+    expect(onPanel).toHaveBeenLastCalledWith(null)
+    fireEvent.click(screen.getByRole('button', { name: 'Profile' }))
+    expect(onPanel).toHaveBeenLastCalledWith('profile')
+  })
+
+  it('shows an empty, unsendable chat while the open session belongs to another bot', async () => {
+    render(<ChatSessionProvider bot={bot({ name: 'researcher', title: 'Researcher' })}><ChatView bot={dev} state={crewState()} crewConnected /></ChatSessionProvider>)
+    await flush()
+    expect(screen.queryByText('earlier question')).toBeNull()
+    expect(screen.getByRole('textbox')).toBeDisabled()
+    expect(screen.getByText('Connecting to the chat…')).toBeInTheDocument()
+  })
+
   it('lets the cost estimate give way before the bot name', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({ messages: [], estimated_cost_usd: 1.25 })))))
-    render(<ChatView bot={{ ...dev, status: 'working' }} state={crewState()} crewConnected />)
+    render(chat(<ChatView bot={{ ...dev, status: 'working' }} state={crewState()} crewConnected />))
     await flush()
     expect(screen.getByRole('heading', { name: 'Dev' }).closest('.min-w-24')).toHaveClass('min-w-24', 'flex-1')
     expect(await screen.findByText(/estimate/)).toHaveClass('min-w-0', 'truncate')
   })
 
   it('keeps header and composer outside the scrolling transcript', async () => {
-    render(<ChatView bot={dev} state={crewState()} crewConnected />)
+    render(chat(<ChatView bot={dev} state={crewState()} crewConnected />))
     await flush()
     const transcript = screen.getByTestId('transcript')
     expect(transcript.contains(screen.getByRole('textbox'))).toBe(false)
@@ -157,7 +182,7 @@ describe('ChatView', () => {
     const fetchMock = vi.fn((url: string, _init?: RequestInit) => Promise.resolve(new Response(String(url).includes('/answer') ? '{"status":"sent"}' : JSON.stringify({ messages: [] }), { status: url.includes('/answer') ? 202 : 200 })))
     vi.stubGlobal('fetch', fetchMock)
     const mk = (id: string, profile: string, receivedAt: number) => ({ id, kind: 'approval' as const, profile, sessionId: 's', summary: `cmd ${id}`, choices: ['once', 'deny'], receivedAt, source: 'event' as const, state: 'open' as const, answerable: true })
-    render(<ChatView bot={dev} state={crewState({ pending: [mk('late', 'dev', 20), mk('other', 'researcher', 5), mk('early', 'dev', 10)] })} crewConnected />)
+    render(chat(<ChatView bot={dev} state={crewState({ pending: [mk('late', 'dev', 20), mk('other', 'researcher', 5), mk('early', 'dev', 10)] })} crewConnected />))
     await flush()
     const cards = screen.getAllByTestId('request-card')
     expect(cards.map(c => c.textContent)).toEqual([expect.stringContaining('cmd early'), expect.stringContaining('cmd late')])
@@ -174,14 +199,14 @@ describe('ChatView', () => {
   it('does not show group approvals in the bot chat', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({ messages: [] }), { status: 200 }))))
     const grp = { id: 'group:r1:q', kind: 'approval' as const, profile: 'dev', sessionId: 's', summary: 'group cmd', choices: ['once', 'deny'], receivedAt: 1, source: 'group' as const, state: 'open' as const, answerable: true, group: { roomId: 'r1', memberId: 'dev', taskId: 't', requestId: 'q' } }
-    render(<ChatView bot={dev} state={crewState({ pending: [grp] })} crewConnected />)
+    render(chat(<ChatView bot={dev} state={crewState({ pending: [grp] })} crewConnected />))
     await flush()
     expect(screen.queryByTestId('request-card')).toBeNull()
     expect(screen.queryByText('group cmd')).toBeNull()
   })
 
   it('sends from the composer and shows the message', async () => {
-    render(<ChatView bot={dev} state={crewState()} crewConnected />)
+    render(chat(<ChatView bot={dev} state={crewState()} crewConnected />))
     await flush()
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'ping' } })
     fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' })
@@ -193,7 +218,7 @@ describe('ChatView', () => {
 
   it('swallows a rejected send (the notice is already in the list)', async () => {
     client.handlers['prompt.submit'] = () => { throw new JsonRpcGatewayError('session_busy', { code: -32000 }) }
-    render(<ChatView bot={dev} state={crewState()} crewConnected />)
+    render(chat(<ChatView bot={dev} state={crewState()} crewConnected />))
     await flush()
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'ping' } })
     fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' })
@@ -202,7 +227,7 @@ describe('ChatView', () => {
   })
 
   it('disables the composer while Hermes is offline', async () => {
-    render(<ChatView bot={dev} state={crewState({ hermes: 'offline' })} crewConnected />)
+    render(chat(<ChatView bot={dev} state={crewState({ hermes: 'offline' })} crewConnected />))
     await flush()
     expect(screen.getByRole('textbox')).toBeDisabled()
     expect(screen.getByText('Hermes is offline')).toBeInTheDocument()
@@ -214,13 +239,13 @@ describe('ChatView', () => {
       bot({ name: 'a', title: 'A', status: 'working' }),
       bot({ name: 'b', title: 'B', status: 'working' })
     ] })
-    render(<ChatView bot={dev} state={state} crewConnected />)
+    render(chat(<ChatView bot={dev} state={state} crewConnected />))
     await flush()
     expect(screen.getByText('2 bots are working — wait, stop one, or raise the limit in Settings')).toBeInTheDocument()
   })
 
   it('shows the live reply, a Stop button while running, and interrupts with the generation', async () => {
-    render(<ChatView bot={dev} state={crewState()} crewConnected />)
+    render(chat(<ChatView bot={dev} state={crewState()} crewConnected />))
     await flush()
     const f = (type: string, payload: unknown) => ({ type, session_id: 'live-1', payload, execution_generation: 2 })
     act(() => {
@@ -234,7 +259,7 @@ describe('ChatView', () => {
   })
 
   it('disables Stop while disconnected', async () => {
-    render(<ChatView bot={dev} state={crewState()} crewConnected />)
+    render(chat(<ChatView bot={dev} state={crewState()} crewConnected />))
     await flush()
     act(() => { client.emit({ type: 'message.start', session_id: 'live-1', payload: {}, execution_generation: 2 }) })
     expect(screen.getByRole('button', { name: 'Stop' })).toBeEnabled()
@@ -244,7 +269,7 @@ describe('ChatView', () => {
 
   it('shows a Stop failure in the transcript', async () => {
     client.handlers['session.interrupt'] = () => { throw new JsonRpcGatewayError('session_busy', { code: -32000 }) }
-    render(<ChatView bot={dev} state={crewState()} crewConnected />)
+    render(chat(<ChatView bot={dev} state={crewState()} crewConnected />))
     await flush()
     act(() => { client.emit({ type: 'message.start', session_id: 'live-1', payload: {}, execution_generation: 2 }) })
     fireEvent.click(screen.getByRole('button', { name: 'Stop' }))
@@ -260,7 +285,7 @@ describe('ChatView', () => {
       return { session_id: 'live-1', execution_generation: 1, running: false }
     }
     vi.useFakeTimers()
-    render(<ChatView bot={dev} state={crewState()} crewConnected />)
+    render(chat(<ChatView bot={dev} state={crewState()} crewConnected />))
     await act(async () => { await vi.advanceTimersByTimeAsync(0) })
     expect(screen.getByText('Couldn’t open the chat — retrying…')).toBeInTheDocument()
     await act(async () => { await vi.advanceTimersByTimeAsync(1100) })

@@ -64,7 +64,7 @@ describe('ChatHeader spend estimate', () => {
   it('shows the estimate from the session, fetched with the profile', async () => {
     const fetchMock = vi.fn((_url: string) => json({ estimated_cost_usd: 1, actual_cost_usd: 0.0412 }))
     vi.stubGlobal('fetch', fetchMock)
-    render(<ChatHeader bot={dev} stale={false} />)
+    render(<ChatHeader panel={null} bot={dev} stale={false} />)
     await settle()
     expect(screen.getByText('≈ $0.04 (estimate)')).toBeInTheDocument()
     expect(fetchMock.mock.calls[0]![0]).toBe('/api/sessions/tip-1?profile=dev')
@@ -72,12 +72,12 @@ describe('ChatHeader spend estimate', () => {
 
   it('prefers the actual cost, falls back to the estimate, and shows nothing without a number', async () => {
     vi.stubGlobal('fetch', vi.fn(() => json({ estimated_cost_usd: 0.5, actual_cost_usd: null })))
-    const a = render(<ChatHeader bot={dev} stale={false} />)
+    const a = render(<ChatHeader panel={null} bot={dev} stale={false} />)
     await settle()
     expect(screen.getByText('≈ $0.50 (estimate)')).toBeInTheDocument()
     a.unmount()
     vi.stubGlobal('fetch', vi.fn(() => json({ messages: [] })))
-    render(<ChatHeader bot={dev} stale={false} />)
+    render(<ChatHeader panel={null} bot={dev} stale={false} />)
     await settle()
     expect(screen.queryByText(/estimate/)).toBeNull()
   })
@@ -85,7 +85,7 @@ describe('ChatHeader spend estimate', () => {
   it('does not fetch or show anything without a session id', async () => {
     const fetchMock = vi.fn(() => json({}))
     vi.stubGlobal('fetch', fetchMock)
-    render(<ChatHeader bot={bot({ name: 'dev', sessionId: null })} stale={false} />)
+    render(<ChatHeader panel={null} bot={bot({ name: 'dev', sessionId: null })} stale={false} />)
     await settle()
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -94,11 +94,11 @@ describe('ChatHeader spend estimate', () => {
     let cost = 0.01
     const fetchMock = vi.fn(() => json({ estimated_cost_usd: cost }))
     vi.stubGlobal('fetch', fetchMock)
-    const { rerender } = render(<ChatHeader bot={{ ...dev, status: 'working' }} stale={false} />)
+    const { rerender } = render(<ChatHeader panel={null} bot={{ ...dev, status: 'working' }} stale={false} />)
     await settle()
     expect(screen.getByText('≈ $0.01 (estimate)')).toBeInTheDocument()
     cost = 0.09
-    rerender(<ChatHeader bot={{ ...dev, status: 'idle' }} stale={false} />)
+    rerender(<ChatHeader panel={null} bot={{ ...dev, status: 'idle' }} stale={false} />)
     await settle()
     expect(screen.getByText('≈ $0.09 (estimate)')).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledTimes(2)

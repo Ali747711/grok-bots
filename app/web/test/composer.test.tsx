@@ -1,10 +1,10 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { Composer } from '@/features/chat/Composer'
 import { composerDisabledReason } from '@/features/chat/disabled-reason'
 
-const base = { onSend: vi.fn(), onStop: vi.fn(), running: false, disabledReason: null as string | null }
+const base = { draftKey: 'bot:dev', onSend: vi.fn(), onStop: vi.fn(), running: false, disabledReason: null as string | null }
 const box = () => screen.getByRole('textbox')
 
 describe('Composer', () => {
@@ -57,6 +57,23 @@ describe('Composer', () => {
     expect(screen.queryByRole('button', { name: 'Send' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Stop' }))
     expect(onStop).toHaveBeenCalled()
+  })
+
+  it('keeps its text in the draft store under its key, and drops it once sent', () => {
+    const onSend = vi.fn()
+    const first = render(<Composer {...base} onSend={onSend} />)
+    fireEvent.change(box(), { target: { value: 'unsent' } })
+    first.unmount()
+    const other = render(<Composer {...base} draftKey="bot:researcher" />)
+    expect(box()).toHaveValue('')
+    other.unmount()
+    render(<Composer {...base} onSend={onSend} />)
+    expect(box()).toHaveValue('unsent')
+    fireEvent.keyDown(box(), { key: 'Enter' })
+    expect(onSend).toHaveBeenCalledWith('unsent')
+    cleanup()
+    render(<Composer {...base} />)
+    expect(box()).toHaveValue('')
   })
 })
 

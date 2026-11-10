@@ -1,26 +1,27 @@
+import type { BotPanel } from '@/app/panel-params'
 import { Button } from '@/components/ui/button'
 import { CrewAvatar } from '@/features/avatars/CrewAvatar'
 import { SandboxBadge } from '@/features/bots/SandboxBadge'
 import { ScreenThumbnail } from '@/features/computer/ScreenThumbnail'
-import type { PanelTab } from '@/features/panel/BotPanel'
 import { cn } from '@/lib/utils'
 import type { BotStatus, BotView } from '@/state/types'
 
 import { useSessionCost } from './use-session-cost'
 
-const TAB_LABEL: Record<PanelTab, string> = { computer: 'Computer', routines: 'Routines', profile: 'Profile' }
+const TAB_LABEL: Record<BotPanel, string> = { computer: 'Computer', routines: 'Routines', profile: 'Profile' }
 const STATUS_TEXT: Record<BotStatus, string> = { idle: 'Idle', working: 'Working', needs_you: 'Needs you' }
 
 /** Bot avatar, name and live status. `stale` hides the status (it may be out of date). */
 interface ChatHeaderProps {
   bot: BotView
   stale: boolean
-  /** The open panel tab; with `onPanel` the header shows the Computer, Routines and Profile buttons. */
-  panel?: PanelTab | null
-  onPanel?: (tab: PanelTab) => void
+  /** The open panel. With `onPanel` the header shows the Computer, Routines and Profile buttons. */
+  panel: BotPanel | null
+  /** A button was clicked: the panel to show next, or null when the open one was clicked again. */
+  onPanel?: (next: BotPanel | null) => void
 }
 
-export function ChatHeader({ bot, stale, panel = null, onPanel }: ChatHeaderProps) {
+export function ChatHeader({ bot, stale, panel, onPanel }: ChatHeaderProps) {
   const cost = useSessionCost(bot.sessionId, bot.name, bot.status)
   return (
     <header className="flex items-center gap-3 border-b border-border px-5 py-3">
@@ -46,7 +47,7 @@ export function ChatHeader({ bot, stale, panel = null, onPanel }: ChatHeaderProp
           size="sm"
           variant={panel === tab ? 'default' : 'outline'}
           aria-pressed={panel === tab}
-          onClick={() => onPanel(tab)}
+          onClick={() => onPanel(panel === tab ? null : tab)}
           className={cn('rounded-full', panel === tab && 'border-foreground bg-foreground text-background hover:bg-foreground/90 hover:text-background')}
         >
           {TAB_LABEL[tab]}

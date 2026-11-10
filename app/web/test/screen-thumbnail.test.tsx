@@ -20,7 +20,7 @@ const setVisibility = (value: 'visible' | 'hidden') => {
   Object.defineProperty(document, 'visibilityState', { value, configurable: true })
   act(() => { document.dispatchEvent(new Event('visibilitychange')) })
 }
-const header = (panel: 'computer' | null = null, onPanel: (t: string) => void = () => undefined) =>
+const header = (panel: 'computer' | null = null, onPanel: (t: string | null) => void = () => undefined) =>
   <ChatHeader bot={dev} stale={false} panel={panel} onPanel={onPanel} />
 
 beforeEach(() => {
