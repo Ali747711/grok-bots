@@ -89,8 +89,11 @@ export class BotStateTracker {
     this.profiles = rows
   }
 
-  applySandbox(states: ReadonlyMap<string, SandboxState>): void {
+  /** Returns true when any known bot's state differs from the one held before. */
+  applySandbox(states: ReadonlyMap<string, SandboxState>): boolean {
+    const differs = this.profiles.some(row => (states.get(row.name) ?? 'off') !== (this.sandboxes.get(row.name) ?? 'off'))
     this.sandboxes = states
+    return differs
   }
 
   markSubscribed(profile: string, sessionId: string): void {

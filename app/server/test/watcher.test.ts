@@ -388,4 +388,22 @@ describe('watcher request and refresh', () => {
     expect(watcher.state().bots.map(b => [b.name, b.sandbox])).toEqual([['default', 'off'], ['crew-test', 'on'], ['no-chat', 'off']])
     watcher.stop()
   })
+
+  it('publishes the roster while sandboxStates is pending and again when it resolves', async () => {
+    const client = new FakeClient()
+    let resolve!: (m: ReadonlyMap<string, 'on'>) => void
+    const watcher = startWatcher({ client, connect: c => c.connect(), settings: fakeSettings, now: () => 1, reconnectDelayMs: () => 0, sandboxStates: () => new Promise(r => { resolve = r }) })
+    let changes = 0
+    watcher.onChange(() => { changes += 1 })
+    await flush(); await flush()
+    expect(watcher.state().bots.map(b => b.name)).toEqual(['default', 'crew-test', 'no-chat'])
+    expect(client.calls.some(c => c.method === 'session.resume')).toBe(true)
+    await new Promise(r => setTimeout(r, 120))
+    const before = changes
+    resolve(new Map([['crew-test', 'on']]))
+    await new Promise(r => setTimeout(r, 120))
+    expect(changes).toBeGreaterThan(before)
+    expect(watcher.state().bots.find(b => b.name === 'crew-test')?.sandbox).toBe('on')
+    watcher.stop()
+  })
 })

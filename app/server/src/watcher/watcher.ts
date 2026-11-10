@@ -155,8 +155,13 @@ export function startWatcher(deps: WatcherDeps): Watcher {
   async function syncOnce(): Promise<boolean> {
     const { profiles } = await client.request<{ profiles: ProfileRow[] }>('profiles.list', { include_sessions: true })
     tracker.applyProfiles(profiles)
-    if (deps.sandboxStates) tracker.applySandbox(await deps.sandboxStates(profiles.map(row => row.name)))
     changed()
+    // Not awaited: a stalled config read must not delay the roster, status or approval updates.
+    if (deps.sandboxStates) {
+      void deps.sandboxStates(profiles.map(row => row.name)).then(states => {
+        if (tracker.applySandbox(states)) changed()
+      }).catch(() => undefined)
+    }
     let ok = true
     for (const row of profiles) {
       const chat = row.canonical_session
