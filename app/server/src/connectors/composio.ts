@@ -58,7 +58,7 @@ const boolField = (obj: unknown, key: string): boolean | undefined => {
 }
 
 /**
- * Ruling 5: Composio's REST returns `annotations: null` and carries hints as tags, so a boolean annotation wins,
+ * Ruling 5: Composio's REST returns `annotations: null` and carries hints as tags, so an explicit boolean annotation wins,
  * else the tag. A tool with no boolean annotation and no `*Hint` tag counts as destructive. Bad fields are ignored.
  */
 export function hintsOf(raw: unknown): ToolHint | null {
@@ -70,10 +70,11 @@ export function hintsOf(raw: unknown): ToolHint | null {
   const has = (t: string) => tags.includes(t)
   const roAnn = boolField(o.annotations, 'readOnlyHint')
   const deAnn = boolField(o.annotations, 'destructiveHint')
-  const readOnly = roAnn === true || has('readOnlyHint')
-  const destructive = deAnn === true || has('destructiveHint')
+  const destructiveFlag = deAnn ?? has('destructiveHint')
+  // Destructive always wins, so a contradictory tool never passes the Read filter.
+  const readOnly = (roAnn ?? has('readOnlyHint')) && !destructiveFlag
   const hinted = roAnn !== undefined || deAnn !== undefined || tags.some(t => t.endsWith('Hint'))
-  return { slug, readOnly, destructive: hinted ? destructive : true }
+  return { slug, readOnly, destructive: hinted ? destructiveFlag : true }
 }
 
 export function accountStatusOf(status: string): AccountStatus {

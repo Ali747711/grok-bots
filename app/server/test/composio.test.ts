@@ -170,8 +170,11 @@ describe('composio client', () => {
   })
 
   it('lets boolean annotations win over tags and ignores bad fields', () => {
-    expect(hintsOf({ slug: 'A', annotations: { readOnlyHint: true }, tags: ['destructiveHint'] })).toEqual({ slug: 'A', readOnly: true, destructive: true })
-    expect(hintsOf({ slug: 'B', annotations: { destructiveHint: true }, tags: ['readOnlyHint'] })).toEqual({ slug: 'B', readOnly: true, destructive: true })
+    expect(hintsOf({ slug: 'A', annotations: { readOnlyHint: true }, tags: ['destructiveHint'] })).toEqual({ slug: 'A', readOnly: false, destructive: true })
+    expect(hintsOf({ slug: 'B', annotations: { destructiveHint: true }, tags: ['readOnlyHint'] })).toEqual({ slug: 'B', readOnly: false, destructive: true })
+    expect(hintsOf({ slug: 'J', tags: ['readOnlyHint', 'destructiveHint'] })).toEqual({ slug: 'J', readOnly: false, destructive: true })
+    expect(hintsOf({ slug: 'K', annotations: { readOnlyHint: false }, tags: ['readOnlyHint'] })).toEqual({ slug: 'K', readOnly: false, destructive: false })
+    expect(hintsOf({ slug: 'L', annotations: { destructiveHint: false }, tags: ['destructiveHint'] })).toEqual({ slug: 'L', readOnly: false, destructive: false })
     expect(hintsOf({ slug: 'F', annotations: { readOnlyHint: true } })).toEqual({ slug: 'F', readOnly: true, destructive: false })
     expect(hintsOf({ slug: 'G', annotations: { readOnlyHint: 'yes', destructiveHint: 1 }, tags: ['readOnlyHint'] })).toEqual({ slug: 'G', readOnly: true, destructive: false })
     expect(hintsOf({ slug: 'H', annotations: 'x', tags: ['createHint', 7, null] })).toEqual({ slug: 'H', readOnly: false, destructive: false })
@@ -189,6 +192,8 @@ describe('composio client', () => {
     ]
     const hints = raw.flatMap(r => hintsOf(r) ?? [])
     expect(allowedSlugs(hints, 'change')).toEqual(['GET', 'CREATE'])
+    const mixed = hintsOf({ slug: 'MIXED', tags: ['readOnlyHint', 'destructiveHint'] })
+    expect(allowedSlugs(mixed ? [mixed] : [], 'read')).toEqual([])
   })
 
   it("follows next_cursor for a toolkit's tools and stops after 10 pages", async () => {
