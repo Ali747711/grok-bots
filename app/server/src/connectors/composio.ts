@@ -50,19 +50,30 @@ const accountSchema = z.looseObject({
 const accountsSchema = z.looseObject({ items: z.array(accountSchema) })
 const sessionSchema = z.looseObject({ session_id: z.string(), mcp: z.looseObject({ url: z.string() }) })
 
-const annotationsSchema = z.looseObject({ readOnlyHint: z.boolean().optional(), destructiveHint: z.boolean().optional() })
-const toolSchema = z.looseObject({
-  slug: z.string(), annotations: annotationsSchema.nullish(), tags: z.array(z.string()).nullish()
-})
+const toolSchema = z.looseObject({ slug: z.string() })
 
-/** R2: annotations when boolean, else tags; a non-read-only tool without a destructive hint is destructive. */
+const boolField = (obj: unknown, key: string): boolean | undefined => {
+  const v = typeof obj === 'object' && obj !== null ? (obj as Record<string, unknown>)[key] : undefined
+  return typeof v === 'boolean' ? v : undefined
+}
+
+/**
+ * Ruling 5: Composio's REST returns `annotations: null` and carries hints as tags, so a boolean annotation wins,
+ * else the tag. A tool with no boolean annotation and no `*Hint` tag counts as destructive. Bad fields are ignored.
+ */
 export function hintsOf(raw: unknown): ToolHint | null {
   const parsed = toolSchema.safeParse(raw)
   if (!parsed.success) return null
-  const { slug, annotations, tags } = parsed.data
-  const readOnly = annotations?.readOnlyHint ?? (tags?.includes('readOnlyHint') ?? false)
-  const destructive = annotations?.destructiveHint ?? (!readOnly || (tags?.includes('destructiveHint') ?? false))
-  return { slug, readOnly, destructive }
+  const { slug } = parsed.data
+  const o = raw as Record<string, unknown>
+  const tags = Array.isArray(o.tags) ? o.tags.filter((t): t is string => typeof t === 'string') : []
+  const has = (t: string) => tags.includes(t)
+  const roAnn = boolField(o.annotations, 'readOnlyHint')
+  const deAnn = boolField(o.annotations, 'destructiveHint')
+  const readOnly = roAnn === true || has('readOnlyHint')
+  const destructive = deAnn === true || has('destructiveHint')
+  const hinted = roAnn !== undefined || deAnn !== undefined || tags.some(t => t.endsWith('Hint'))
+  return { slug, readOnly, destructive: hinted ? destructive : true }
 }
 
 export function accountStatusOf(status: string): AccountStatus {

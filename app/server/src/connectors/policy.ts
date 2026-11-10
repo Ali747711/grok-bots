@@ -9,7 +9,7 @@ export const OFFERED_LEVELS: readonly AppLevel[] = ['read', 'change', 'all']
 export const PRELOAD_CAP: number | null = null
 
 /** Background reconnect after an allowed-set change (R6): wait between disable and enable, and nudge chats. */
-export const RECONNECT: { readonly gapMs: number; readonly nudge: boolean } = { gapMs: 65_000, nudge: true }
+export const RECONNECT: { readonly gapMs: number; readonly nudge: boolean } = { gapMs: 2_000, nudge: true }
 
 /** App actions that change something are declined in group chats (§11.7). */
-export const ROOM_WRITES_DECLINED = true
+export const ROOM_WRITES_DECLINED = false

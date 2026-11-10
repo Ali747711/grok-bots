@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   COMPOSIO_API, ComposioError, accountStatusOf, createComposio, hintsOf, sessionBody
 } from '../src/connectors/composio.js'
+import { allowedSlugs } from '../src/connectors/levels.js'
 import { setLogSink } from '../src/log.js'
 
 const KEY = 'ak_test_key_123'
@@ -159,15 +160,35 @@ describe('composio client', () => {
     expect((await composio.link('ac', 'u')).accountId).toBe('c2')
   })
 
-  it('reads hints from annotations, then tags, and counts a missing destructive hint as destructive', () => {
-    expect(hintsOf({ slug: 'A', annotations: { readOnlyHint: true, destructiveHint: false } })).toEqual({ slug: 'A', readOnly: true, destructive: false })
-    expect(hintsOf({ slug: 'B', annotations: { readOnlyHint: false, destructiveHint: true }, tags: ['readOnlyHint'] })).toEqual({ slug: 'B', readOnly: false, destructive: true })
-    expect(hintsOf({ slug: 'C', tags: ['readOnlyHint', 'idempotent'] })).toEqual({ slug: 'C', readOnly: true, destructive: false })
-    expect(hintsOf({ slug: 'D', tags: ['destructiveHint'] })).toEqual({ slug: 'D', readOnly: false, destructive: true })
+  it('reads hints from the real Composio tag sets', () => {
+    const tags = (slug: string, t: string[]) => hintsOf({ slug, annotations: null, tags: t })
+    expect(tags('C', ['important', 'openWorldHint', 'Repository Management', 'createHint'])).toEqual({ slug: 'C', readOnly: false, destructive: false })
+    expect(tags('D', ['destructiveHint', 'idempotentHint', 'openWorldHint', 'important', 'Repository Management'])).toEqual({ slug: 'D', readOnly: false, destructive: true })
+    expect(tags('R', ['readOnlyHint', 'idempotentHint', 'openWorldHint', 'Users'])).toEqual({ slug: 'R', readOnly: true, destructive: false })
+    expect(hintsOf({ slug: 'U', tags: ['Users'] })).toEqual({ slug: 'U', readOnly: false, destructive: true })
     expect(hintsOf({ slug: 'E' })).toEqual({ slug: 'E', readOnly: false, destructive: true })
+  })
+
+  it('lets boolean annotations win over tags and ignores bad fields', () => {
+    expect(hintsOf({ slug: 'A', annotations: { readOnlyHint: true }, tags: ['destructiveHint'] })).toEqual({ slug: 'A', readOnly: true, destructive: true })
+    expect(hintsOf({ slug: 'B', annotations: { destructiveHint: true }, tags: ['readOnlyHint'] })).toEqual({ slug: 'B', readOnly: true, destructive: true })
     expect(hintsOf({ slug: 'F', annotations: { readOnlyHint: true } })).toEqual({ slug: 'F', readOnly: true, destructive: false })
+    expect(hintsOf({ slug: 'G', annotations: { readOnlyHint: 'yes', destructiveHint: 1 }, tags: ['readOnlyHint'] })).toEqual({ slug: 'G', readOnly: true, destructive: false })
+    expect(hintsOf({ slug: 'H', annotations: 'x', tags: ['createHint', 7, null] })).toEqual({ slug: 'H', readOnly: false, destructive: false })
+    expect(hintsOf({ slug: 'I', tags: 'nope' })).toEqual({ slug: 'I', readOnly: false, destructive: true })
     expect(hintsOf({ name: 'x' })).toBeNull()
     expect(hintsOf(null)).toBeNull()
+  })
+
+  it('keeps the create tool and drops the delete tool for Read and change', () => {
+    const raw = [
+      { slug: 'GET', tags: ['readOnlyHint', 'Users'] },
+      { slug: 'CREATE', tags: ['createHint', 'openWorldHint'] },
+      { slug: 'DELETE', tags: ['destructiveHint', 'Users'] },
+      { slug: 'PLAIN', tags: ['Users'] }
+    ]
+    const hints = raw.flatMap(r => hintsOf(r) ?? [])
+    expect(allowedSlugs(hints, 'change')).toEqual(['GET', 'CREATE'])
   })
 
   it("follows next_cursor for a toolkit's tools and stops after 10 pages", async () => {

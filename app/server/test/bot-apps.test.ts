@@ -174,7 +174,7 @@ describe('bot apps', () => {
     config = { approvals: { mode: false } }
     const view = await readBotApps(deps, 'scout')
     expect(calls).toEqual([])
-    expect(view).toMatchObject({ offered: ['read'], asks: false, keyConfigured: true, roomWritesDeclined: true })
+    expect(view).toMatchObject({ offered: ['read'], asks: false, keyConfigured: true, roomWritesDeclined: false })
     expect(view.apps).toHaveLength(1)
     expect((await readBotApps(deps, 'nobody')).apps).toEqual([])
   })
