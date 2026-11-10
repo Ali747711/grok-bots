@@ -26,6 +26,8 @@ export interface BotView {
   readonly hidden: boolean
   /** Created but its look was never written; the Profile panel finishes it. */
   readonly setupIncomplete: boolean
+  /** Whether the bot runs its tools in a sandbox. Missing on older servers. */
+  readonly sandbox?: 'off' | 'on' | 'partial'
   readonly created: number | null
 }
 
