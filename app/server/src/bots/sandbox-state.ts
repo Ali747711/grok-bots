@@ -132,3 +132,14 @@ export function offPatch(raw: unknown, marker: SandboxMarker): SandboxPatch {
     marker: OFF_MARKER
   }
 }
+
+/**
+ * Create writes the dialog's choice over whatever the clone inherited. A `browser` entry in the clone
+ * counts as Crew's only when the primary's marker says Crew added it; otherwise it is the user's.
+ */
+export function createPatch(raw: unknown, on: boolean, primary: SandboxMarker): SandboxPatch {
+  const crewBrowser = rawToolsetList(raw).includes('browser') && primary.addedBrowserDisable
+  return on
+    ? onPatch(raw, { on: false, addedBrowserDisable: crewBrowser })
+    : offPatch(raw, { on: true, addedBrowserDisable: crewBrowser })
+}

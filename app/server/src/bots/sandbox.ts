@@ -4,7 +4,8 @@ import { DockerError, type Docker, type DockerState, InvalidImageError, isValidI
 import type { ImagePuller } from '../sandbox/pull.js'
 
 import { withBotLock } from './bot-lock.js'
-import { type BotDeps, refreshQuietly } from './create.js'
+import type { BotDeps } from './create.js'
+import { refreshQuietly } from './refresh.js'
 import { NotSavedError } from './edit.js'
 import {
   type SandboxMarker, type SandboxPatch, type SandboxState, effectiveImage, offPatch, onPatch, readMarker, sandboxStateOf

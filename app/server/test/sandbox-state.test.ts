@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { DEFAULT_IMAGE } from '../src/sandbox/docker.js'
 import {
-  OFF_MARKER, REASONS, SANDBOX_MEMORY_MB, effectiveImage, offPatch, onPatch, rawToolsetList, readMarker, sandboxStateOf
+  OFF_MARKER, REASONS, createPatch, SANDBOX_MEMORY_MB, effectiveImage, offPatch, onPatch, rawToolsetList, readMarker, sandboxStateOf
 } from '../src/bots/sandbox-state.js'
 
 const base = (terminal: Record<string, unknown> = {}, extra: Record<string, unknown> = {}) => ({
@@ -69,6 +69,25 @@ describe('sandboxStateOf', () => {
     expect(effectiveImage({ terminal: { docker_image: '' } })).toBe(DEFAULT_IMAGE)
     expect(effectiveImage({ terminal: { docker_image: 5 } })).toBe(DEFAULT_IMAGE)
     expect(effectiveImage({})).toBe(DEFAULT_IMAGE)
+  })
+})
+
+describe('createPatch', () => {
+  const cloned = { agent: { disabled_toolsets: ['tts', 'browser'] } }
+  it("counts a cloned browser entry as Crew's only when the primary's marker says so", () => {
+    const crew = { on: true, addedBrowserDisable: true }
+    const user = { on: true, addedBrowserDisable: false }
+    expect(createPatch(cloned, false, crew).config).toEqual({ terminal: { backend: 'local' }, agent: { disabled_toolsets: ['tts'] } })
+    expect(createPatch(cloned, false, user).config).toEqual({ terminal: { backend: 'local' } })
+    expect(createPatch(cloned, true, crew).marker).toEqual({ on: true, addedBrowserDisable: true })
+    expect(createPatch(cloned, true, user).marker).toEqual({ on: true, addedBrowserDisable: false })
+    expect(createPatch({}, true, OFF_MARKER).marker).toEqual({ on: true, addedBrowserDisable: true })
+    expect(createPatch({}, false, crew).marker).toEqual(OFF_MARKER)
+  })
+
+  it("keeps the user's own toolsets and reads a string list like Hermes", () => {
+    expect(createPatch({ agent: { disabled_toolsets: "['tts', 'browser']" } }, false, { on: true, addedBrowserDisable: true }).config)
+      .toEqual({ terminal: { backend: 'local' }, agent: { disabled_toolsets: ['tts'] } })
   })
 })
 

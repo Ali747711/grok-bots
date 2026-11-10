@@ -196,7 +196,8 @@ describe('per-bot write serialization', () => {
     release()
     await Promise.all([created, deleted])
     expect(rpc.methods().at(-1)).toBe('session.create')
-    expect(rest.requests.map(r => r.method)).toEqual(['DELETE'])
+    // create now reads the new bot's config (sandbox step); only the delete is a write.
+    expect(rest.requests.filter(r => r.path !== '/api/config').map(r => r.method)).toEqual(['DELETE'])
   })
 
   it('runs a description save and an avatar change on the same bot one after the other', async () => {

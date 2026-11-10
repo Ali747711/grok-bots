@@ -1,6 +1,7 @@
 import { type CrewAvatar, avatarMetaPatch, readCrewAvatar } from './avatar.js'
 import { withBotLock } from './bot-lock.js'
-import { type BotDeps, refreshQuietly } from './create.js'
+import type { BotDeps } from './create.js'
+import { refreshQuietly } from './refresh.js'
 import { cleanupBeforeDelete } from './sandbox-cleanup.js'
 import { type BotMeta, BotNotFoundError, BotMetaWriteError, updateBotMeta } from './ui-meta.js'
 
