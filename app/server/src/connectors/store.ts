@@ -56,6 +56,11 @@ export function tokenMatches(record: BotRecord | undefined, token: string | null
   return timingSafeEqual(expected, given) && record !== undefined && token !== null
 }
 
+/** A lookup that never answers with an Object.prototype member (a bot named `constructor`). */
+function own<T>(map: Readonly<Record<string, T>>, key: string): T | undefined {
+  return Object.hasOwn(map, key) ? map[key] : undefined
+}
+
 function withoutKey<T>(map: Readonly<Record<string, T>>, key: string): Record<string, T> {
   const { [key]: _drop, ...rest } = map
   return rest
@@ -110,9 +115,9 @@ export class ConnectorStore {
 
   userId(): string { return this.state.userId }
   bots(): readonly string[] { return Object.keys(this.state.bots) }
-  record(bot: string): BotRecord | undefined { return this.state.bots[bot] }
-  toolkit(slug: string): ToolkitEntry | undefined { return this.state.toolkits[slug] }
-  name(slug: string): string | undefined { return this.state.names[slug] }
+  record(bot: string): BotRecord | undefined { return own(this.state.bots, bot) }
+  toolkit(slug: string): ToolkitEntry | undefined { return own(this.state.toolkits, slug) }
+  name(slug: string): string | undefined { return own(this.state.names, slug) }
   pending(): readonly PendingSignIn[] { return this.state.pending }
 
   setRecord(bot: string, record: BotRecord): Promise<void> {

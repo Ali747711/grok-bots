@@ -127,4 +127,14 @@ describe('ConnectorStore', () => {
     expect(line.code).toMatch(/^E[A-Z]+$/)
     expect(Object.keys(line).sort()).toEqual(['code', 'file', 'level', 'msg', 't'])
   })
+
+  it('never answers a lookup with an Object.prototype member', async () => {
+    const store = await ConnectorStore.load(file, randomUUID)
+    expect(store.record('constructor')).toBeUndefined()
+    expect(store.toolkit('constructor')).toBeUndefined()
+    expect(store.name('toString')).toBeUndefined()
+    await store.setRecord('constructor', record('t'))
+    expect(store.record('constructor')?.apps).toEqual({ github: 'read' })
+    expect(store.bots()).toEqual(['constructor'])
+  })
 })
