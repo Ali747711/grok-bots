@@ -19,9 +19,25 @@ const refuse = (code: -32600 | -32601 | -32602, message: string): Verdict => ({ 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
+const MEMBERS = new Set(['jsonrpc', 'id', 'method', 'params', 'result', 'error'])
+/** A key that is a JSON-RPC member only up to letter case: another parser could read it as the member. */
+const isMemberVariant = (key: string): boolean => key !== key.toLowerCase() && MEMBERS.has(key.toLowerCase())
+
+/**
+ * The message rebuilt from only the members `judge` looked at, so what is forwarded is what was checked
+ * (duplicate keys are already collapsed by the parse; unknown keys are dropped). Call after `judge` accepts.
+ */
+export function canonicalMessage(message: Record<string, unknown>): Record<string, unknown> {
+  const pick = (keys: readonly string[]): Record<string, unknown> =>
+    Object.fromEntries(keys.filter(key => key in message).map(key => [key, message[key]]))
+  return message.method !== undefined
+    ? pick(['jsonrpc', 'id', 'method', 'params'])
+    : pick(['jsonrpc', 'id', 'result', 'error'])
+}
+
 /** R3: one JSON object per body; methods are compared exactly, and a tool call needs an allowed name. */
 export function judge(message: unknown, allowed: ReadonlySet<string>): Verdict {
-  if (!isObject(message)) return refuse(-32600, 'Invalid request')
+  if (!isObject(message) || Object.keys(message).some(isMemberVariant)) return refuse(-32600, 'Invalid request')
   const { method } = message
   if (method === undefined) {
     const isResponse = 'id' in message && ('result' in message || 'error' in message)
@@ -32,6 +48,9 @@ export function judge(message: unknown, allowed: ReadonlySet<string>): Verdict {
   if (method === 'tools/list') return { kind: 'filter' }
   if (method !== 'tools/call') return refuse(-32601, RELAY_TEXT.noMethod)
   const params = message.params
+  if (isObject(params) && Object.keys(params).some(key => key !== 'name' && key.toLowerCase() === 'name')) {
+    return refuse(-32600, 'Invalid request')
+  }
   const name = isObject(params) ? params.name : undefined
   if (typeof name !== 'string') return refuse(-32602, 'Invalid params')
   return allowed.has(name) ? { kind: 'forward' } : refuse(-32602, RELAY_TEXT.notAllowed)

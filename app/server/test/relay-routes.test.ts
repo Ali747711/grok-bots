@@ -103,6 +103,35 @@ describe('relay routes', () => {
     expect(Object.keys(calls[1]?.init.headers as object)).not.toContain('mcp-protocol-version')
   })
 
+  it('forwards only the canonical message and refuses ambiguous keys', async () => {
+    const del = { name: 'GITHUB_DELETE_REPO' }
+    const bodies = [
+      '{"method":"tools/call","params":{"name":"GITHUB_DELETE_REPO"},"method":"ping"}',
+      '{"id":1,"method":"tools/call","params":{"name":"GITHUB_GET_REPO"},"params":{"name":"GITHUB_DELETE_REPO"}}',
+      '{"id":1,"method":"tools/call","params":{"name":"GITHUB_DELETE_REPO","name":"GITHUB_GET_REPO"}}',
+      '{"id":1,"method":"ping","Method":"tools/call","params":{"name":"GITHUB_DELETE_REPO"}}',
+      JSON.stringify({ id: 1, method: 'tools/call', params: { name: 'GITHUB_GET_REPO', Name: del.name } }),
+      '{"id":1,"PARAMS":{},"method":"ping"}'
+    ]
+    for (const body of bodies) {
+      const { send, calls } = setup()
+      expect((await send('POST', body)).status).toBe(200)
+      for (const c of calls) {
+        const sent = JSON.parse(c.init.body as string)
+        // a ping may still carry a stray params object; what matters is the single method that is forwarded
+        if (sent.method === 'tools/call') expect(sent.params.name).toBe('GITHUB_GET_REPO')
+        expect(Object.keys(sent).every(k => ['jsonrpc', 'id', 'method', 'params'].includes(k))).toBe(true)
+        expect(c.init.body).toBe(JSON.stringify(sent))
+      }
+    }
+    const refused = setup()
+    expect(await (await refused.send('POST', bodies[3] as string)).json()).toMatchObject({ error: { code: -32600, message: 'Invalid request' } })
+    expect(refused.calls).toHaveLength(0)
+    const { send, calls } = setup()
+    await send('POST', '{ "extra": 1, "params": {"name": "GITHUB_GET_REPO"}, "method": "tools/call", "id": 1, "jsonrpc": "2.0" }')
+    expect(calls[0]?.init.body).toBe('{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"GITHUB_GET_REPO"}}')
+  })
+
   it('returns a filtered tools/list from an SSE upstream as JSON', async () => {
     const list = { jsonrpc: '2.0', id: 7, result: { tools: [{ name: 'GITHUB_GET_REPO' }, { name: 'GITHUB_DELETE_REPO' }] } }
     const { send } = setup(() => new Response(`event: message\ndata: {"jsonrpc":"2.0","method":"notifications/x"}\n\nevent: message\ndata: ${JSON.stringify(list)}\n\n`, { headers: { 'content-type': 'text/event-stream' } }))

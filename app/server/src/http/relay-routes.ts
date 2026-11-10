@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 
 import { PROFILE_NAME_RE } from '../bots/names.js'
 import {
-  RELAY_MAX_BYTES, RELAY_TEXT, RELAY_TIMEOUT_MS, UPSTREAM_MAX_BYTES,
+  RELAY_MAX_BYTES, RELAY_TEXT, canonicalMessage, RELAY_TIMEOUT_MS, UPSTREAM_MAX_BYTES,
   filterToolsList, judge, parseBearer, parseUpstream, rpcError
 } from '../connectors/relay.js'
 import type { KeyStore } from '../connectors/key.js'
@@ -65,7 +65,7 @@ export function relayRoutes(deps: RelayDeps | undefined): Hono<CrewEnv> {
     try {
       upstream = await deps.fetch(record.mcpUrl, {
         method: 'POST',
-        body: raw.toString('utf8'),
+        body: JSON.stringify(canonicalMessage(msg)),
         redirect: 'error',
         signal: AbortSignal.timeout(RELAY_TIMEOUT_MS),
         headers: {
