@@ -114,3 +114,23 @@ https://docs.composio.dev/docs/configuring-sessions.md (undated)
 - Pricing page 32K trailing characters unread; WebFetch output is model-summarized, so numbers should be re-checked on the live page.
 - "Rube" and "Composio MCP servers v2" (`mcp.composio.dev/...`) were not found in current docs; assume retired.
 - Node engine `>=22.22.3` is unusually specific; re-check with `npm view @composio/core engines` on the VM.
+
+## 10. Live checks with the user's project key (2026-11-10, controller)
+
+Run from the VM with Python `urllib`; the key was read from a local file and never printed or logged. No connected accounts or auth configs were created; every test session was deleted afterwards (8 of 8; a deleted session then answers 404).
+
+1. **The key works as a project key** in `x-api-key`. `GET /toolkits?limit=3` → 200 (`gmail`, `composio`, `github`; 1,723 toolkits). `GET /connected_accounts` and `GET /auth_configs` → 200, both empty.
+2. **Session create body.** `POST /api/v3.1/tool_router/session` rejects `toolkits: ["github"]` (400 `payload.toolkits: Invalid input`); it takes `toolkits: {"enable": ["github"]}` → 201. The response keys are `session_id`, `mcp`, `config`, `config_version`, `tool_router_tools`, `warnings`, `experimental`. `mcp` is `{type: "http", url}` only; **no headers come back over REST**.
+3. **MCP URL.** `https://backend.composio.dev/tool_router/trs_<id>/mcp`. No key in the URL. **Without a key it answers 401** ("API key is required … x-api-key, x-user-api-key, or Authorization: Bearer"), so the URL alone is not a bearer secret; the key header is.
+4. **Transport.** Streamable HTTP: `POST` JSON-RPC with `Accept: application/json, text/event-stream` → 200 `text/event-stream`. `initialize` reports `serverInfo {name: "mcp-typescript server on vercel"}`, protocol `2025-06-18`. No `Mcp-Session-Id` header (stateless).
+5. **Default tools are meta-tools, including remote code execution.** A plain session exposes 6 tools: `COMPOSIO_GET_TOOL_SCHEMAS`, `COMPOSIO_MANAGE_CONNECTIONS`, `COMPOSIO_MULTI_EXECUTE_TOOL`, `COMPOSIO_REMOTE_BASH_TOOL`, `COMPOSIO_REMOTE_WORKBENCH`, `COMPOSIO_SEARCH_TOOLS`. The stored config shows `workbench.enable: true` (with `tool_execution_enabled`, `proxy_execution_enabled`), `manage_connections.enabled: true` (`enable_connection_removal: true`), `search.enable: true`, `execute.enable_multi_execute: true`, `preload.tools: []`.
+6. **`preset` / `session_preset` (any case) are accepted and ignored** over REST: the six meta-tools stay. (The SDK's `SessionPreset.DIRECT_TOOLS` is not a REST field.)
+7. **What each switch removes** (create body):
+   - `workbench: {enable: false}` → removes `COMPOSIO_REMOTE_BASH_TOOL` and `COMPOSIO_REMOTE_WORKBENCH`.
+   - `search: {enable: false}` → removes `COMPOSIO_SEARCH_TOOLS` and `COMPOSIO_GET_TOOL_SCHEMAS`.
+   - `manage_connections: {enable: false}` → removes `COMPOSIO_MANAGE_CONNECTIONS` (`{enabled: false}` is rejected: "Unrecognized key(s) in object: 'enabled'", although GET shows `enabled`).
+   - `execute: {enable_multi_execute: false}` plus `preload: {tools: [<slug>…]}` → removes `COMPOSIO_MULTI_EXECUTE_TOOL` and exposes the listed tools directly.
+8. **Direct-tools-only session (proven):** `{user_id, mcp: true, toolkits: {enable: ["github"]}, tools: {github: {enable: ["GITHUB_GET_THE_AUTHENTICATED_USER"]}}, workbench: {enable: false}, search: {enable: false}, manage_connections: {enable: false}, execute: {enable_multi_execute: false}, preload: {tools: ["GITHUB_GET_THE_AUTHENTICATED_USER"]}}` → `tools/list` returns exactly `["GITHUB_GET_THE_AUTHENTICATED_USER"]`.
+9. **Tool annotations** carry MCP hints: `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`, plus Composio's `updateHint` and `scopes`. Example: `GITHUB_GET_THE_AUTHENTICATED_USER` → `readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true, updateHint: false`.
+
+Still open (needs a connected account, i.e. the user signing in once): the connect-link flow without `callback_url` and its status values; a real tool call through the session; what a direct tool does when its toolkit is not connected.
