@@ -194,6 +194,16 @@ describe('Sidebar', () => {
   })
 })
 
+describe('Sidebar apps', () => {
+  it('opens Apps from the footer', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({ apps: [], usage: {} })))))
+    renderSidebar()
+    fireEvent.click(screen.getByRole('button', { name: 'Apps' }))
+    expect(await screen.findByText('Apps your bots can use, through Composio.')).toBeInTheDocument()
+    vi.unstubAllGlobals()
+  })
+})
+
 describe('Sidebar usage polling', () => {
   it('fetches /crew/usage once with the settings dialog closed', async () => {
     const fetchFn = vi.fn((_url: string) => Promise.resolve(new Response(JSON.stringify({ state: 'ok', remaining: 2 }))))

@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { creditText, type Usage } from '@/features/usage/CreditPill'
 
+import { ComposioKeyRow } from './ComposioKeyRow'
 import { saveSettings } from './settings-api'
 
 const LIMITS: readonly number[] = [1, 2, 3, 4, 6, 8, 12]
@@ -85,6 +86,7 @@ export function SettingsDialog({ open, onOpenChange, maxWorkingBots, usage }: Se
           <p className="text-xs text-muted-foreground">Each working bot spends credit.</p>
           <p className="text-xs text-muted-foreground">{creditText(usage)}</p>
         </div>
+        <ComposioKeyRow />
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         <DialogFooter showCloseButton>
           <Button onClick={() => void save()} disabled={saving}>Save</Button>

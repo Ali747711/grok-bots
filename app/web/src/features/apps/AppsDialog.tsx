@@ -1,0 +1,65 @@
+import { useState } from 'react'
+
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+
+import type { ConnectedApp } from './apps-types'
+import { AppTile } from './AppTile'
+import { ConnectApp } from './ConnectApp'
+import { DisconnectApp } from './DisconnectApp'
+import { openDialog } from './open-dialog'
+import { useApps } from './use-apps'
+
+const STATUS_TEXT: Record<ConnectedApp['status'], string> = {
+  connected: 'Connected', pending: 'Waiting for sign-in…', failed: 'Not connected'
+}
+
+function KeyProblem({ error }: { error: string }) {
+  return (
+    <div className="flex flex-col items-start gap-2 text-sm">
+      <p>{error === 'no_key' ? 'No Composio key yet.' : 'Key not accepted'}</p>
+      <Button type="button" size="sm" variant="outline" onClick={() => openDialog('settings')}>Set the key in Settings</Button>
+    </div>
+  )
+}
+
+export function AppsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  // Mounted only while open, so the list is read fresh each time.
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Apps</DialogTitle>
+          <DialogDescription>Apps your bots can use, through Composio.</DialogDescription>
+        </DialogHeader>
+        {open && <AppsBody />}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function AppsBody() {
+  const { list, error, reload } = useApps()
+  const [connecting, setConnecting] = useState(false)
+  if (error === 'no_key' || error === 'key_rejected') return <KeyProblem error={error} />
+  if (error) return <p role="alert" className="text-sm">{error}</p>
+  if (!list) return null
+  return (
+    <div className="flex flex-col gap-3">
+      {list.apps.length === 0 && <p className="text-sm text-muted-foreground">No apps connected yet.</p>}
+      <ul className="flex flex-col gap-2">
+        {list.apps.map(app => (
+          <li key={app.id} className="flex items-center gap-2">
+            <AppTile name={app.name} />
+            <span className="min-w-0 flex-1 truncate text-sm">{app.name}</span>
+            <span className="text-xs text-muted-foreground">{STATUS_TEXT[app.status]}</span>
+            <DisconnectApp app={app} bots={list.usage[app.toolkit] ?? []} onDone={() => void reload()} />
+          </li>
+        ))}
+      </ul>
+      {connecting
+        ? <ConnectApp onConnected={() => { setConnecting(false); void reload() }} />
+        : <Button type="button" size="sm" className="self-start" onClick={() => setConnecting(true)}>Connect an app</Button>}
+    </div>
+  )
+}

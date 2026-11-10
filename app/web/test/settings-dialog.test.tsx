@@ -1,16 +1,18 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-const toast = vi.hoisted(() => ({ success: vi.fn() }))
+const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
 vi.mock('sonner', () => ({ toast }))
 
 import { SettingsDialog } from '@/features/settings/SettingsDialog'
 
 const json = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status }))
 
-function stubFetch(put: (init: RequestInit) => Promise<Response>) {
+function stubFetch(put: (init: RequestInit) => Promise<Response>, key: (init: RequestInit) => Promise<Response> = () => json({ configured: false })) {
   const fn = vi.fn((url: string, init?: RequestInit) =>
-    url === '/crew/settings' ? put(init ?? {}) : json({ state: 'ok', limit: 5, used: 3, remaining: 2, checkedAt: 1 })
+    url === '/crew/settings' ? put(init ?? {})
+      : url === '/crew/connectors/key' ? key(init ?? {})
+        : json({ state: 'ok', limit: 5, used: 3, remaining: 2, checkedAt: 1 })
   )
   vi.stubGlobal('fetch', fn)
   return fn
@@ -73,5 +75,56 @@ describe('SettingsDialog', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/could not save/i)
     expect(onOpenChange).not.toHaveBeenCalledWith(false)
     expect(toast.success).not.toHaveBeenCalled()
+  })
+})
+
+describe('Composio key row', () => {
+  const keyInput = () => screen.getByLabelText('Composio API key') as HTMLInputElement
+
+  it('shows Not set, saves a key and shows Saved without ever showing the key', async () => {
+    let saved = false
+    const fetchFn = stubFetch(() => json({}), init => {
+      if (init.method === 'PUT') { saved = true; return json({ configured: true }) }
+      return json({ configured: saved })
+    })
+    open()
+    expect(await screen.findByText('Not set')).toBeInTheDocument()
+    expect(keyInput().type).toBe('password')
+    expect(keyInput().value).toBe('')
+    fireEvent.change(keyInput(), { target: { value: 'ak_test_key_123' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save key' }))
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Key saved'))
+    expect(await screen.findByText('Saved')).toBeInTheDocument()
+    expect(keyInput().value).toBe('')
+    expect(document.body.textContent).not.toContain('ak_test_key_123')
+    const put = fetchFn.mock.calls.find(([, i]) => i?.method === 'PUT' && i.body !== undefined)
+    expect(JSON.parse(String(put?.[1]?.body))).toEqual({ key: 'ak_test_key_123' })
+  })
+
+  it('shows Key not accepted for a rejected key', async () => {
+    stubFetch(() => json({}), init => (init.method === 'PUT' ? json({ error: 'key_rejected' }, 409) : json({ configured: false })))
+    open()
+    await screen.findByText('Not set')
+    fireEvent.change(keyInput(), { target: { value: 'ak_test_key_123' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save key' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Key not accepted')
+    expect(keyInput().value).toBe('')
+    expect(toast.success).not.toHaveBeenCalledWith('Key saved')
+  })
+
+  it('removes the key after the confirmation', async () => {
+    let removed = false
+    stubFetch(() => json({}), init => {
+      if (init.method === 'DELETE') { removed = true; return Promise.resolve(new Response(null, { status: 204 })) }
+      return json({ configured: !removed })
+    })
+    open()
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove key' }))
+    expect(await screen.findByText('Remove the Composio key?')).toBeInTheDocument()
+    expect(screen.getByText('Bots keep their app settings but lose their app tools until you save a key again.')).toBeInTheDocument()
+    const buttons = screen.getAllByRole('button', { name: 'Remove key' })
+    fireEvent.click(buttons[buttons.length - 1]!)
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Key removed'))
+    expect(await screen.findByText('Not set')).toBeInTheDocument()
   })
 })
