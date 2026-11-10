@@ -151,6 +151,8 @@ describe('createDockerRunner (real child processes)', () => {
     expect(result).toMatchObject({ outcome: 'ok', code: 0, stderr: 'err' })
     const missing = await createDockerRunner('/nonexistent/docker-bin').stream([], 1000, () => {})
     expect(missing.outcome).toBe('not_found')
+    const broken = await createDockerRunner('bad\0docker').stream([], 1000, () => {})
+    expect(['exit', 'not_found']).toContain(broken.outcome)
     const slow = createDockerRunner(process.execPath, ['-e', 'setInterval(()=>{},1000)'])
     expect((await slow.stream([], 200, () => {})).outcome).toBe('timeout')
   })

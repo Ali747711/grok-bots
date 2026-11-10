@@ -52,23 +52,30 @@ export function createDockerRunner(bin = 'docker', prefix: readonly string[] = [
       let pending = ''
       let stderr = ''
       let timedOut = false
+      let timer: ReturnType<typeof setTimeout> | undefined
       const finish = (result: RunResult) => {
         if (settled) return
         settled = true
-        clearTimeout(timer)
+        if (timer) clearTimeout(timer)
         if (pending) onLine(pending)
         resolve(result)
       }
-      const child = spawn(bin, [...prefix, ...args], { shell: false, stdio: ['ignore', 'pipe', 'pipe'] })
-      const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL') }, timeoutMs)
-      child.stdout.setEncoding('utf8')
-      child.stdout.on('data', (chunk: string) => {
+      let child: ReturnType<typeof spawn>
+      try {
+        child = spawn(bin, [...prefix, ...args], { shell: false, stdio: ['ignore', 'pipe', 'pipe'] })
+      } catch (error) {
+        // spawn can throw synchronously (a bad argument); the interface says stream never rejects.
+        return finish(fromExecError(error as ExecFailure, '', ''))
+      }
+      timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL') }, timeoutMs)
+      child.stdout?.setEncoding('utf8')
+      child.stdout?.on('data', (chunk: string) => {
         const parts = (pending + chunk).split(/[\r\n]/)
         pending = parts.pop() ?? ''
         for (const part of parts) if (part) onLine(part)
       })
-      child.stderr.setEncoding('utf8')
-      child.stderr.on('data', (chunk: string) => { stderr = (stderr + chunk).slice(-STDERR_KEEP) })
+      child.stderr?.setEncoding('utf8')
+      child.stderr?.on('data', (chunk: string) => { stderr = (stderr + chunk).slice(-STDERR_KEEP) })
       child.on('error', error =>
         finish(fromExecError(error as ExecFailure, '', stderr)))
       child.on('close', code => {

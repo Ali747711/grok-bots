@@ -103,6 +103,28 @@ describe('createImagePuller', () => {
     expect(puller.state()).toMatchObject({ pulling: false, error: null })
   })
 
+  it('turns a throwing stream into a failed state, logs only the code and never rejects unhandled', async () => {
+    const lines: string[] = []
+    restore = setLogSink(l => lines.push(l))
+    const unhandled: unknown[] = []
+    const onUnhandled = (e: unknown) => unhandled.push(e)
+    process.on('unhandledRejection', onUnhandled)
+    const runner: DockerRunner = {
+      run: async () => result('ok', '', 0),
+      stream: () => Promise.reject(new Error('spawn blew up /home/x/secret'))
+    }
+    const puller = createImagePuller(runner)
+    puller.start()
+    await tick()
+    process.off('unhandledRejection', onUnhandled)
+    expect(unhandled).toEqual([])
+    expect(puller.state()).toMatchObject({ pulling: false, error: 'failed' })
+    expect(lines.join('\n')).not.toContain('/home/x')
+    expect(lines.map(l => JSON.parse(l))).toEqual([
+      expect.objectContaining({ level: 'warn', msg: 'sandbox image pull failed', error: 'failed' })
+    ])
+  })
+
   it('never logs docker output', async () => {
     const lines: string[] = []
     restore = setLogSink(l => lines.push(l))
@@ -130,6 +152,19 @@ describe('imageStatus', () => {
       pulling: false, progress: null, error: null, image: DEFAULT_IMAGE, docker: 'down', present: false
     })
     expect(inspected).toBe(false)
+  })
+
+  it('takes the pull snapshot before the docker calls, so a pull finishing meanwhile still reports pulling', async () => {
+    let pulling = true
+    const flipping = {
+      state: () => ({ pulling, progress: null, error: null }),
+      start: () => 'started' as const
+    }
+    const docker = {
+      status: async () => 'ok',
+      imagePresent: async () => { pulling = false; return true }
+    } as unknown as Docker
+    expect(await imageStatus(docker, flipping)).toMatchObject({ pulling: true, present: true })
   })
 
   it('reports presence when docker is ok', async () => {

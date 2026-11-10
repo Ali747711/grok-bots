@@ -102,6 +102,11 @@ export function createImagePuller(runner: DockerRunner, image: string = DEFAULT_
           error = pullErrorOf(result)
           log.warn('sandbox image pull failed', { error })
         })
+        .catch(() => {
+          // The runner promises never to reject; if it does, fail the pull instead of crashing Crew.
+          error = 'failed'
+          log.warn('sandbox image pull failed', { error })
+        })
         .finally(() => { pulling = false })
       return 'started'
     }
@@ -111,7 +116,9 @@ export function createImagePuller(runner: DockerRunner, image: string = DEFAULT_
 export type ImageStatus = PullState & { readonly image: string; readonly docker: DockerState; readonly present: boolean }
 
 export async function imageStatus(docker: Docker, puller: ImagePuller): Promise<ImageStatus> {
+  // Snapshot first: a pull that ends during the docker calls must not look like "finished with no error".
+  const snap = puller.state()
   const state = await docker.status()
   const present = state === 'ok' ? await docker.imagePresent(DEFAULT_IMAGE) : false
-  return { ...puller.state(), image: DEFAULT_IMAGE, docker: state, present }
+  return { ...snap, image: DEFAULT_IMAGE, docker: state, present }
 }
