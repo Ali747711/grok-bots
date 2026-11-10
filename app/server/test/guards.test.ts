@@ -119,3 +119,24 @@ describe('routeMatches', () => {
     expect(routeMatches(entries, 'GET', '/crew/health/x')).toBe(false)
   })
 })
+
+describe('relay exemption', () => {
+  // Origin and the CSRF pair are present so only the session guard can answer 401 (no session cookie).
+  const csrf = { Origin: ORIGIN, Cookie: 'crew_csrf=tok', 'X-Crew-CSRF': 'tok' }
+  const mcp = (method: string, path: string, host = HOST, headers: Record<string, string> = csrf) =>
+    app.request(path, { method, headers: { Host: host, ...headers } })
+
+  it('exempts only POST, GET and DELETE /mcp/<bot> from the session and origin guards', async () => {
+    for (const method of ['POST', 'GET', 'DELETE']) {
+      // 503 (this app has no relay deps) proves neither guard stopped the request, even with no cookie or Origin
+      expect((await mcp(method, '/mcp/a', HOST, {})).status).toBe(503)
+    }
+    for (const [method, path] of [['POST', '/mcp/a/b'], ['POST', '/mcp/'], ['GET', '/mcp/a/b'], ['OPTIONS', '/mcp/a'], ['PUT', '/mcp/a'], ['PATCH', '/mcp/a']] as const) {
+      const res = await mcp(method, path)
+      expect([method, path, res.status, (await res.json()).error]).toEqual([method, path, 401, 'login_required'])
+    }
+    const foreign = await mcp('POST', '/mcp/a', 'evil.example:7070')
+    expect(foreign.status).toBe(400)
+    expect(await foreign.json()).toEqual({ error: 'bad_host' })
+  })
+})
