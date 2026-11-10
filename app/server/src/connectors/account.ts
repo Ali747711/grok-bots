@@ -101,6 +101,10 @@ export async function disconnect(deps: ConnectorDeps, id: string): Promise<void>
   const account = (await deps.composio.accounts(deps.store.userId())).find(a => a.id === id)
   if (!account) throw new ComposioError('not_found')
   await deps.composio.deleteAccount(id)
+  await deps.store.removePending(id)
+  // Another connected account of the same app keeps it working for the bots.
+  const left = await deps.composio.accounts(deps.store.userId())
+  if (left.some(a => a.toolkit === account.toolkit && a.status === 'connected')) return
   for (const bot of deps.store.bots()) {
     const apps = deps.store.record(bot)?.apps
     if (!apps || !(account.toolkit in apps)) continue
@@ -147,7 +151,10 @@ export function removeKey(deps: ConnectorDeps, keys: KeyStore): Promise<void> {
 export async function resumeAll(deps: ConnectorDeps): Promise<void> {
   for (const bot of deps.store.bots()) {
     try {
-      await rebuildSession(deps, bot)
+      // A failed rebuild must not leave the bot paused: the relay fails closed on a dead session.
+      await rebuildSession(deps, bot).catch((error: unknown) => {
+        log.warn('resuming a bot failed', { bot, error: errorName(error) })
+      })
       await withBotLock(bot, async () => {
         if (deps.keys.get() !== null && deps.store.record(bot)) await setAppsServerEnabled(deps.bots, bot, true)
       })

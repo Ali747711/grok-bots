@@ -130,7 +130,7 @@ describe('connector accounts', () => {
     await store.setRecord('anna', record({ notion: 'read' }))
     await store.setRecord('bad', record({ github: 'read' }))
     const original = deps.composio.deleteAccount
-    deps = { ...deps, composio: { ...deps.composio, deleteAccount: async (id: string) => { await original(id); expect(store.record('scout')?.apps).toEqual({ github: 'read' }) } } as Composio }
+    deps = { ...deps, composio: { ...deps.composio, deleteAccount: async (id: string) => { await original(id); expect(store.record('scout')?.apps).toEqual({ github: 'read' }); accounts = accounts.filter(a => a.id !== id) } } as Composio }
     rest.routes.set('GET /api/mcp/servers', () => ({ servers: [] }))
     rest.routes.set('DELETE /api/env', () => ({}))
     // Removing the app from 'bad' fails; the rest must still go on.
@@ -210,7 +210,44 @@ describe('connector accounts', () => {
     } as unknown as Composio
     await resumeAll({ ...deps, composio })
     expect(built).toHaveLength(1)
-    expect(calls).toEqual(['enabled:anna:true'])
+    expect(calls).toEqual(['enabled:scout:true', 'enabled:anna:true'])
+    expect(warn).toHaveBeenCalledWith('resuming a bot failed', expect.objectContaining({ bot: 'scout' }))
+  })
+  it('keeps every bot app when another account of the toolkit is still connected, and drops the pending entry', async () => {
+    accounts = [{ id: 'ca_1', toolkit: 'github', status: 'connected' }, { id: 'ca_2', toolkit: 'github', status: 'failed' }]
+    await store.setRecord('scout', record({ github: 'read' }))
+    await store.addPending({ id: 'ca_2', toolkit: 'github', startedAt: 1_000 })
+    const original = deps.composio.accounts
+    deps = { ...deps, composio: { ...deps.composio, deleteAccount: async (id: string) => { calls.push(`delete:${id}`); accounts = accounts.filter(a => a.id !== id) }, accounts: original } as Composio }
+    await disconnect(deps, 'ca_2')
+    expect(calls).toEqual(['delete:ca_2'])
+    expect(store.record('scout')?.apps).toEqual({ github: 'read' })
+    expect(store.pending()).toEqual([])
+  })
+
+  it('strips the app from bots when the last connected account goes, and drops the pending entry', async () => {
+    accounts = [{ id: 'ca_1', toolkit: 'github', status: 'connected' }]
+    await store.setRecord('scout', record({ github: 'read' }))
+    await store.addPending({ id: 'ca_1', toolkit: 'github', startedAt: 1_000 })
+    deps = { ...deps, composio: { ...deps.composio, deleteAccount: async (id: string) => { accounts = accounts.filter(a => a.id !== id) } } as Composio }
+    rest.routes.set('GET /api/mcp/servers', () => ({ servers: [] }))
+    rest.routes.set('DELETE /api/env', () => ({}))
+    rest.routes.set('DELETE /api/mcp/servers/crew_apps', () => ({}))
+    await disconnect(deps, 'ca_1')
+    expect(store.record('scout')).toBeUndefined()
+    expect(store.pending()).toEqual([])
+  })
+
+  it('enables a bot whose session rebuild failed', async () => {
+    await store.setRecord('scout', record({ github: 'read' }))
+    const composio = {
+      ...deps.composio,
+      toolsOf: async () => [{ slug: 'GITHUB_GET', readOnly: true, destructive: false }],
+      createSession: async () => { throw new ComposioError('composio_unavailable') },
+      deleteSession: async () => undefined
+    } as unknown as Composio
+    await resumeAll({ ...deps, composio })
+    expect(calls).toEqual(['enabled:scout:true'])
     expect(warn).toHaveBeenCalledWith('resuming a bot failed', expect.objectContaining({ bot: 'scout' }))
   })
 })
