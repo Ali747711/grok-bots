@@ -349,3 +349,16 @@ describe('live view paste keys', () => {
     expect(lastRfb().log).toEqual([])
   })
 })
+
+describe('live control mark', () => {
+  it('marks control as held while ours and releases the mark on unmount', async () => {
+    const { liveControlHeld } = await import('@/lib/live-control')
+    const view = render(<Owner />)
+    await connect()
+    expect(liveControlHeld()).toBe(false)
+    await take()
+    await waitFor(() => expect(liveControlHeld()).toBe(true))
+    view.unmount()
+    expect(liveControlHeld()).toBe(false)
+  })
+})

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { connectGateway } from '@/chat/gateway'
+import { setLiveControlHeld } from '@/lib/live-control'
 import type { DisplayLease } from '@/vendor/hermes/gateway-contract.generated'
 
 import { type DialBudget, pageDialBudget } from './dial-budget'
@@ -66,6 +67,11 @@ export function useLiveView(profile: string, screen: UseScreen, setOurs: (hashes
 
   const holding = screen.view.control === 'you'
   useEffect(() => session.setHolding(holding), [session, holding])
+  // Window shortcuts stand down while we hold the remote desktop; the mark clears on unmount too.
+  useEffect(() => {
+    setLiveControlHeld(holding)
+    return () => setLiveControlHeld(false)
+  }, [holding])
   const lease = screen.view.lease
   useEffect(() => session.noteLease(lease), [session, lease])
 
