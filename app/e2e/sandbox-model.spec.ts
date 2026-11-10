@@ -35,6 +35,7 @@ test.beforeAll(async ({ browser }) => {
   const made = await crewApi(page, 'POST', '/crew/bots', {
     name: BOT,
     title: `E2E Sandbox Model ${stamp}`,
+    avatar: { type: 'circle' },
     sandbox: true,
     model: { provider: 'openrouter', model: 'anthropic/claude-haiku-5.5' }
   })
@@ -56,7 +57,10 @@ test('@model a sandboxed bot runs as the host user and cannot reach keys, tokens
   const chat = (await profileRows()).find(p => p.name === BOT)?.canonical_session as { id?: string; resolved_id?: string } | null | undefined
   const sessionId = chat?.resolved_id ?? chat?.id
   expect(sessionId, 'the bot has a canonical session').toBeTruthy()
-  const text = (await sessionMessages(BOT, sessionId!)).map(m => m.content).join('\n')
+  // Only the command's output counts: the user prompt holds every marker word (LEAK_*, OPEN).
+  const results = (await sessionMessages(BOT, sessionId!)).filter(m => m.role === 'tool')
+  expect(results.length, 'the terminal tool ran').toBeGreaterThan(0)
+  const text = results.map(m => m.content).join('\n')
   for (const needle of ['uid=1000', 'no_env', 'no_token', 'no_crew']) expect(text).toContain(needle)
   for (const t of ['127.0.0.1/9120', '127.0.0.1/7070', '172.17.0.1/9120', '172.17.0.1/7070']) expect(text).toContain(`closed ${t}`)
   expect(text).not.toContain('LEAK_')

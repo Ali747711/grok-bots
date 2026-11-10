@@ -90,7 +90,7 @@ test('a new bot made with the box ticked runs in a sandbox, with the badge and t
 
 test("the user's own disabled toolsets survive switching on and off", async ({ page }) => {
   await page.goto(CREW)
-  const made = await crewApi(page, 'POST', '/crew/bots', { name: B, title: TITLE_B, sandbox: false })
+  const made = await crewApi(page, 'POST', '/crew/bots', { name: B, title: TITLE_B, avatar: { type: 'circle' }, sandbox: false })
   expect(made.status).toBeLessThan(300)
   await page.goto(`${CREW}/bots/${B}`)
   await expect(page.locator(`[data-bot="${B}"]`)).toBeVisible()
