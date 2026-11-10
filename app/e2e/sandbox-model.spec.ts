@@ -51,12 +51,17 @@ test.afterAll(async () => {
 })
 
 test('@model a sandboxed bot runs as the host user and cannot reach keys, tokens or Crew', async () => {
-  await openBot(page, BOT)
-  await send(page, PROMPT)
-  await waitIdle(page, BOT)
   const chat = (await profileRows()).find(p => p.name === BOT)?.canonical_session as { id?: string; resolved_id?: string } | null | undefined
   const sessionId = chat?.resolved_id ?? chat?.id
   expect(sessionId, 'the bot has a canonical session').toBeTruthy()
+  await openBot(page, BOT)
+  await send(page, PROMPT)
+  // waitIdle alone can see `idle` before the turn starts, so wait for the tool result and the final reply first.
+  await expect.poll(async () => {
+    const rows = await sessionMessages(BOT, sessionId!)
+    return rows.some(m => m.role === 'tool') && rows.at(-1)?.role === 'assistant'
+  }, { timeout: 180_000, intervals: [3000] }).toBe(true)
+  await waitIdle(page, BOT)
   // Only the command's output counts: the user prompt holds every marker word (LEAK_*, OPEN).
   const results = (await sessionMessages(BOT, sessionId!)).filter(m => m.role === 'tool')
   expect(results.length, 'the terminal tool ran').toBeGreaterThan(0)
