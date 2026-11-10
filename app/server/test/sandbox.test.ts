@@ -150,6 +150,14 @@ describe('setSandbox', () => {
     expect(toolsets()).toEqual(['browser'])
   })
 
+  it('writes a string disabled_toolsets as an array on and off', async () => {
+    rest.config = { agent: { disabled_toolsets: "['tts']" } }
+    await setSandbox(deps, sb, 'ada', true)
+    expect(toolsets()).toEqual(['tts', 'browser'])
+    await setSandbox(deps, sb, 'ada', false)
+    expect(toolsets()).toEqual(['tts'])
+  })
+
   it('refuses to turn on without docker or the image, writing nothing', async () => {
     docker.status.mockResolvedValue('missing')
     await expect(setSandbox(deps, sb, 'ada', true)).rejects.toEqual(new SandboxRefusedError('docker_unavailable'))

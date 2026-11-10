@@ -82,7 +82,12 @@ describe('markers and patches', () => {
 
   it('returns the toolset list as is', () => {
     expect(rawToolsetList({ agent: { disabled_toolsets: ['a', 3] } })).toEqual(['a', 3])
-    expect(rawToolsetList({ agent: { disabled_toolsets: 'x' } })).toEqual([])
+    expect(rawToolsetList({ agent: { disabled_toolsets: 'x' } })).toEqual(['x'])
+    expect(rawToolsetList({ agent: { disabled_toolsets: " ['tts', 'x'] " } })).toEqual(['tts', 'x'])
+    expect(rawToolsetList({ agent: { disabled_toolsets: '["tts"]' } })).toEqual(['tts'])
+    expect(rawToolsetList({ agent: { disabled_toolsets: '[oops' } })).toEqual(['[oops'])
+    expect(rawToolsetList({ agent: { disabled_toolsets: '  ' } })).toEqual([])
+    expect(rawToolsetList({ agent: { disabled_toolsets: 5 } })).toEqual([])
     expect(rawToolsetList(undefined)).toEqual([])
   })
 
@@ -100,6 +105,20 @@ describe('markers and patches', () => {
     expect(patch.config).not.toHaveProperty('agent')
     expect(patch.marker).toEqual({ on: true, addedBrowserDisable: false })
     expect(onPatch({ agent: { disabled_toolsets: ['browser'] } }, { on: true, addedBrowserDisable: true }).marker.addedBrowserDisable).toBe(true)
+  })
+
+  it('onPatch keeps a bare or quoted-list string toolset entry in the written array', () => {
+    expect(onPatch({ agent: { disabled_toolsets: 'tts' } }, OFF_MARKER).config).toMatchObject({ agent: { disabled_toolsets: ['tts', 'browser'] } })
+    expect(onPatch({ agent: { disabled_toolsets: "['tts']" } }, OFF_MARKER).config).toMatchObject({ agent: { disabled_toolsets: ['tts', 'browser'] } })
+  })
+
+  it('treats a bare browser string as the user own entry', () => {
+    const raw = { terminal: { backend: 'docker' }, agent: { disabled_toolsets: 'browser' } }
+    expect(sandboxStateOf(raw)).toEqual({ state: 'on', reasons: [] })
+    const on = onPatch(raw, OFF_MARKER)
+    expect(on.config).not.toHaveProperty('agent')
+    expect(on.marker.addedBrowserDisable).toBe(false)
+    expect(offPatch(raw, on.marker).config).toEqual({ terminal: { backend: 'local' } })
   })
 
   it('offPatch removes browser only when Crew added it', () => {

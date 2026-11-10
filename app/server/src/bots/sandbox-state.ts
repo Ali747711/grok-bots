@@ -25,9 +25,33 @@ const section = (value: unknown): Section =>
 const nonEmpty = (value: unknown): boolean =>
   Array.isArray(value) ? value.length > 0 : typeof value === 'string' ? value.length > 0 : false
 
+/** A `[...]` string as Hermes's `ast.literal_eval` reads it (JSON or single-quoted items); null when it is not a list. */
+function parseListString(text: string): unknown[] | null {
+  for (const candidate of [text, text.replace(/'/g, '"')]) {
+    try {
+      const parsed: unknown = JSON.parse(candidate)
+      if (Array.isArray(parsed)) return parsed
+    } catch {
+      // try the next spelling
+    }
+  }
+  return null
+}
+
+/**
+ * `agent.disabled_toolsets` as Hermes reads it (`parse_config_string_list`): an array as is; a `[...]`
+ * string is a list; any other non-empty string is one name; anything else is empty.
+ */
 export function rawToolsetList(raw: unknown): readonly unknown[] {
-  const list = section(section(raw).agent).disabled_toolsets
-  return Array.isArray(list) ? list : []
+  const value = section(section(raw).agent).disabled_toolsets
+  if (Array.isArray(value)) return value
+  if (typeof value !== 'string') return []
+  const text = value.trim()
+  if (text.startsWith('[')) {
+    const parsed = parseListString(text)
+    if (parsed) return parsed.map(String)
+  }
+  return text ? [text] : []
 }
 
 function extraArgs(terminal: Section): string[] {
