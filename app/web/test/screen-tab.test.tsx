@@ -245,12 +245,6 @@ describe('ScreenTab', () => {
     expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
   })
 
-  it('shows the read error when the use-screen setting cannot be loaded', async () => {
-    fetchMock.mockImplementation(async (url: string) => url.endsWith('/screen/config') ? new Response(JSON.stringify({ error: 'hermes_error', message: 'config unreadable' }), { status: 502 }) : new Response('{}', { status: 404 }))
-    show()
-    expect(await screen.findByText('config unreadable')).toBeInTheDocument()
-  })
-
   it('never hits Reconnect over three panel and Expand round trips', async () => {
     await live()
     await waitFor(() => expect(screen.getByRole('button', { name: 'Take control' })).toBeEnabled())
@@ -272,22 +266,19 @@ describe('ScreenTab', () => {
     expect(screen.getByText('Hand back first')).toBeInTheDocument()
   })
 
-  it('hides the use-screen switch for the primary bot and saves both keys for others', async () => {
-    const primary = show(bot({ name: 'default', title: 'Hermes', isPrimary: true }))
+  it('links the off state to Screen settings on the profile, and holds no use-screen switch', async () => {
+    const first = show()
     await screen.findByRole('button', { name: 'Start screen' })
+    expect(screen.getByRole('link', { name: 'Screen settings' })).toHaveAttribute('href', '/bots/scout?panel=profile&tab=advanced')
+    // The switch moved to the profile's Advanced tab: the panel never reads or writes the screen config.
     expect(screen.queryByRole('switch')).toBeNull()
-    primary.unmount()
+    expect(fetchMock.mock.calls.some(c => String(c[0]).endsWith('/screen/config'))).toBe(false)
+    first.unmount()
 
-    show()
-    const toggle = await screen.findByRole('switch', { name: 'Let Scout use its screen' })
-    await waitFor(() => expect(toggle).toBeEnabled()) // disabled until the setting has loaded
-    expect(toggle).not.toBeChecked()
-    expect(screen.getByText(/next time Scout opens its browser/)).toBeInTheDocument()
-    fireEvent.click(toggle)
-    await waitFor(() => expect(fetchMock.mock.calls.some(c => c[0] === '/crew/bots/scout/screen/config' && c[1].method === 'PUT')).toBe(true))
-    const put = fetchMock.mock.calls.find(c => c[1]?.method === 'PUT')!
-    expect(JSON.parse(put[1].body)).toEqual({ useScreen: true })
-    await waitFor(() => expect(screen.getByRole('switch', { name: 'Let Scout use its screen' })).toBeChecked())
+    // A running screen has its controls instead; the link is for the off state.
+    await live()
+    expect(screen.queryByRole('link', { name: 'Screen settings' })).toBeNull()
+    expect(screen.queryByRole('switch')).toBeNull()
   })
 
   it('moves the viewer to Expand and back without handing control back', async () => {

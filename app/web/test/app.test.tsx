@@ -4,6 +4,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { SIDE_PANEL_KEY } from '@/app/side-panel-memory'
+import { clearProfileDrafts } from '@/features/profile/profile-drafts'
 import { setLiveControlHeld } from '@/lib/live-control'
 import type { CrewState } from '@/state/types'
 
@@ -49,6 +50,7 @@ beforeEach(() => {
 })
 afterEach(() => {
   setLiveControlHeld(false)
+  clearProfileDrafts()
   vi.unstubAllGlobals()
 })
 
@@ -325,6 +327,37 @@ describe('one chat session and drafts', () => {
     await waitFor(() => expect(client.callsOf('session.resume').map(c => c.params.profile)).toEqual(['dev', 'researcher']))
   })
 
+  it('keeps unsaved profile edits per bot across Esc, Back, the rail and ⌥digit, and never shows them on another bot', async () => {
+    renderAt('/bots/dev?panel=profile')
+    const name = () => screen.findByLabelText('Name')
+    fireEvent.change(await name(), { target: { value: 'Dev draft' } })
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
+
+    // Esc leaves the profile; the edit is there on return.
+    press({ key: 'Escape' })
+    expect(where()).toBe('/bots/dev')
+    fireEvent.click(screen.getByRole('button', { name: 'Profile' }))
+    expect(await name()).toHaveValue('Dev draft')
+
+    // The rail opens another bot's profile: its own name, nothing unsaved.
+    fireEvent.click(row('researcher'))
+    expect(where()).toBe('/bots/researcher?panel=profile')
+    await waitFor(async () => expect(await name()).toHaveValue('Researcher'))
+    expect(screen.queryByText('Unsaved changes')).toBeNull()
+    fireEvent.click(row('dev'))
+    await waitFor(async () => expect(await name()).toHaveValue('Dev draft'))
+
+    // Back, then ⌥digit to another bot and the rail back again.
+    fireEvent.click(screen.getByRole('button', { name: 'Back to chat' }))
+    press({ key: '1', code: 'Digit1', altKey: true })
+    expect(where()).not.toMatch(/^\/bots\/dev(\?|$)/)
+    fireEvent.click(row('dev'))
+    fireEvent.click(screen.getByRole('button', { name: 'Profile' }))
+    expect(await name()).toHaveValue('Dev draft')
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
+    expect(window.localStorage.length + window.sessionStorage.length).toBe(0)
+  })
+
   it('keeps a composer draft per bot across the profile and a bot switch', async () => {
     withOpenRequest()
     renderAt('/bots/dev')
@@ -429,10 +462,10 @@ describe('window shortcuts', () => {
 
   it('Esc leaves the profile and the Needs-you page, but not from a field or an open dialog', async () => {
     withOpenRequest()
-    renderAt('/bots/dev?panel=profile&tab=advanced')
-    const name = await screen.findByLabelText('Name')
-    press({ key: 'Escape' }, name)
-    expect(where()).toBe('/bots/dev?panel=profile&tab=advanced')
+    renderAt('/bots/dev?panel=profile&tab=soul')
+    const persona = await screen.findByLabelText('Persona (SOUL.md)')
+    press({ key: 'Escape' }, persona)
+    expect(where()).toBe('/bots/dev?panel=profile&tab=soul')
     press({ key: 'Escape' })
     expect(where()).toBe('/bots/dev')
 

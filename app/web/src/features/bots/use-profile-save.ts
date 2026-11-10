@@ -68,6 +68,12 @@ export function useProfileSave({ name, onReset, reload }: Deps) {
     saveAnyway: () => conflict && void send(rebase(conflict.patch, conflict.current)),
     useConfirmed: () => confirm && void send({ ...confirm.patch, confirmExpensiveModel: true }),
     cancelConfirm: () => setConfirm(null),
+    /** Forget a pending conflict, confirm and error (the edits they were about were discarded). */
+    dismiss: () => {
+      setConflict(null)
+      setConfirm(null)
+      setError(null)
+    },
     takeTheirs: () => {
       if (!conflict) return
       onReset(conflict.current)

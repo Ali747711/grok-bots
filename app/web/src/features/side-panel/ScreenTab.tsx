@@ -1,6 +1,8 @@
 import { Maximize2 } from 'lucide-react'
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 
+import { botUrl } from '@/app/panel-params'
 import { IconButton } from '@/components/console/icon-button'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
@@ -10,7 +12,6 @@ import { ExpandDialog } from '@/features/computer/ExpandDialog'
 import { LiveView } from '@/features/computer/LiveView'
 import { ScreenError, ScreenLoading, ScreenMissing, ScreenOff } from '@/features/computer/ScreenStates'
 import type { ScreenControl } from '@/features/computer/screen-state'
-import { UseScreenSwitch } from '@/features/computer/UseScreenSwitch'
 import type { BotView } from '@/state/types'
 
 import { type ComputerContextValue, useComputerContext } from './ComputerProvider'
@@ -104,12 +105,17 @@ function Body({ bot, screen, live }: PartProps) {
 export function ScreenTab({ bot }: { bot: BotView }) {
   const { screen, live } = useComputerContext()
   const { items } = useBotChat(bot.name)
-  const primary = bot.isPrimary || bot.name === 'default'
   const { kind } = screen.view
+  // The screen's own settings (use it unprompted, when it is stopped) live on the profile's Advanced tab.
+  const stopped = kind === 'off' || kind === 'low_memory'
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 px-2 pb-2">
       <Body bot={bot} screen={screen} live={live} />
-      {!primary && kind !== 'loading' && kind !== 'missing' && <div className="shrink-0 px-3 pb-1"><UseScreenSwitch name={bot.name} title={bot.title} /></div>}
+      {stopped && (
+        <Link to={botUrl(bot.name, 'profile', 'advanced')} className="shrink-0 self-center rounded-full px-3 py-1 text-xs font-medium text-muted-foreground underline underline-offset-2 outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring">
+          Screen settings
+        </Link>
+      )}
       <NowStrip step={nowStep(items)} />
       <RecentActions title={bot.title} actions={recentActions(items)} />
     </div>
