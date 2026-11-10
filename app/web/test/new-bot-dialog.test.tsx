@@ -281,6 +281,25 @@ describe('NewBotDialog', () => {
       expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled()
     })
 
+    it('enables Create once the download finishes, without unticking', async () => {
+      let phase: 'missing' | 'pulling' | 'present' = 'missing'
+      vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+        if (url === '/api/model/options') return json(MODELS)
+        if (url === '/crew/sandbox/image/pull' && init?.method === 'POST') { phase = 'pulling'; return json(image({ present: false, pulling: true }), 202) }
+        if (url === '/crew/sandbox/image') {
+          if (phase === 'pulling') phase = 'present'
+          return json(image({ present: phase === 'present', pulling: false }))
+        }
+        return json({})
+      }))
+      setup()
+      type('Name', 'Scout')
+      fireEvent.click(box())
+      fireEvent.click(await screen.findByRole('button', { name: 'Download (about 1.2 GB)' }))
+      expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled()
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled(), { timeout: 4000 })
+    })
+
     it("says Docker isn't available and keeps Create off", async () => {
       stubSandbox({ docker: 'missing', present: false })
       setup()

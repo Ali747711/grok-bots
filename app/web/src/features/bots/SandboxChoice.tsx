@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
 import { Checkbox } from '@/components/ui/checkbox'
 
@@ -11,8 +11,6 @@ interface SandboxChoiceProps {
   /** True when unticked, or ticked with Docker answering and the image downloaded. */
   onReadyChange: (ready: boolean) => void
 }
-
-const NOOP = () => undefined
 
 /** "Run in a sandbox" for the New bot form, with the Docker and image state once ticked. */
 export function SandboxChoice({ checked, onChange, onReadyChange }: SandboxChoiceProps) {
@@ -41,14 +39,16 @@ function Idle({ onReadyChange }: { onReadyChange: (ready: boolean) => void }) {
 function SandboxState({ onReadyChange }: { onReadyChange: (ready: boolean) => void }) {
   const { status } = useImageStatus()
   const docker = status?.docker
-  const ready = docker === 'ok' && status?.present === true
+  // ImageDownload runs its own status hook; its onReady tells this one the download finished.
+  const [downloaded, setDownloaded] = useState(false)
+  const ready = docker === 'ok' && (status?.present === true || downloaded)
   useEffect(() => { onReadyChange(ready) }, [ready, onReadyChange])
   if (!status || ready) return null
   if (docker !== 'ok') return <p className="text-xs text-muted-foreground">Docker isn&apos;t available on this computer</p>
   return (
     <div className="flex flex-col gap-2 text-xs">
       <span className="text-muted-foreground">The sandbox image isn&apos;t downloaded</span>
-      <ImageDownload onReady={NOOP} />
+      <ImageDownload onReady={() => setDownloaded(true)} />
     </div>
   )
 }
