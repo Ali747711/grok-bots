@@ -152,6 +152,45 @@ async function openRailTheme(page: Page, name: string, theme: Ctx['theme']): Pro
   await expect(page.getByRole('menuitemradio', { name: theme === 'dark' ? 'Dark' : 'Light' })).toHaveAttribute('aria-checked', 'true')
 }
 
+/**
+ * The New bot panel, open, morphed out of the pill. On the way: a press outside keeps the draft, Esc drops
+ * it, focus returns to the pill, and Tab stays inside the panel. No bot is created.
+ */
+async function openNewBot(page: Page, name: string): Promise<void> {
+  await openBot(page, name)
+  const pill = page.getByRole('button', { name: '+ New bot', exact: true })
+  const panel = page.getByRole('dialog', { name: 'New bot' })
+  const field = panel.getByLabel('Name', { exact: true })
+  await pill.click()
+  await expect(field).toBeFocused()
+  await field.fill('E2E Draft')
+  // The panel is modal, so the press lands on the page behind it, far from the panel.
+  await page.mouse.click(page.viewportSize()!.width - 40, page.viewportSize()!.height - 40)
+  await expect(panel).toHaveCount(0)
+  await expect(pill).toBeFocused()
+  await pill.click()
+  await expect(field).toHaveValue('E2E Draft')
+  await page.keyboard.press('Escape')
+  await expect(panel).toHaveCount(0)
+  await expect(pill).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect(field).toBeFocused()
+  await expect(field).toHaveValue('')
+  await field.fill('E2E Draft')
+  await expect(panel.getByText('@e2e-draft', { exact: true })).toBeVisible()
+  // The radio itself is visually hidden under its tile, so the tile is what a user clicks.
+  await panel.getByText('Engineer', { exact: true }).click()
+  await expect(panel.getByRole('radio', { name: 'Engineer' })).toBeChecked()
+  await panel.getByRole('button', { name: 'Create', exact: true }).focus()
+  await page.keyboard.press('Tab')
+  await expect(panel.getByRole('button', { name: 'Close', exact: true })).toBeFocused()
+  await page.keyboard.press('Shift+Tab')
+  await expect(panel.getByRole('button', { name: 'Create', exact: true })).toBeFocused()
+  await field.focus()
+  // The morph is a spring that `shoot` cannot freeze: wait until the panel has its full width.
+  await expect.poll(async () => Math.round((await panel.boundingBox())?.width ?? 0)).toBe(440)
+}
+
 const SCREENS: Screen[] = [
   { id: 'workspace', task: 4, open: page => openBot(page, BOT) },
   { id: 'workspace-side', task: 6, open: page => openSide(page, BOT) },
@@ -159,7 +198,8 @@ const SCREENS: Screen[] = [
   { id: 'rail', task: 7, open: page => openRailFind(page, BOT) },
   { id: 'rail-pinned', task: 7, open: page => openRailPinned(page, BOT, BOT_TITLE), teardown: ({ page }) => resetRailBot(page, BOT) },
   { id: 'rail-hidden', task: 7, open: page => openRailHidden(page, BOT, BOT_TITLE), teardown: ({ page }) => resetRailBot(page, BOT) },
-  { id: 'rail-theme', task: 7, open: (page, { theme }) => openRailTheme(page, BOT, theme) }
+  { id: 'rail-theme', task: 7, open: (page, { theme }) => openRailTheme(page, BOT, theme) },
+  { id: 'new-bot', task: 8, open: page => openNewBot(page, BOT) }
 ]
 
 test.describe.configure({ mode: 'serial' })

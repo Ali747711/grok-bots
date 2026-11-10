@@ -81,7 +81,7 @@ describe('GroupsSection', () => {
 describe('Rail', () => {
   const noop = () => undefined
   const rail = (state: ReturnType<typeof crewState>) => (
-    <Rail state={state} crewConnected selected={null} selectedGroupId={null} needsYouActive={false} onSelect={noop} onSelectGroup={noop} onNeedsYou={noop} onNewBot={noop} onNewGroup={noop} />
+    <Rail state={state} crewConnected selected={null} selectedGroupId={null} needsYouActive={false} onSelect={noop} onSelectGroup={noop} onNeedsYou={noop} onNewGroup={noop} />
   )
 
   it('mounts Groups after Crew and before Hidden, and skips it on an older server', () => {

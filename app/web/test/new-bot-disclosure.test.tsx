@@ -1,11 +1,11 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { deriveAvatarType } from '@/features/avatars/avatar-model'
 import { describeCreateFailure } from '@/features/bots/create-errors'
 import { CrewApiError } from '@/features/bots/bots-api'
-import { NewBotDialog } from '@/features/bots/NewBotDialog'
 import type { CreateResult } from '@/features/bots/types'
+import { NewBotDisclosure } from '@/features/rail/NewBotDisclosure'
 
 vi.mock('bot-avatars', async () => {
   const actual = await vi.importActual<typeof import('bot-avatars')>('bot-avatars')
@@ -38,14 +38,32 @@ const pickModel = (option: string) => {
   fireEvent.pointerDown(item)
   fireEvent.click(item)
 }
-const setup = (onCreated = vi.fn(), onOpenChange = vi.fn()) => {
-  render(<NewBotDialog open onOpenChange={onOpenChange} onCreated={onCreated} />)
-  return { onCreated, onOpenChange }
+const trigger = () => screen.getByRole('button', { name: '+ New bot' })
+const panel = () => screen.getByRole('dialog', { name: 'New bot' })
+const openPanel = () => fireEvent.click(trigger())
+/** Renders the disclosure and opens its panel. */
+const setup = (onCreated = vi.fn()) => {
+  render(<NewBotDisclosure onCreated={onCreated} />)
+  openPanel()
+  return { onCreated }
+}
+/** A press that starts and ends outside the panel, as Base UI's dismiss sees it. */
+const pressOutside = () => {
+  fireEvent.pointerDown(document.body)
+  fireEvent.mouseDown(document.body)
+  fireEvent.click(document.body)
+}
+/** Tab cannot move focus in jsdom; focus lands on the guard Base UI puts after (or before) the panel's controls. */
+const tabPast = (edge: 'end' | 'start') => {
+  const guards = [...document.querySelectorAll<HTMLElement>('[data-base-ui-focus-guard]')]
+  const guard = edge === 'end' ? guards.at(-1) : guards[0]
+  if (!guard) throw new Error('no focus guard')
+  guard.focus()
 }
 
 afterEach(() => vi.unstubAllGlobals())
 
-describe('NewBotDialog', () => {
+describe('NewBotDisclosure', () => {
   it('derives the handle from the name', () => {
     stub(() => json(complete, 201))
     setup()
@@ -73,15 +91,15 @@ describe('NewBotDialog', () => {
 
   it('posts the draft and reports the created bot', async () => {
     const fn = stub(() => json(complete, 201))
-    const { onCreated, onOpenChange } = setup()
+    const { onCreated } = setup()
     type('Name', 'Research Bot')
     type('Job & personality', 'Find things')
     fireEvent.click(screen.getByRole('button', { name: 'Violet' }))
     fireEvent.click(screen.getByRole('button', { name: 'Create' }))
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith('research-bot'))
-    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(screen.queryByRole('dialog')).toBeNull()
     expect(JSON.parse(String(call(fn, '/crew/bots')?.[1]?.body))).toEqual({
-      name: 'research-bot', title: 'Research Bot', mission: 'Find things', avatar: { type: deriveAvatarType('research-bot'), color: '#7c5cff' }, sandbox: false
+      name: 'research-bot', title: 'Research Bot', mission: 'Find things', avatar: { type: deriveAvatarType('research-bot'), color: '#7c5cff' }, role: null, sandbox: false
     })
   })
 
@@ -232,6 +250,136 @@ describe('NewBotDialog', () => {
     release({ width: 10, height: 10, close: vi.fn() })
     await waitFor(() => expect(screen.getByRole('button', { name: 'Finish setup' })).toBeEnabled())
     vi.restoreAllMocks()
+  })
+
+  describe('morph panel', () => {
+    it('opens a dialog from + New bot and traps focus inside it', async () => {
+      stub(() => json(complete, 201))
+      render(<NewBotDisclosure onCreated={vi.fn()} />)
+      expect(screen.queryByRole('dialog')).toBeNull()
+      expect(trigger()).toHaveAttribute('aria-haspopup', 'dialog')
+      openPanel()
+      await waitFor(() => expect(screen.getByLabelText('Name')).toHaveFocus())
+      expect(panel()).toHaveClass('w-[440px]', 'max-h-[calc(100dvh-16px)]', 'overflow-y-auto', 'rounded-3xl', 'bg-shell')
+      type('Name', 'Scout')
+      const controls = within(panel()).getAllByRole('button')
+      const first = within(panel()).getByRole('button', { name: 'Close' })
+      const last = within(panel()).getByRole('button', { name: 'Create' })
+      expect(controls[0]).toBe(first)
+      expect(controls.at(-1)).toBe(last)
+      last.focus()
+      tabPast('end')
+      await waitFor(() => expect(first).toHaveFocus())
+      tabPast('start')
+      await waitFor(() => expect(last).toHaveFocus())
+    })
+
+    it('Esc and Close reset the draft; an outside click keeps it', async () => {
+      stub(() => json(complete, 201))
+      setup()
+      type('Name', 'Scout')
+      type('Job & personality', 'Finds things')
+      fireEvent.click(screen.getByRole('radio', { name: 'Engineer' }))
+      pressOutside()
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+      await waitFor(() => expect(trigger()).toHaveFocus())
+      openPanel()
+      expect(screen.getByLabelText('Name')).toHaveValue('Scout')
+      expect(screen.getByLabelText('Job & personality')).toHaveValue('Finds things')
+      expect(screen.getByRole('radio', { name: 'Engineer' })).toBeChecked()
+
+      fireEvent.keyDown(screen.getByLabelText('Name'), { key: 'Escape' })
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+      await waitFor(() => expect(trigger()).toHaveFocus())
+      openPanel()
+      expect(screen.getByLabelText('Name')).toHaveValue('')
+      expect(screen.getByLabelText('Job & personality')).toHaveValue('')
+      expect(screen.getByRole('radio', { name: 'None' })).toBeChecked()
+
+      type('Name', 'Scout')
+      fireEvent.click(within(panel()).getByRole('button', { name: 'Close' }))
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+      await waitFor(() => expect(trigger()).toHaveFocus())
+      openPanel()
+      expect(screen.getByLabelText('Name')).toHaveValue('')
+      expect(within(panel()).queryByRole('button', { name: 'Cancel' })).toBeNull()
+    })
+
+    it('sends the chosen role with the draft', async () => {
+      const fn = stub(() => json(complete, 201))
+      setup()
+      type('Name', 'Scout')
+      fireEvent.click(screen.getByRole('radio', { name: 'Engineer' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+      await waitFor(() => expect(call(fn, '/crew/bots')).toBeDefined())
+      expect(JSON.parse(String(call(fn, '/crew/bots')?.[1]?.body)).role).toBe('engineer')
+
+      fn.mockClear()
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+      openPanel()
+      type('Name', 'Scout Two')
+      fireEvent.click(screen.getByRole('radio', { name: 'Analyst' }))
+      fireEvent.click(screen.getByRole('radio', { name: 'None' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+      await waitFor(() => expect(call(fn, '/crew/bots')).toBeDefined())
+      expect(JSON.parse(String(call(fn, '/crew/bots')?.[1]?.body)).role).toBeNull()
+    })
+
+    it('shows a partial result with Finish setup and Open bot inside the panel', async () => {
+      stub(() => json({ ...incomplete, needsModel: true }, 201))
+      const { onCreated } = setup()
+      type('Name', 'Research Bot')
+      fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+      const inside = within(panel())
+      expect(await inside.findByText('Created @research-bot, but look failed: boom')).toBeInTheDocument()
+      expect(inside.getByText('This bot needs a model before it can reply')).toBeInTheDocument()
+      expect(inside.getByRole('button', { name: 'Finish setup' })).toBeInTheDocument()
+      expect(inside.queryByRole('button', { name: 'Create' })).toBeNull()
+      expect(onCreated).not.toHaveBeenCalled()
+      fireEvent.click(inside.getByRole('button', { name: 'Open bot' }))
+      expect(onCreated).toHaveBeenCalledWith('research-bot')
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    })
+
+    it('shows validation and server errors inside the panel', async () => {
+      stub(() => json({ error: 'hermes_offline' }, 503))
+      setup()
+      type('Name', 'default')
+      expect(within(panel()).getByText('That handle is reserved')).toBeInTheDocument()
+      type('Name', 'Scout')
+      fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+      expect(await within(panel()).findByRole('alert')).toHaveTextContent('Hermes is offline')
+    })
+
+    it('starts a fresh draft after a half-made bot, even when the panel was closed by an outside click', async () => {
+      stub(() => json(incomplete, 201))
+      setup()
+      type('Name', 'Research Bot')
+      fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+      await screen.findByRole('button', { name: 'Finish setup' })
+      pressOutside()
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+      openPanel()
+      expect(screen.getByLabelText('Name')).toHaveValue('')
+      expect(screen.getByRole('button', { name: 'Create' })).toBeInTheDocument()
+    })
+
+    it('keeps every field label the e2e specs use', () => {
+      stub(() => json(complete, 201))
+      setup()
+      expect(screen.getByLabelText('Name')).toBeInTheDocument()
+      expect(screen.getByLabelText('Job & personality')).toBeInTheDocument()
+      expect(screen.getByLabelText('Upload photo')).toBeInTheDocument()
+      expect(screen.getByRole('combobox', { name: 'Model' })).toBeInTheDocument()
+      expect(screen.getByRole('checkbox', { name: 'Run in a sandbox' })).toBeInTheDocument()
+      expect(screen.getByRole('radiogroup', { name: 'Role' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'cat' })).toHaveAttribute('aria-pressed')
+      expect(screen.getByRole('button', { name: 'Pink' })).toHaveAttribute('aria-pressed')
+      expect(screen.getByRole('button', { name: 'Create' })).toBeInTheDocument()
+      type('Name', 'Scout')
+      fireEvent.click(screen.getByRole('button', { name: 'Change handle' }))
+      expect(screen.getByLabelText('Handle')).toHaveValue('scout')
+    })
   })
 
   describe('sandbox choice', () => {

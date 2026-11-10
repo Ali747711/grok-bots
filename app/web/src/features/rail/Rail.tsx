@@ -29,7 +29,6 @@ export interface RailProps {
   onSelect(name: string): void
   onSelectGroup(id: string): void
   onNeedsYou(): void
-  onNewBot(): void
   onNewGroup(): void
 }
 
@@ -130,8 +129,9 @@ function Find({ inputRef, query, onQuery }: FindProps) {
  * The Crew rail: header and connection chip, Find, the bots in Needs you / Pinned / Crew, the groups,
  * the hidden bots, and the footer. While Hermes or the Crew stream is down, rows dim and hide live status.
  */
-export function Rail({ state, crewConnected, selected, selectedGroupId, needsYouActive, onSelect, onSelectGroup, onNeedsYou, onNewBot, onNewGroup }: RailProps) {
+export function Rail({ state, crewConnected, selected, selectedGroupId, needsYouActive, onSelect, onSelectGroup, onNeedsYou, onNewGroup }: RailProps) {
   const [query, setQuery] = useState('')
+  const [newBotOpen, setNewBotOpen] = useState(false)
   const [hiddenOpen, setHiddenOpen] = useState(false)
   const findRef = useRef<HTMLInputElement>(null)
   const stale = state !== null && (state.hermes !== 'connected' || !crewConnected)
@@ -157,12 +157,12 @@ export function Rail({ state, crewConnected, selected, selectedGroupId, needsYou
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <RailHeader state={state} crewConnected={crewConnected} showStatus={showStatus} onNewBot={onNewBot} />
+      <RailHeader state={state} crewConnected={crewConnected} showStatus={showStatus} newBotOpen={newBotOpen} onNewBotOpen={setNewBotOpen} onCreated={onSelect} />
       <Find inputRef={findRef} query={query} onQuery={setQuery} />
       {state === null && <RailSkeleton />}
       <div onKeyDown={moveBetweenRows} className="-mx-1 flex min-h-0 flex-1 scroll-thin flex-col gap-3 overflow-y-auto px-1 pt-3 pb-1">
         <LayoutGroup id="crew-rail">
-          {state !== null && !stale && state.bots.length === 0 && <EmptyRail onNewBot={onNewBot} />}
+          {state !== null && !stale && state.bots.length === 0 && <EmptyRail onNewBot={() => setNewBotOpen(true)} />}
           {(sections.needsYou.length > 0 || requests > 0) && <Section name="Needs you" action={openAll}>{sections.needsYou.map(row)}</Section>}
           {sections.pinned.length > 0 && <Section name="Pinned">{sections.pinned.map(row)}</Section>}
           {sections.crew.length > 0 && <Section name="Crew">{sections.crew.map(row)}</Section>}

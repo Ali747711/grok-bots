@@ -5,7 +5,6 @@ import { type BotPanel, type SidePanelTab, botUrl, parseBotPanel, railTarget } f
 import { BotRoute, GroupRoute, HomeRedirect, Loading } from '@/app/routes'
 import { readSidePanel, rememberSidePanel } from '@/app/side-panel-memory'
 import { useAppShortcuts } from '@/app/use-app-shortcuts'
-import { NewBotDialog } from '@/features/bots/NewBotDialog'
 import { ChatSessionProvider } from '@/features/chat/chat-session-context'
 import { GroupPanel } from '@/features/groups/GroupPanel'
 import { NewGroupDialog } from '@/features/groups/NewGroupDialog'
@@ -57,7 +56,6 @@ function useWhere() {
 export default function App() {
   const { state, connected } = useCrewState()
   const navigate = useNavigate()
-  const [newBotOpen, setNewBotOpen] = useState(false)
   const [newGroupOpen, setNewGroupOpen] = useState(false)
   const goHome = useCallback(() => navigate('/', { replace: true }), [navigate])
   const { selected, selectedGroupId, panel, sideTab, groupPanel, onNeedsYou, lastBotUrl } = useWhere()
@@ -94,7 +92,6 @@ export default function App() {
             onSelect={name => navigate(railTarget(name, { onBotPage: selected !== null, panel }, readSidePanel()))}
             needsYouActive={onNeedsYou}
             onNeedsYou={() => navigate('/needs-you')}
-            onNewBot={() => setNewBotOpen(true)}
             selectedGroupId={selectedGroupId}
             onSelectGroup={roomId => navigate(groupUrl(roomId, false))}
             onNewGroup={() => setNewGroupOpen(true)}
@@ -116,7 +113,6 @@ export default function App() {
         ) : bot && sideTab ? <SidePanel bot={bot} tab={sideTab} onTab={showSide} onClose={() => showSide(null)} /> : null}
       />
       <NewGroupDialog open={newGroupOpen} onOpenChange={setNewGroupOpen} bots={groupBots} onCreated={roomId => navigate(groupUrl(roomId, false))} />
-      <NewBotDialog open={newBotOpen} onOpenChange={setNewBotOpen} onCreated={name => navigate(botUrl(name, null))} />
     </ChatSessionProvider>
   )
 }

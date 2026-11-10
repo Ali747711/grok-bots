@@ -439,6 +439,32 @@ describe('window shortcuts', () => {
     expect(where()).toBe('/bots/default')
   })
 
+  it('no window shortcut acts while the user types in the New bot panel', async () => {
+    document.documentElement.dataset.theme = 'dark'
+    renderAt('/bots/dev')
+    await screen.findByRole('heading', { name: 'Dev' })
+    fireEvent.click(screen.getByRole('button', { name: '+ New bot' }))
+    const dialog = await screen.findByRole('dialog', { name: 'New bot' })
+    const name = within(dialog).getByLabelText('Name')
+    await waitFor(() => expect(name).toHaveFocus())
+    press({ key: 'd' }, name)
+    press({ key: '/' }, name)
+    toggleSide(name)
+    press({ key: '2', code: 'Digit2', altKey: true }, name)
+    press({ key: 'k', ctrlKey: true }, name)
+    expect(document.documentElement.dataset.theme).toBe('dark')
+    expect(where()).toBe('/bots/dev')
+    expect(name).toHaveFocus()
+    // ⌥digit and ⌘K also stand down on the panel's buttons.
+    const close = within(dialog).getByRole('button', { name: 'Close' })
+    close.focus()
+    press({ key: '2', code: 'Digit2', altKey: true }, close)
+    press({ key: 'k', ctrlKey: true }, close)
+    expect(where()).toBe('/bots/dev')
+    expect(close).toHaveFocus()
+    expect(screen.getByRole('dialog', { name: 'New bot' })).toBeInTheDocument()
+  })
+
   it('d flips the theme, but not from a field or with a modifier', async () => {
     document.documentElement.dataset.theme = 'dark'
     renderAt('/bots/dev')

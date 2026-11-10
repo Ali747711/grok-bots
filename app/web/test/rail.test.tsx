@@ -23,7 +23,7 @@ import { bot, crewState, gm, group } from './fixtures'
 const pending = (id: string, over: Partial<PendingView> = {}): PendingView =>
   ({ id, kind: 'approval', profile: 'researcher', sessionId: 's', summary: 'rm', receivedAt: 1, source: 'event', state: 'open', answerable: true, ...over })
 
-const handlers = () => ({ onSelect: vi.fn(), onSelectGroup: vi.fn(), onNeedsYou: vi.fn(), onNewBot: vi.fn(), onNewGroup: vi.fn() })
+const handlers = () => ({ onSelect: vi.fn(), onSelectGroup: vi.fn(), onNeedsYou: vi.fn(), onNewGroup: vi.fn() })
 
 function renderRail(state: CrewState | null = crewState(), over: Partial<RailProps> = {}) {
   const fns = handlers()
@@ -156,11 +156,55 @@ describe('Rail header and sections', () => {
     expect(screen.getAllByTestId('roster-skeleton').length).toBeGreaterThan(0)
     expect(screen.queryByRole('status')).toBeNull()
     unmount()
-    const { onNewBot } = renderRail(crewState({ bots: [] }))
+    renderRail(crewState({ bots: [] }))
     expect(screen.getByText('No bots yet')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'New bot' }))
+    expect(screen.getByRole('button', { name: 'New bot' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '+ New bot' })).toBeInTheDocument()
+  })
+})
+
+describe('Rail New bot panel', () => {
+  const panel = () => screen.getByRole('dialog', { name: 'New bot' })
+  const made = { name: 'e2e123', complete: true, steps: { profile: 'ok', apps: 'ok', look: 'ok', avatar: 'skipped', chat: 'ok', sandbox: 'skipped' }, needsModel: false }
+
+  it('opens the panel from + New bot and from the empty rail, and gives focus back to + New bot', async () => {
+    renderRail(crewState({ bots: [] }))
     fireEvent.click(screen.getByRole('button', { name: '+ New bot' }))
-    expect(onNewBot).toHaveBeenCalledTimes(2)
+    expect(panel()).toBeInTheDocument()
+    fireEvent.click(within(panel()).getByRole('button', { name: 'Close' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    fireEvent.click(screen.getByRole('button', { name: 'New bot' }))
+    expect(panel()).toBeInTheDocument()
+    fireEvent.keyDown(within(panel()).getByLabelText('Name'), { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    await waitFor(() => expect(screen.getByRole('button', { name: '+ New bot' })).toHaveFocus())
+  })
+
+  it('opens the created bot through onSelect', async () => {
+    const fetchFn = vi.fn((url: string, _init?: RequestInit) => (url === '/crew/bots' ? json(made, 201) : json({})))
+    vi.stubGlobal('fetch', fetchFn)
+    const { onSelect } = renderRail(crewState({ bots: three() }))
+    fireEvent.click(screen.getByRole('button', { name: '+ New bot' }))
+    fireEvent.change(within(panel()).getByLabelText('Name'), { target: { value: 'E2e123' } })
+    fireEvent.click(within(panel()).getByRole('button', { name: 'Create' }))
+    await waitFor(() => expect(onSelect).toHaveBeenCalledWith('e2e123'))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  })
+
+  it('⌥digit and ⌘K do nothing while the panel has focus, on a field or on a button', async () => {
+    const { onSelect } = renderRail(crewState({ bots: three() }))
+    fireEvent.click(screen.getByRole('button', { name: '+ New bot' }))
+    const name = within(panel()).getByLabelText('Name')
+    await waitFor(() => expect(name).toHaveFocus())
+    press({ key: '2', code: 'Digit2', altKey: true }, name)
+    press({ key: 'k', ctrlKey: true }, name)
+    const close = within(panel()).getByRole('button', { name: 'Close' })
+    close.focus()
+    press({ key: '2', code: 'Digit2', altKey: true }, close)
+    press({ key: 'k', ctrlKey: true }, close)
+    expect(close).toHaveFocus()
+    expect(onSelect).not.toHaveBeenCalled()
+    expect(panel()).toBeInTheDocument()
   })
 })
 
