@@ -6,8 +6,8 @@ import { type CrewAvatar, avatarMetaPatch, deriveAvatarType } from './avatar.js'
 import { withBotLock } from './bot-lock.js'
 import { refreshQuietly } from './refresh.js'
 import { applyCreateSandbox } from './sandbox-create.js'
-import type { SandboxDeps } from './sandbox.js'
-import type { SandboxMarker } from './sandbox-state.js'
+import { readRawConfig, writeConfig, type SandboxDeps } from './sandbox.js'
+import { rawList, type SandboxMarker } from './sandbox-state.js'
 import { composeSoul } from './soul.js'
 import { readBotMeta, updateBotMeta } from './ui-meta.js'
 
@@ -152,10 +152,24 @@ const writeLook = (deps: BotDeps, draft: BotDraft, marker: SandboxMarker | undef
   })
 }
 
+const APP_GRANT = 'mcp:crew_apps/'
+
+/**
+ * The apps strip (§11.6): the cloned server goes, and so do "always" grants for app tools the primary
+ * collected; a new bot must ask for each one. Never touches `default`.
+ */
+async function stripApps(deps: BotDeps, name: string): Promise<void> {
+  await removeAppsServer(deps, name)
+  const list = rawList((await readRawConfig(deps, name)).command_allowlist)
+  const kept = list.filter(e => !(typeof e === 'string' && e.startsWith(APP_GRANT)))
+  if (kept.length === list.length) return
+  await writeConfig(deps, name, { command_allowlist: kept })
+}
+
 async function runCreate(deps: BotDeps, draft: BotDraft): Promise<CreateResult> {
   await createProfile(deps, draft)
   const steps = new Steps()
-  await steps.run('apps', () => removeAppsServer(deps, draft.name))
+  await steps.run('apps', () => stripApps(deps, draft.name))
   let marker: SandboxMarker | undefined
   await steps.run('sandbox', async () => {
     marker = await applyCreateSandbox(deps, draft.name, draft.sandbox ?? false)
@@ -180,7 +194,7 @@ export function finishBot(deps: BotDeps, name: string, body: FinishBody): Promis
 async function runFinish(deps: BotDeps, name: string, body: FinishBody): Promise<CreateResult> {
   const { revision } = await readBotMeta(deps.rpc, name)
   const steps = new Steps()
-  await steps.run('apps', () => removeAppsServer(deps, name))
+  await steps.run('apps', () => stripApps(deps, name))
   if (revision === 0) {
     const patch = {
       ...avatarMetaPatch(body.avatar ?? { type: deriveAvatarType(name) }),

@@ -206,6 +206,23 @@ describe('createBot sandbox choice', () => {
     expect(rest.deletes.some(d => d.query?.profile === 'default' || (d.body as { profile?: string } | undefined)?.profile === 'default')).toBe(false)
   })
 
+  it('drops app-tool always grants cloned from the primary and keeps the rest', async () => {
+    rest.configs.set('scout', { command_allowlist: ['mcp:crew_apps/GITHUB_CREATE_AN_ISSUE', 'ls'] })
+    await createBot(deps, draft)
+    expect(rest.configs.get('scout')?.command_allowlist).toEqual(['ls'])
+    expect(rest.puts.some(p => p.profile === 'default')).toBe(false)
+  })
+
+  it('reads a string allowlist and writes nothing when no app grant is present', async () => {
+    rest.configs.set('scout', { command_allowlist: "['mcp:crew_apps/X', 'ls']" })
+    await createBot(deps, draft)
+    expect(rest.configs.get('scout')?.command_allowlist).toEqual(['ls'])
+    rest.puts.length = 0
+    rest.configs.set('scout', { command_allowlist: ['ls', 'pwd'] })
+    await finishBot(deps, 'scout', {})
+    expect(rest.puts.some(p => 'command_allowlist' in p.config)).toBe(false)
+  })
+
   it('reports a failed apps step and still runs the later steps; Finish setup retries it', async () => {
     rest.failDeletes = true
     const result = await createBot(deps, draft)
@@ -220,7 +237,8 @@ describe('createBot sandbox choice', () => {
   })
 
   it('reports a failed sandbox step and still runs the later steps', async () => {
-    const failing = { request: async (method: string) => { if (method === 'DELETE') return {}; throw new Error('config down') } }
+    let reads = 0 // the first read belongs to the apps step
+    const failing = { request: async (method: string) => { if (method === 'DELETE' || (method === 'GET' && reads++ === 0)) return {}; throw new Error('config down') } }
     deps = { ...deps, rest: failing as unknown as BotDeps['rest'] }
     const result = await createBot(deps, { ...draft, image: 'data:image/png;base64,AAAA' })
     expect(result.steps).toEqual({ profile: 'ok', apps: 'ok', sandbox: 'failed', look: 'ok', avatar: 'ok', chat: 'ok' })
