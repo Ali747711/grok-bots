@@ -7,6 +7,12 @@ import { serve } from '@hono/node-server'
 import { createApp } from './app.js'
 import { ensureSecret } from './auth/secrets.js'
 import { TicketStore } from './auth/tickets.js'
+import { expirePending } from './connectors/account.js'
+import type { ConnectorDeps } from './connectors/bot-apps.js'
+import { createComposio } from './connectors/composio.js'
+import { KeyStore } from './connectors/key.js'
+import { createReconnector } from './connectors/reconnect.js'
+import { loadConnectorStore } from './connectors/store.js'
 import { loadConfig } from './config.js'
 import { connectGateway, createGatewayClient } from './hermes/gateway-client.js'
 import { createHermesRest } from './hermes/rest-client.js'
@@ -94,7 +100,22 @@ export async function start(): Promise<Server> {
     now: Date.now, newTriggerId: () => randomBytes(16).toString('hex'), newSecret: () => randomBytes(32).toString('hex'), newId: randomUUID
   } : undefined
   const sandbox = { docker: createDocker(runner), puller: createImagePuller(runner), hermesHome: config.hermesHome, groups: () => crewState.state().groups, onChanged: roster.invalidate }
-  const app = createApp({ config, secrets, tickets: new TicketStore(), now: Date.now, token, fetchUpstream: fetch, watcher: crewState, groups: { rpc: groupRpc, groups: groupWatcher, roster: () => crewState.state().bots.map(b => ({ name: b.name, title: b.title, displayName: b.displayName })), newId: randomUUID, sleep: ms => new Promise(resolve => setTimeout(resolve, ms)) }, settings, bots: { rpc: watcher.request, rest, refresh: watcher.refresh, now: Date.now, sandbox }, routines, triggers, usage: createUsageSource({ envFile: config.hermesEnvFile, fetch, now: Date.now }) })
+  const base = { rpc: watcher.request, rest, refresh: watcher.refresh, now: Date.now, sandbox }
+  const keys = await KeyStore.load(config.composioKeyFile)
+  const connectorStore = await loadConnectorStore(join(config.stateDir, 'connectors.json'), randomUUID)
+  let connectors: ConnectorDeps | undefined
+  if (connectorStore) {
+    // Synchronous on purpose: the reconnector checks it under the bot lock (a paused bot stays paused).
+    const wanted = (bot: string): boolean => connectorStore.record(bot) !== undefined && keys.get() !== null
+    const reconnector = createReconnector({ hermes: base, wanted, sleep: ms => new Promise(resolve => setTimeout(resolve, ms)) })
+    connectors = {
+      bots: base, composio: createComposio({ fetch, key: () => keys.get() }), keys, store: connectorStore, reconnector,
+      relayUrl: bot => `http://${config.host}:${config.port}/mcp/${bot}`, newToken: () => randomBytes(32).toString('base64url'), now: Date.now
+    }
+    const live = connectors
+    setInterval(() => void expirePending(live), 60_000).unref()
+  }
+  const app = createApp({ config, secrets, tickets: new TicketStore(), now: Date.now, token, fetchUpstream: fetch, watcher: crewState, groups: { rpc: groupRpc, groups: groupWatcher, roster: () => crewState.state().bots.map(b => ({ name: b.name, title: b.title, displayName: b.displayName })), newId: randomUUID, sleep: ms => new Promise(resolve => setTimeout(resolve, ms)) }, settings, bots: base, ...(connectors ? { connectors: { connectors, keys }, relay: { store: connectorStore!, keys, fetch } } : {}), routines, triggers, usage: createUsageSource({ envFile: config.hermesEnvFile, fetch, now: Date.now }) })
   const server = serve({ fetch: app.fetch, hostname: config.host, port: config.port }, info => {
     log.info('crew listening', { host: config.host, port: info.port })
   }) as Server
