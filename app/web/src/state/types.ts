@@ -1,7 +1,8 @@
 // Mirrors the shapes served by GET /crew/state and /crew/events (server: watcher/bot-state.ts).
 // Kept as a copy on purpose: the web app never imports server code.
 
-import type { AvatarType } from '@/features/avatars/avatar-model'
+import type { AvatarFace, AvatarGlasses, AvatarHat, AvatarType } from '@/features/avatars/avatar-model'
+import type { BotRole } from '@/features/bots/roles'
 
 export type BotStatus = 'idle' | 'working' | 'needs_you'
 export type HermesConnection = 'connected' | 'connecting' | 'signed_out' | 'offline'
@@ -16,7 +17,15 @@ export interface BotView {
   readonly isPrimary: boolean
   readonly hasAvatar: boolean
   /** The bot's chosen avatar type and colour; null when never set. */
-  readonly avatar: { readonly type: AvatarType; readonly color?: string } | null
+  readonly avatar: {
+    readonly type: AvatarType
+    readonly color?: string
+    readonly face?: AvatarFace
+    readonly hat?: AvatarHat
+    readonly glasses?: AvatarGlasses
+    readonly headphones?: boolean
+    readonly bowTie?: boolean
+  } | null
   readonly imageKind: 'photo' | 'shape' | null
   readonly model: string | null
   readonly sessionId: string | null
@@ -24,6 +33,10 @@ export interface BotView {
   readonly lastActive: number | null
   readonly status: BotStatus
   readonly hidden: boolean
+  readonly pinned: boolean
+  readonly role: BotRole | null
+  /** The profile description (what the bot is for); '' when none. */
+  readonly job: string
   /** Created but its look was never written; the Profile panel finishes it. */
   readonly setupIncomplete: boolean
   /** Whether the bot runs its tools in a sandbox. Missing on older servers. */

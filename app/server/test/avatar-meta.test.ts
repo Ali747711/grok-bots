@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { AVATAR_DEFAULT_COLORS, AVATAR_TYPES, type AvatarType, avatarMetaPatch, deriveAvatarType, hermesShapeFor, readCrewAvatar } from '../src/bots/avatar.js'
+import { AVATAR_DEFAULT_COLORS, AVATAR_TYPES, type AvatarType, avatarMetaPatch, crewAvatarSchema, deriveAvatarType, hermesShapeFor, readCrewAvatar } from '../src/bots/avatar.js'
 
 describe('deriveAvatarType', () => {
   it('derives the same type for the same handle', () => {
@@ -43,5 +43,27 @@ describe('readCrewAvatar', () => {
     for (const bad of [null, undefined, 'cat', 3, [], {}, { type: 'dragon' }, { type: 'cat', color: 'red' }, { type: 'cat', color: 5 }, { type: 7 }]) {
       expect(readCrewAvatar(bad)).toBeNull()
     }
+  })
+})
+
+describe('avatar accessories', () => {
+  it('accepts accessories with the bot-avatars values and refuses others', () => {
+    expect(crewAvatarSchema.safeParse({ type: 'cat', face: 'mouth', hat: 'crown', glasses: 'shades', headphones: true, bowTie: false }).success).toBe(true)
+    expect(crewAvatarSchema.safeParse({ type: 'cat', hat: 'fedora' }).success).toBe(false)
+    expect(crewAvatarSchema.safeParse({ type: 'cat', glasses: 'monocle' }).success).toBe(false)
+    expect(crewAvatarSchema.safeParse({ type: 'cat', face: 'nose' }).success).toBe(false)
+    expect(crewAvatarSchema.safeParse({ type: 'cat', headphones: 'yes' }).success).toBe(false)
+  })
+
+  it('keeps valid accessories and drops an invalid one without losing type or colour', () => {
+    expect(readCrewAvatar({ type: 'cat', color: '#112233', hat: 'beret', glasses: 'round', face: 'eyes', headphones: true, bowTie: true }))
+      .toEqual({ type: 'cat', color: '#112233', hat: 'beret', glasses: 'round', face: 'eyes', headphones: true, bowTie: true })
+    expect(readCrewAvatar({ type: 'cat', color: '#112233', hat: 'fedora', glasses: 'shades', headphones: 'yes', bowTie: false }))
+      .toEqual({ type: 'cat', color: '#112233', glasses: 'shades', bowTie: false })
+  })
+
+  it('writes accessories inside crewAvatar but keeps shape and colour for the Webapp', () => {
+    const avatar = { type: 'square' as const, color: '#123456', hat: 'party' as const, headphones: true }
+    expect(avatarMetaPatch(avatar)).toEqual({ crewAvatar: avatar, shape: 'squircle', color: '#123456', custom: true })
   })
 })

@@ -1,5 +1,6 @@
 import type { Rpc } from '../hermes/errors.js'
 
+import type { BotRole } from './cosmetics.js'
 import type { SandboxMarker } from './sandbox-state.js'
 
 const NAMESPACE = 'hermes-bots'
@@ -14,6 +15,8 @@ export interface BotMeta {
   readonly created?: number
   readonly custom?: boolean
   readonly hidden?: boolean
+  readonly pinned?: boolean
+  readonly role?: BotRole | null
   readonly sandbox?: SandboxMarker
 }
 

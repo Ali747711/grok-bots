@@ -3,6 +3,7 @@ import { bodyLimit } from 'hono/body-limit'
 import { z } from 'zod'
 
 import { crewAvatarSchema } from '../bots/avatar.js'
+import { botRoleSchema } from '../bots/cosmetics.js'
 import { type BotDeps, createBot, finishBot } from '../bots/create.js'
 import { PROFILE_NAME_RE, validateBotName } from '../bots/names.js'
 import { SandboxRefusedError } from '../bots/sandbox.js'
@@ -20,6 +21,7 @@ const createBody = z.object({
   mission: z.string().max(2000).default(''),
   avatar: crewAvatarSchema,
   image: image.optional(),
+  role: botRoleSchema.nullable().optional(),
   model: z.object({ provider: z.string().min(1), model: z.string().min(1) }).optional(),
   sandbox: z.boolean().default(false)
 })

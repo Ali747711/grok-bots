@@ -7,6 +7,11 @@ export const AVATAR_TYPES = [
 ] as const
 
 export type AvatarType = (typeof AVATAR_TYPES)[number]
+/** Accessory values of `bot-avatars` 0.2.2; copies of the server's lists. */
+export type AvatarFace = 'eyes' | 'mouth'
+export type AvatarHat = 'none' | 'beret' | 'beanie' | 'party' | 'crown'
+export type AvatarGlasses = 'none' | 'round' | 'square' | 'shades'
+
 export type AvatarState = 'default' | 'working' | 'sleeping'
 
 const DAY_MS = 86_400_000

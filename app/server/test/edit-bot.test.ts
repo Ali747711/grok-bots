@@ -26,10 +26,18 @@ beforeEach(() => {
 describe('readBotDetail', () => {
   it('builds the detail from the rpc row, the soul and the rest roster row', async () => {
     expect(await readBotDetail(deps, 'scout')).toEqual({
-      name: 'scout', isPrimary: false, title: 'Scout', look: { shape: 'circle', color: '#111111', imageKind: 'shape' }, avatar: null, hidden: false,
+      name: 'scout', isPrimary: false, title: 'Scout', look: { shape: 'circle', color: '#111111', imageKind: 'shape' }, avatar: null, hidden: false, pinned: false, role: null,
       description: 'Original desc', soul: 'Original', model: { provider: 'openrouter', model: 'a/b' }, metaRevision: 2
     })
     expect(rest.requests.map(r => r.path)).toContain('/api/profiles/scout/soul')
+  })
+
+  it('returns pinned and role in the detail', async () => {
+    expect(await readBotDetail(deps, 'scout')).toMatchObject({ pinned: false, role: null })
+    rpc.meta('scout', { title: 'Scout', pinned: true, role: 'analyst' }, 3)
+    expect(await readBotDetail(deps, 'scout')).toMatchObject({ pinned: true, role: 'analyst' })
+    rpc.meta('scout', { title: 'Scout', pinned: 'true', role: 'chef' }, 4)
+    expect(await readBotDetail(deps, 'scout')).toMatchObject({ pinned: false, role: null })
   })
 
   it('treats a missing model and a missing soul file as empty, and shows the primary as Hermes', async () => {
@@ -110,6 +118,22 @@ describe('updateBot', () => {
   it('does not mark custom for a hide-only change', async () => {
     await updateBot(deps, 'scout', { hidden: true })
     expect(metaOf(rpc.configures[0]!)).not.toHaveProperty('custom')
+  })
+
+  it('unpin writes pinned false and never deletes the key', async () => {
+    rpc.meta('scout', { title: 'Scout', pinned: true }, 2)
+    await updateBot(deps, 'scout', { pinned: false })
+    const meta = metaOf(rpc.configures[0]!)
+    expect(Object.prototype.hasOwnProperty.call(meta, 'pinned')).toBe(true)
+    expect(meta.pinned).toBe(false)
+  })
+
+  it('writes role and clears it with null', async () => {
+    await updateBot(deps, 'scout', { role: 'engineer' })
+    expect(metaOf(rpc.configures[0]!)).toMatchObject({ role: 'engineer', groups: ['ops'] })
+    await updateBot(deps, 'scout', { role: null })
+    expect(metaOf(rpc.configures[1]!).role).toBeNull()
+    expect(Object.prototype.hasOwnProperty.call(metaOf(rpc.configures[1]!), 'role')).toBe(true)
   })
 
   it('stops before any write when the model needs confirmation', async () => {
