@@ -42,4 +42,10 @@ describe('loadConfig', () => {
       expect(() => loadConfig({ HOME: '/h', CREW_HERMES_HOME: bad }), bad).toThrow()
     }
   })
+
+  it('defaults composioKeyFile to ~/.config/crew/composio-key and honours CREW_COMPOSIO_KEY_FILE', () => {
+    expect(loadConfig({ HOME: '/h' }).composioKeyFile).toBe('/h/.config/crew/composio-key')
+    expect(loadConfig({ HOME: '/h', CREW_COMPOSIO_KEY_FILE: '~/k/key' }).composioKeyFile).toBe('/h/k/key')
+    expect(loadConfig({ HOME: '/h', CREW_COMPOSIO_KEY_FILE: '/srv/key' }).composioKeyFile).toBe('/srv/key')
+  })
 })
