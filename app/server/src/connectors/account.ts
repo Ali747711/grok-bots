@@ -67,12 +67,7 @@ function rebuildForToolkit(deps: ConnectorDeps, toolkit: string): void {
   }
 }
 
-export async function pollConnect(deps: ConnectorDeps, id: string): Promise<SignInState> {
-  const entry = deps.store.pending().find(p => p.id === id)
-  const state = await settle(deps, id)
-  if (state === 'connected' && entry) rebuildForToolkit(deps, entry.toolkit)
-  return state
-}
+export const pollConnect = settle
 
 async function settle(deps: ConnectorDeps, id: string): Promise<SignInState> {
   const entry = deps.store.pending().find(p => p.id === id)
@@ -86,6 +81,7 @@ async function settle(deps: ConnectorDeps, id: string): Promise<SignInState> {
   }
   if (status === 'connected') {
     await deps.store.removePending(id)
+    rebuildForToolkit(deps, entry.toolkit)
     return 'connected'
   }
   if (deps.now() - entry.startedAt > SIGN_IN_TIMEOUT_MS) {
@@ -105,7 +101,7 @@ export async function expirePending(deps: ConnectorDeps): Promise<void> {
   for (const entry of [...deps.store.pending()]) {
     if (deps.now() - entry.startedAt <= SIGN_IN_TIMEOUT_MS) continue
     try {
-      await settle(deps, entry.id)
+      await pollConnect(deps, entry.id)
     } catch (error) {
       log.warn('sign-in sweep failed', { error: errorName(error) })
     }

@@ -87,28 +87,52 @@ describe('connector accounts', () => {
     expect(store.pending()).toEqual([])
   })
 
-  it('rebuilds the sessions of bots that use the app when a sign-in turns connected, not on the sweep', async () => {
-    await store.setRecord('scout', record({ github: 'read' }))
-    await store.setRecord('anna', record({ slack: 'read' }))
-    const built: string[] = []
-    const composio = {
-      ...deps.composio,
-      toolsOf: async () => [{ slug: 'GITHUB_GET', readOnly: true, destructive: false }],
-      createSession: async () => { built.push('s'); return { sessionId: 's2', mcpUrl: 'https://backend.composio.dev/tool_router/s/mcp' } },
-      deleteSession: async () => undefined
-    } as unknown as Composio
-    const d = { ...deps, composio }
-    status = 'connected'
-    await store.addPending({ id: 'ca_old', toolkit: 'github', startedAt: 1_000 })
-    now = 1_000 + SIGN_IN_TIMEOUT_MS + 1
-    await expirePending(d)
-    await new Promise(r => setTimeout(r, 20))
-    expect(built).toEqual([])
-    await store.addPending({ id: 'ca_new', toolkit: 'github', startedAt: now })
-    expect(await pollConnect(d, 'ca_new')).toBe('connected')
-    await vi.waitFor(() => expect(built).toEqual(['s']))
-    expect(store.record('scout')?.sessionId).toBe('s2')
-    expect(store.record('anna')?.sessionId).toBe('s')
+  describe('rebuild after a sign-in', () => {
+    let built: string[]
+    let d: ConnectorDeps
+    beforeEach(async () => {
+      await store.setRecord('scout', record({ github: 'read' }))
+      await store.setRecord('anna', record({ slack: 'read' }))
+      built = []
+      const composio = {
+        ...deps.composio,
+        toolsOf: async () => [{ slug: 'GITHUB_GET', readOnly: true, destructive: false }],
+        createSession: async () => { built.push('s'); return { sessionId: 's2', mcpUrl: 'https://backend.composio.dev/tool_router/s/mcp' } },
+        deleteSession: async () => undefined
+      } as unknown as Composio
+      d = { ...deps, composio }
+    })
+
+    it('rebuilds only the bots that use the app when pollConnect sees it connected', async () => {
+      status = 'connected'
+      await store.addPending({ id: 'ca_new', toolkit: 'github', startedAt: now })
+      expect(await pollConnect(d, 'ca_new')).toBe('connected')
+      await vi.waitFor(() => expect(built).toEqual(['s']))
+      expect(store.record('scout')?.sessionId).toBe('s2')
+      expect(store.record('anna')?.sessionId).toBe('s')
+    })
+
+    it('rebuilds the same way when the sweep finds a sign-in connected', async () => {
+      status = 'connected'
+      await store.addPending({ id: 'ca_old', toolkit: 'github', startedAt: 1_000 })
+      now = 1_000 + SIGN_IN_TIMEOUT_MS + 1
+      await expirePending(d)
+      await vi.waitFor(() => expect(built).toEqual(['s']))
+      expect(store.record('scout')?.sessionId).toBe('s2')
+      expect(store.record('anna')?.sessionId).toBe('s')
+    })
+
+    it('rebuilds nothing for an expired or failed sign-in', async () => {
+      status = 'pending'
+      await store.addPending({ id: 'ca_old', toolkit: 'github', startedAt: 1_000 })
+      now = 1_000 + SIGN_IN_TIMEOUT_MS + 1
+      await expirePending(d)
+      status = 'failed'
+      await store.addPending({ id: 'ca_f', toolkit: 'github', startedAt: now })
+      expect(await pollConnect(d, 'ca_f')).toBe('failed')
+      await new Promise(r => setTimeout(r, 20))
+      expect(built).toEqual([])
+    })
   })
 
   it('reports connected, failed and pending, and expires a sign-in after 10 minutes by deleting the account', async () => {
