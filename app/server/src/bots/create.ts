@@ -47,7 +47,7 @@ export interface BotDeps {
   /** Absent only in tests: delete then skips the sandbox cleanup. */
   readonly sandbox?: SandboxDeps
   /** Absent only in tests: delete then skips forgetting the bot's apps. */
-  readonly apps?: { forget(bot: string): Promise<void> }
+  readonly apps?: { forget(bot: string): Promise<void>; clamp?(bot: string, raw: unknown): void }
 }
 
 /** `profiles.create` refused the name: it exists, or Hermes rejected it (message from Hermes). */

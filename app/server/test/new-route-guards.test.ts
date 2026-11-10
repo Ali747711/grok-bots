@@ -34,6 +34,8 @@ const MUTATING: readonly (readonly [string, string])[] = [
   ['POST', `/crew/triggers/${'a'.repeat(32)}/test`],
   ['DELETE', `/crew/triggers/${'a'.repeat(32)}`],
   ['PUT', '/crew/bots/scout/sandbox'],
+  ['PUT', '/crew/bots/scout/approvals'],
+  ['PUT', '/crew/bots/scout/screen/config'],
   ['POST', '/crew/bots/scout/sandbox/reset'],
   ['POST', '/crew/sandbox/image/pull'],
   ['PUT', '/crew/connectors/key'],

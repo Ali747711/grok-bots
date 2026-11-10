@@ -9,6 +9,7 @@ import type { HermesToken } from './hermes/token.js'
 import { botEditRoutes } from './http/bot-edit-routes.js'
 import { type ConnectorRouteDeps, connectorRoutes } from './http/connector-routes.js'
 import { botRoutes } from './http/bot-routes.js'
+import { approvalsRoutes } from './http/approvals-routes.js'
 import { sandboxRoutes } from './http/sandbox-routes.js'
 import { screenRoutes } from './http/screen-routes.js'
 import { routineRoutes } from './http/routine-routes.js'
@@ -87,6 +88,7 @@ export function createApp(deps: AppDeps): Hono<CrewEnv> {
   app.route('/', botRoutes(deps.bots))
   app.route('/', botEditRoutes(deps.bots))
   app.route('/', screenRoutes(deps.bots))
+  app.route('/', approvalsRoutes(deps.bots))
   app.route('/', sandboxRoutes(deps.bots))
   app.route('/', connectorRoutes(deps.connectors))
   app.route('/', hookRoutes(deps.triggers?.hooks))

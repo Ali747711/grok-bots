@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { withBotLock } from '../bots/bot-lock.js'
 import type { BotDeps } from '../bots/create.js'
 import { PROFILE_NAME_RE } from '../bots/names.js'
-import { ensureIdleStop, readScreenConfig, setUseScreen } from '../bots/screen-config.js'
+import { ensureIdleStop, readScreenConfig, setIdleStop, setUseScreen } from '../bots/screen-config.js'
 import { BotNotFoundError } from '../bots/ui-meta.js'
 import { HermesRestError, HermesUnavailableError } from '../hermes/errors.js'
 import { log } from '../log.js'
@@ -13,7 +13,10 @@ import type { CrewEnv } from './session-guard.js'
 
 const PRIMARY = 'default'
 const START_TIMEOUT_MS = 30_000
-const putBody = z.object({ useScreen: z.boolean() }).strict()
+const putBody = z.object({ useScreen: z.boolean(), idleStopMinutes: z.union([z.literal(15), z.literal(60), z.literal(0)]) })
+  .partial()
+  .strict()
+  .refine(body => body.useScreen !== undefined || body.idleStopMinutes !== undefined, { message: 'nothing to change' })
 
 /** Roster check with Hermes's own profile-name rule, so `default` is allowed (§11 R8). */
 async function requireBot(deps: BotDeps, name: string): Promise<void> {
@@ -67,7 +70,11 @@ export function screenRoutes(bots: BotDeps | undefined): Hono<CrewEnv> {
     // New bots clone the primary's config.yaml, so a headed primary would make every later bot headed (§11 R8).
     if (name === PRIMARY) return c.json({ error: 'primary_not_supported' }, 400)
     return guarded(name, async deps => {
-      await withBotLock(name, () => setUseScreen(deps, name, parsed.data.useScreen))
+      const { useScreen, idleStopMinutes } = parsed.data
+      await withBotLock(name, async () => {
+        if (idleStopMinutes !== undefined) await setIdleStop(deps, name, idleStopMinutes)
+        if (useScreen !== undefined) await setUseScreen(deps, name, useScreen)
+      })
       return c.json(await screenView(deps, name))
     })
   })

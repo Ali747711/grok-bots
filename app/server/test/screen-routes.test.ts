@@ -166,4 +166,32 @@ describe('screen routes', () => {
     expect(await (await send('PUT', '/crew/bots/scout/screen/config', { useScreen: false })).json()).toEqual({ useScreen: false, idleStopMinutes: 15 })
     expect(config.browser).toEqual({ headed: false })
   })
+
+  it('PUT idleStopMinutes 60 writes only bot_desktop.idle_stop_minutes and answers the view', async () => {
+    const res = await send('PUT', '/crew/bots/scout/screen/config', { idleStopMinutes: 60 })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ useScreen: false, idleStopMinutes: 60 })
+    expect(config.browser).toEqual({ headed: false })
+    expect((config.bot_desktop as Cfg).auto_start).toBe(false)
+  })
+
+  it('refuses idleStopMinutes 30 and an empty body', async () => {
+    expect((await send('PUT', '/crew/bots/scout/screen/config', { idleStopMinutes: 30 })).status).toBe(400)
+    expect((await send('PUT', '/crew/bots/scout/screen/config', {})).status).toBe(400)
+    expect(order).not.toContain('rest PUT')
+  })
+
+  it('start keeps a 60-minute choice and writes nothing before display.start', async () => {
+    config = { bot_desktop: { idle_stop_minutes: 60 } }
+    expect((await send('POST', '/crew/bots/scout/screen/start')).status).toBe(200)
+    expect(order).not.toContain('rest PUT')
+    expect((config.bot_desktop as Cfg).idle_stop_minutes).toBe(60)
+  })
+
+  it('refuses an idle-stop write on the primary', async () => {
+    const res = await send('PUT', '/crew/bots/default/screen/config', { idleStopMinutes: 60 })
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'primary_not_supported' })
+    expect(order).not.toContain('rest PUT')
+  })
 })
