@@ -390,3 +390,38 @@ Final state: no containers (image kept), no Xvnc, profile folder gone, services 
   2. `container_persistent: false` puts `/root` on tmpfs, so the mountpoints are never created on the host, but the bot then loses its persistent `/root` and `/workspace` (`docker.py:917-919`) (UNVERIFIED for this effect).
   3. Even with persistence, `~` (`/home/pn`) is not persisted in host-user mode; only `/root` (the default cwd) and `/workspace` are.
 - **Gotcha 24:** for a sandboxed bot, today's Crew delete would show a failure (Hermes answers 500) even though Hermes has already removed the bot from the roster. Root-owned files are left behind in `~/.hermes/profiles/<bot>/`.
+
+---------------------------------------------------------------------------
+## 11. Live E9 (Docker cleanup before delete)
+
+Context: the coordinator's ruling picks §10.3 option 1. Crew removes the root-owned sandbox folders through Docker, then calls `profiles.delete`. This run proves it live on a throwaway bot.
+
+### 11.1 How it was run (2026-11-10, about 10:58–11:03 KST)
+
+- **Bot.** `e2e61111`, created with Crew's params over 9120 (`profiles.create {name, description:"e2e", clone_from:"default", share_auth:true, no_skills:false}` → ok in 479 ms).
+- **Config.** The same 4-key write as §10: `PUT /api/config?profile=e2e61111 {"config":{"terminal":{"backend":"docker","container_memory":3072,"docker_run_as_host_user":true},"agent":{"disabled_toolsets":["browser"]}}}` → ok; the API reported `active: docker`.
+- **Model turns: 0.**
+- **Not touched.** No service restarts (gateway, dashboard and crew PIDs 457306, 1515 and 406588 unchanged). The other bots were not touched. No sudo was needed at any step.
+
+### 11.2 Results
+
+| Step | Result |
+|---|---|
+| 1. Container without a model turn | **Yes.** `display.start` alone created the container: `hermes-1037855a`, `User=1000:1000`, label `hermes-task-id=profile_e2e61111`, in 1.5 s, with `running:true, display:":20", placement:"terminal:docker"`. The thumbnail worked (7,403 chars, 416 ms). `display.stop` → `stopped:true`. It also created the **15 root-owned mountpoints** under `sandboxes/docker/profile_e2e61111-<hash>/`: `home/.hermes`, its `{images, attachments, composer-pastes, skills, cache}`, and `cache/{spillover, documents, screenshots, generated, web, delegation, videos, audio, images}`. There was no `prompt-backend-probe/` this time, because no session was created and so the prompt-time probe never ran (§10.2). |
+| 2. Image config | `nousresearch/hermes-sandbox:desktop` (`sha256:c7d8607d076f…`): `Entrypoint` absent, `Cmd ["sleep","infinity"]`, `User` absent (root), `WorkingDir` absent. `rm` is `/usr/bin/rm` (GNU coreutils 9.7). So `--entrypoint rm` plus args `-rf /s/docker` replaces only the Cmd; nothing else in the image runs. |
+| 3. Remove containers | `docker rm -f $(docker ps -aq --filter label=hermes-profile=e2e61111)` removed 1 container; 0 left. |
+| 4. Helper | Ran exactly `docker run --rm --network none --user 0:0 --label crew-cleanup=e2e61111 --entrypoint rm -v /home/ali/.hermes/profiles/e2e61111/sandboxes:/s nousresearch/hermes-sandbox:desktop -rf /s/docker` → **exit 0, no output, 180 ms**. No container was left behind (`--rm`; 0 containers with `label=crew-cleanup=…`). `sandboxes/` is left empty and owned by `ali`. |
+| 5. Root-owned files | `find ~/.hermes/profiles/e2e61111 -uid 0 \| wc -l` → **0** (run as `ali`, no sudo). |
+| 6. Delete | `DELETE /api/profiles/e2e61111` (Crew's path, `app/server/src/bots/edit.ts:202-208`) → **HTTP 200** `{"ok":true,"path":"/home/ali/.hermes/profiles/e2e61111"}`. The folder is gone, and the roster is default, crew-test, reese, telegram, x. |
+| 7a. Edge: `sandboxes/` exists, `docker/` missing | Same argv on a scratchpad dir → **exit 0**, no output; nothing created. |
+| 7b. Edge: `sandboxes/` itself missing | Same argv → **exit 0**, but **Docker auto-creates the missing bind source on the host as `root:root 755`**. It is empty, and `ali` can `rmdir` it (the parent is ali-owned), so a delete right after still works. But while it exists, `ali` cannot create anything inside it (`mkdir …/sandboxes/docker` → Permission denied). Hermes's later `os.makedirs(<profile>/sandboxes/docker/<key>)` (`docker.py:902-916`) would then fail if the bot were not deleted. |
+
+### 11.3 Verdict
+
+- **The helper makes the delete succeed without sudo:** 180 ms, exit 0, 0 root-owned files left, and the REST delete returned 200 with the folder and roster entry gone.
+- **Order that worked:** `docker rm -f` (label `hermes-profile=<bot>`), then the helper, then `DELETE /api/profiles/<bot>`.
+- **Edge to guard (facts only):**
+  - Run the helper only when `<profile>/sandboxes` exists.
+  - Or mount a directory that always exists (for example the profile dir itself, with `rm -rf /p/sandboxes/docker`), so Docker never auto-creates a root-owned bind source (UNVERIFIED variant).
+  - A skipped or failed helper reproduces §10's 500 (gotcha 24).
+- Docker-group membership is what makes this sudo-free. The helper is a root container with `--network none` and a single bind mount.
