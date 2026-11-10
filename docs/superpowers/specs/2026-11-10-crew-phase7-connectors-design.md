@@ -166,3 +166,42 @@ Bots reach the apps as MCP tools inside Hermes. Write actions ask the user first
 5. **No app events (triggers) in this phase.**
 6. **The key is set in Crew's Settings and stored in a 0600 file.** For the build and tests, the key the user saved at `app/keys.md` is used. Moving it to `~/.config/crew/composio-key` and deleting `app/keys.md` is suggested to the user.
 7. **Letter tiles instead of app logos**, so the CSP stays unchanged.
+
+## 11. Builder-check rulings (2026-11-10, mine; override earlier text)
+
+1. **Threat model, stated honestly.** Crew and every non-sandboxed bot run as `ali` (app design §6.2). Such a bot can read anything `ali` can, including `~/.config/crew/composio-key`. So the relay's guarantee is narrower than §4 implied:
+   - the key never sits in a Hermes config, a profile `.env`, a URL, a chat, a log or a reply;
+   - a **sandboxed** bot cannot reach the key at all (Phase 6);
+   - a bot reaches Composio only through its own allow-list.
+
+   **What changes:**
+   - `connectors.json` stores only a SHA-256 hash of each bot's relay token, never the token. A bot that reads the store learns no other bot's token.
+   - The Apps section shows, for a bot that isn't sandboxed: "This bot isn't sandboxed, so it can read files on this computer, including your Composio key. Turn on the sandbox for bots that use apps." It is a nudge, not a block.
+   - §10.1's reasoning now reads: the relay keeps the key out of bots' configs and reach when they are sandboxed, and out of every log and reply.
+2. **Tests run against the user's live Crew on 7070, as in every phase.**
+   - The controller copies the key from `app/keys.md` into `~/.config/crew/composio-key` (0600) once. Tests never type, read or delete the key.
+   - Key removal (acceptance 7) is unit-tested only.
+   - The connector specs turn a bot's apps off (`PUT /crew/bots/<bot>/apps {}`), which deletes its Composio session, before deleting the bot.
+   - **Orphan sweep:** on each roster refresh, Crew deletes the record and Composio session of any bot no longer in the roster, best-effort. This catches bots deleted through Hermes directly, including `deleteTestBots`.
+3. **Removing the key is a pause.**
+   - `DELETE /crew/connectors/key` disables every bot's `crew_apps` server (`enabled: false`), then deletes the key file.
+   - Records (`userId`, apps, token hashes) stay. Composio sessions are left alone, because there is no key to delete them with.
+   - Saving a key (again, or a new one) checks it, then rebuilds every bot's session (best-effort delete of the old one) and enables the servers again.
+   - Apps whose toolkit has no active connected account under the new key stay listed and are shown as "Not connected", without tools.
+4. **App approvals offer Allow once and Deny only.**
+   - Crew recognises an app prompt as a pending approval whose tool or surface names `crew_apps`; plan task 1 records the exact fields. For those it hides "for this chat" and "always", so nothing grants future app actions silently.
+   - If Hermes truncated the arguments (1,200 characters), the card says "Hermes shows only the start of this request." Allow once stays, because the recipient and subject come first in the arguments.
+   - If a bot's `approvals.mode` is `off` (or yolo), only "Read only" is offered, with the note "This bot doesn't ask before actions, so it can only read in apps."
+5. **The approval path is proven first.** Plan task 1 proves live, on an `e2e` bot, that a write-capable app tool's trust prompt reaches Crew's pending approvals and card, and that Deny stops the call. It also proves the reconnect recipe and any preload cap.
+   - If the prompt does not reach Crew, the phase ships with **Read only as the only level** and records why.
+   - The controller rules again after task 1.
+6. **The primary bot may have apps.**
+   - Crew's create flow removes any cloned `crew_apps` server (`mcp.servers.remove`) and its `MCP_CREW_APPS_API_KEY` before the bot is used, so a new bot starts with no apps.
+   - Bots copied outside Crew inherit the primary's server and token, and so the primary's apps. This is documented as a limitation.
+7. **Group chats.** Hermes gives room turns every enabled MCP server under the member bot's `approvals.mode` (H§4).
+   - Plan task 1 checks whether an app trust prompt in a room surfaces as a Phase 4 pending action (once/deny).
+   - If it does, it is handled like any room approval.
+   - If not, Hermes declines the call (fail-closed), and the Apps section notes: "In group chats, app actions that change something are declined."
+8. **The relay path.** Every method on `/mcp/<bot>` (POST, GET, DELETE) is exempt from the session and origin/CSRF guards, and every method requires the bot's bearer token first. The host guard stays.
+   - After the token check: POST is forwarded, GET answers 405 and DELETE answers 204.
+   - Acceptance 8 reads "only `/mcp/<bot>` is exempt, and only with its token".
