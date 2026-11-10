@@ -4,7 +4,7 @@ Source root `HA` = `/home/ali/.hermes/hermes-agent` (HEAD `2bd378ed1b`). `BH` = 
 
 Evidence legend: `file:line` = read in source. **P-n** = live probe on this VM, 2026-11-10 (list below). **UNVERIFIED** = source reading or inference only. Tokens, secrets and keys are never printed.
 
-Safety record: nothing under `~/.hermes` was edited, `~/.hermes/.env` was not read, and no secret file content was read (only names and modes, P-12). The Crew token was read from its file straight into one request header and never printed; only GET requests were sent to 9120. No model call, no bot turn, no restart of hermes-gateway, hermes-dashboard or crew. The user's bots were only read through `hermes -p default config get` (no secrets). Docker: `busybox:1.37` (6.14 MB) was pulled for generic network tests; every test container was `--rm` or removed by name (`p6-probe`); the busybox image was removed afterwards. The Hermes sandbox image was **not** pulled (only its registry manifest and config were read).
+Safety record: nothing under `~/.hermes` was edited, `~/.hermes/.env` was not read, and no secret file content was read (only names and modes, P-12). The Crew token was read from its file straight into one request header and never printed; only GET requests were sent to 9120. No model call, no bot turn, no restart of hermes-gateway, hermes-dashboard or crew. The user's bots were only read through `hermes -p default config get` (no secrets). Docker: `busybox:1.37` (6.14 MB) was pulled for generic network tests; every test container was `--rm` or removed by name (`p6-probe`); the busybox image was removed afterwards. The Hermes sandbox image was **not** pulled (only its registry manifest and config were read). That record covers the source-and-probe research (§0–§8). The live experiments ran later, with the coordinator's authorization, and have their own safety record in §9.
 
 Probes (scripts `scratchpad/p6/get.sh` and `scratchpad/p6/guards.py`, not committed):
 - **P-1** `hermes -p default|crew-test config get terminal` → both identical: `backend: local`, `modal_mode: auto`, `degraded_mode: warn`, `cwd: .`, `timeout: 180`, `env_passthrough: []`, `home_mode: auto`, `docker_image: nousresearch/hermes-sandbox:desktop`, `docker_forward_env: []`, `docker_env: {}`, `container_cpu: 1`, `container_memory: 5120`, `container_disk: 51200`, `container_persistent: true`, `docker_volumes: []`, `docker_mount_cwd_to_workspace: false`, `docker_network: true`, `docker_extra_args: []`, `docker_shm_size: 1g`, `docker_run_as_host_user: false`, `docker_snap_compat: false`, `persistent_shell: true`, `lifetime_seconds: 300`.
@@ -36,13 +36,14 @@ Probes (scripts `scratchpad/p6/get.sh` and `scratchpad/p6/guards.py`, not commit
 - **Hermes's sandbox is the terminal backend** (`terminal.backend`), and it is **per profile (per bot)**. `crew-test` can be `docker` while `default`, `reese`, `x` stay `local` (§1.3). Docker is the only backend ready on this VM (P-3).
 - **Under `docker`, these run inside the container:** terminal (foreground and background), `process_manage`, the file tools, `execute_code`, `vision_analyze` local paths, and (with `bot_desktop.placement: auto`, the default) the **bot computer (Xvnc/Xfce), `computer_use` (cua-driver) and the bot's Chromium** (§2).
 - **These still run on the host as `ali`:** **`browser_exec`'s Python code** (model-written code is `exec`'d in a host process with full filesystem and loopback access; it is in every core toolset) — this is the hole. Also: MCP stdio servers, cron/webhook `script`s (only pre-existing files under `HERMES_HOME/scripts`), skill and memory writes (path-confined), web/TTS/image tools (network only), and bot-to-bot `message_agent` delivery (Hermes-built command) (§2).
-- **No silent fallback to local.** Docker missing or down → the terminal returns `status: "degraded"` (`degraded_mode: warn`) or an error (`fail`); nothing runs on the host. Desktop, browser and computer_use refuse rather than fall back to the host. The only host shapes are explicit opt-ins, all off here: `bot_desktop.placement: gateway`, `browser.engine: lightpanda`, `browser.cdp_url`, `browser.use_real_profile` (§1.5).
+- **No silent fallback to local** (confirmed live, §9 E6). Docker missing or down → the terminal returns `status: "degraded"` (`degraded_mode: warn`) or an error (`fail`); nothing runs on the host. When the environment is already cached, the docker CLI error comes back as plain output with `exit_code: 1` instead. After docker restarts, Hermes restarts the same container by itself. Desktop, browser and computer_use refuse rather than fall back to the host. The only host shapes are explicit opt-ins, all off here: `bot_desktop.placement: gateway`, `browser.engine: lightpanda`, `browser.cdp_url`, `browser.use_real_profile` (§1.5).
 - **Secrets under docker:** the container gets no `~/.hermes/.env`, no `webapp/`, no `~/.config/crew`, no host env, no docker socket. 9120, 9119 and 7070 are **unreachable** from the default bridge (P-7). Reachable: the internet and the host's sshd (`172.17.0.1:22`) (§3).
 - **Hermes's own guards are explicitly "defense-in-depth, NOT a security boundary".** On the local backend, `cat ~/.hermes/.env` and `cat ~/.hermes/webapp/session-token` are not flagged by the approval patterns, and `~/.config/crew/*` is in no deny-list (P-10, §4).
 - **Under docker, dangerous-command approvals are skipped** (unless host paths are bind-mounted); hardline floors and `approvals.deny` still apply (§2.3).
 - **No per-profile run-as-user, uid, bwrap or firejail support.** Options in Hermes's design: docker backend (built in), SSH backend to `127.0.0.1` as a dedicated Linux user (built in, with trade-offs), or a plugin terminal backend (custom code). None of them moves `browser_exec` off the host; `agent.disabled_toolsets: [browser]` removes it per bot (§5).
 - **Switching needs no gateway restart (source):** new sessions and every cron run read the current profile config; an open chat picks it up on its next `session.resume`. UNVERIFIED live (E2).
-- **Cost:** the default image is 1.19 GB compressed (arm64) and is not pulled yet. It must be pre-pulled, because the first `docker run` has a 120 s timeout that includes the pull. One persistent container per bot is reused across sessions and gateway restarts; `docker exec` overhead is about 18 ms (P-9). An idle sandbox costs almost nothing; the desktop costs about 220 MiB, about 1 GiB with Chromium. The default 5 GiB memory cap is too high for this 7 GB VM (§7).
+- **Cost:** the default image is 1.19 GB compressed (arm64) and **4.38 GB on disk** (pulled in §9). It must be pre-pulled, because the first `docker run` has a 120 s timeout that includes the pull. One persistent container per bot is reused across sessions and gateway restarts; `docker exec` overhead is about 18 ms (P-9). Measured live: an idle sandbox is 620 KiB, the sandbox desktop 311 MiB. The default 5 GiB memory cap is too high for this 7 GB VM (§7, §9 E10).
+- **Live run (§9):** crew-test on docker ran its commands as root in the container, with no host secrets and 9120/7070 closed. The switch needed no restart. The approval card that Crew's e2e fixture relies on did **not** appear under docker. On this arm64 VM the sandbox browser cannot start, because of a Hermes path-probe bug, so `browser_exec` fails closed and never reaches host code.
 
 ---------------------------------------------------------------------------
 ## 1. Terminal backends
@@ -69,7 +70,7 @@ The dashboard schema enum is `local, docker, ssh, modal, daytona, vercel_sandbox
 |---|---|---|---|
 | `docker_image` | `nousresearch/hermes-sandbox:desktop` (Python 3.13 / Node + desktop stack) | the sandbox image | `config_defaults.py:9-13, 335-338` |
 | `container_cpu` / `container_memory` / `container_disk` | 1 / 5120 MB / 51200 MB | `--cpus`, `--memory` and `--pids-limit 2048` only when a cgroup probe passes; `--storage-opt size=` only on `overlay2` | `config_defaults.py:348-351`; `docker.py:336-343, 452-495, 814-833, 1196-1224` |
-| `container_persistent` | true | bind-mount `~/.hermes/sandboxes/docker/<key>/{home,workspace}` at `/root` and `/workspace`; false = tmpfs plus a per-session container | `config_defaults.py:352`; `docker.py:850-926`; `HA/tools/terminal_tool.py:406-444` |
+| `container_persistent` | true | bind-mount `<profile home>/sandboxes/docker/<key>/{home,workspace}` at `/root` and `/workspace` (live: `~/.hermes/profiles/crew-test/sandboxes/docker/profile_crew-test-<hash>/`, §9 E5); false = tmpfs plus a per-session container | `config_defaults.py:352`; `docker.py:850-926`; `HA/tools/terminal_tool.py:406-444` |
 | `docker_volumes` | `[]` | extra `-v host:container[:mode]` | `config_defaults.py:353-356`; `docker.py:862-873` |
 | `docker_mount_cwd_to_workspace` | false | mount the host cwd at `/workspace` ("weakens isolation") | `config_defaults.py:357`; `docker.py:875-923` |
 | `docker_network` | true | false = `--network=none`; contradicting `--network` in extra args → refuse to start | `config_defaults.py:358`; `docker.py:834-847` |
@@ -79,7 +80,7 @@ The dashboard schema enum is `local, docker, ssh, modal, daytona, vercel_sandbox
 | `docker_forward_env` | `[]` | forward host/.env values by name; **bypasses the credential blocklist** | `config_defaults.py:339`; `HA/tools/environments/remote_common.py:28-33` |
 | `docker_env` | `{}` | literal env pairs | `config_defaults.py:340-343` |
 | `docker_shared_container_key` | `""` | profiles with the same key share ONE container | `config_defaults.py:373-374`; `terminal_tool.py:555-559` |
-| `docker_persist_across_processes` / `docker_orphan_reaper` / `sandbox_dir` / `lifetime_seconds` | true / true / `""` (= `~/.hermes/sandboxes`) / 300 | reuse across gateway restarts / reap orphans at start / sandbox root / idle eviction of the in-process handle | `HA/tools/terminal_scope.py:27-32`; `docker.py:853`; `HA/tools/terminal_tool_lifecycle.py:135-176` |
+| `docker_persist_across_processes` / `docker_orphan_reaper` / `sandbox_dir` / `lifetime_seconds` | true / true / `""` (= `<profile home>/sandboxes`) / 300 | reuse across gateway restarts / reap orphans at start / sandbox root / idle eviction of the in-process handle | `HA/tools/terminal_scope.py:27-32`; `docker.py:853`; `HA/tools/terminal_tool_lifecycle.py:135-176` |
 | `docker_snap_compat` | false | drops `--init` and no-new-privileges for snap Docker | `config_defaults.py:369-372` |
 | `credential_files` | — | profile-home-relative files mounted read-only (deny-list refused) | `HA/tools/credential_files.py:123-162` |
 | `env_passthrough` | `[]` | names forwarded into terminal/execute_code (blocklist-filtered) | `config_defaults.py:313-314` |
@@ -135,7 +136,7 @@ The dashboard schema enum is `local, docker, ssh, modal, daytona, vercel_sandbox
 | `vision_analyze` local paths | **sandbox** (exec-read); host read only inside the mounted media caches | `HA/tools/image_source.py:1-7, 229-298` |
 | Bot computer (Xvnc + Xfce) | **sandbox**; placement `auto` follows docker/ssh | `placement.py:3-12, 29, 64-86`; `HA/tools/bot_desktop/sandbox_host.py:1-13` |
 | Its pixel leg (`/api/display/ws`) | host bridge relays RFB through a `python3` relay inside the container | `HA/hermes_cli/web_routers/display.py:114-127`; `sandbox_host.py:315-318` |
-| Desktop user | `pn` (uid 1000 in the image) when present | `sandbox_host.py:33-36, 189-197` |
+| Desktop user | `pn` (uid 1000 in the image) when present. Without userns, that is **host uid 1000 = `ali`**: `docker top` lists Xvnc and Xfce as `ali` (§9 E5) | `sandbox_host.py:33-36, 189-197` |
 | `computer_use` (cua-driver) | **sandbox** (`docker exec … cua-driver mcp`) | `cua_backend.py:153-172`; `sandbox_host.py:321-328` |
 | The bot's Chromium (target of `browser_exec` / `browser_cdp`) | **sandbox**; DevTools forwarded over the exec stream | `browser_session.py:189-199`; `browser_session_sandbox.py:1-7` |
 | **`browser_exec` code** | **HOST, as `ali`** (see §2.2) | `HA/tools/browser_use_cli.py:183-201, 267-272, 595-610, 774-830`; `BH/run.py:374-406` |
@@ -156,7 +157,7 @@ The dashboard schema enum is `local, docker, ssh, modal, daytona, vercel_sandbox
 - Its only check is a URL verdict on literals in the code (SSRF routing) (`browser_use_cli.py:783-786`). There is no approval guard and no sandbox reference anywhere in `browser_use_cli.py` (grep).
 - It is in every core platform bundle (`toolsets.py:11-35`, entry `:17`).
 - Turning it off per bot: `agent.disabled_toolsets: [browser]` (`config_defaults.py:63, 267`; the toolset holds all `browser_*` tools, `toolsets.py:105-113`). `computer_use` (sandboxed) can still drive the sandbox Chromium on the screen.
-- Live proof needs a bot turn (E3).
+- Live (§9 E3): on this **arm64** VM the call failed before any code ran, with "the sandbox image has no Chromium to run the browser". Hermes's probe looks only for `chromium-*/chrome-linux/chrome` and `chrome-linux64/chrome` (`HA/tools/bot_desktop/sandbox_host.py:139-144`). The arm64 image ships `/opt/playwright/chromium-1248/chrome-linux-arm64/chrome`. So the route errors (`browser_use_cli.py:802-806`) before the harness is spawned. Today that closes the hole by accident, and also disables all sandbox browsing here. On an image or arch where the probe finds Chromium, the source path above applies (UNVERIFIED live).
 
 ### 2.3 Approvals change under docker
 - `_should_skip_container_guards`: `docker` → skip unless host paths are bind-mounted; `modal/daytona/vercel_sandbox` → skip; `ssh`/`local` → keep (`HA/tools/approval.py:1123-1137`; P-10).
@@ -171,7 +172,7 @@ The dashboard schema enum is `local, docker, ssh, modal, daytona, vercel_sandbox
 - **Env.** `docker exec` starts from the image env plus `docker_env` plus name-only `-e KEY` flags. Values travel in the docker client's env, never argv, and the host process env is **not** inherited (`docker.py:539-543, 786-812, 1061-1130`). Forwarded names come from `terminal.env_passthrough` plus skill-declared `required_environment_variables`, filtered by the provider blocklist (which includes `OPENROUTER_API_KEY`, `HERMES_DASHBOARD_SESSION_TOKEN`, `GH_TOKEN`) and a dynamic internal-secret check (`remote_common.py:14-60`; `HA/tools/environments/local_env_policy.py:19-40, 177, 317`). `docker_forward_env` bypasses that filter (`remote_common.py:28-33`). Values resolve from the **profile's own** secret scope (its `.env` only, not the root `.env`) (`HA/agent/secret_scope.py:407-435`; `HA/tools/env_passthrough.py:143-155`).
 - **A bot can widen its own passthrough.** `skill_view` registers a skill's `required_environment_variables`, and the allowlist is process-wide (names only) (`env_passthrough.py:1-32, 68-79, 136-140`). The bot can author skills (`skill_manage`), so it can pull **any non-provider secret in its own profile `.env`** into the sandbox.
 - **Mounts.**
-  - Read-write: only `~/.hermes/sandboxes/docker/<key>/home` → `/root` and `…/workspace` → `/workspace` (persistent mode) (`docker.py:902-916`), plus any user `docker_volumes` or mounted cwd.
+  - Read-write: only `<profile home>/sandboxes/docker/<key>/home` → `/root` and `…/workspace` → `/workspace` (persistent mode) (`docker.py:902-916`), plus any user `docker_volumes` or mounted cwd. The live mount list is in §9 E5.
   - Read-only (`docker.py:546-575`):
     - the profile skills dir (plus external/project skill dirs);
     - cache dirs `cache/{documents,images,audio,videos,screenshots,web,delegation,spillover,generated}`, `images`, `attachments`, `composer-pastes` (`credential_files.py:167-207, 255-305`);
@@ -246,7 +247,7 @@ The dashboard schema enum is `local, docker, ssh, modal, daytona, vercel_sandbox
 ---------------------------------------------------------------------------
 ## 7. Cost and RAM (7 GB VM)
 
-- **Image.** `nousresearch/hermes-sandbox:desktop` arm64 is 1192.3 MB compressed, 19 layers (P-5). Its size on disk is UNVERIFIED (expect several GB); 36 GB is free (P-4). It is **not pulled** (P-4).
+- **Image.** `nousresearch/hermes-sandbox:desktop` arm64 is 1192.3 MB compressed, 19 layers (P-5), and **4.38 GB on disk** once pulled (§9 E10). 36 GB was free (P-4).
 - **Pull timeouts.** Hermes never pre-pulls.
   - The first `docker run -d` has `timeout=120` including an implicit pull (`docker.py:1046-1048`). On timeout the call errors.
   - The cgroup probe `docker run --rm --cpus 0.5 --memory 64m --pids-limit 32 <image> sleep 0` has a 60 s timeout (`docker.py:452-495`). If it cannot run, that spawn gets **no CPU, memory or PID limits** ("until a probe succeeds").
@@ -262,7 +263,7 @@ The dashboard schema enum is `local, docker, ssh, modal, daytona, vercel_sandbox
   - The desktop start gate uses the tighter of the cgroup limit and host `MemAvailable` vs `bot_desktop.min_free_memory_mb` 1536 (`resources.py:10-13`).
   - `container_memory` default **5120 MB** is a cap, not a reservation (`config_defaults.py:350`). With 4.1 GiB available and swap already in use (P-4), about 2048–3072 MB per sandboxed bot is the realistic cap.
   - `/dev/shm` 1g counts against it (`docker.py:345-355`). `container_cpu` is 1 by default.
-- **Disk.** `container_disk` is **not enforced** here. `_storage_opt_supported` requires `overlay2`, and this daemon reports `overlayfs` (`docker.py:1196-1210`; P-4, P-8). The writable layer and `~/.hermes/sandboxes/docker/<key>/` can grow without limit.
+- **Disk.** `container_disk` is **not enforced** here. `_storage_opt_supported` requires `overlay2`, and this daemon reports `overlayfs` (`docker.py:1196-1210`; P-4, P-8). The writable layer and `<profile home>/sandboxes/docker/<key>/` can grow without limit.
 
 ---------------------------------------------------------------------------
 ## 8. Gotchas
@@ -273,10 +274,10 @@ The dashboard schema enum is `local, docker, ssh, modal, daytona, vercel_sandbox
 4. Container root = **host root** (no userns, P-4), mitigated by dropped caps, no-new-privileges, seccomp and AppArmor.
 5. Host **sshd is reachable** from the sandbox at `172.17.0.1:22` (P-7). The sandbox has no keys, but it is an attack surface.
 6. `docker_network: false` also cuts the sandbox Chromium and pip/npm off from the internet. `web_search`/`web_extract` still work (host tools).
-7. The image is not pulled, is 1.2 GB, and is pulled implicitly inside a 120 s `docker run` timeout. A slow cgroup probe silently drops resource limits for that spawn (§7).
+7. The image is 1.2 GB compressed and 4.38 GB on disk. Without a pre-pull it is pulled implicitly inside a 120 s `docker run` timeout. A slow cgroup probe silently drops resource limits for that spawn (§7).
 8. No disk quota on this daemon (`overlayfs`) (§7).
 9. Policy is frozen per session. An open chat switches only on `session.resume`, never mid-turn (§1.4). Room turns: UNVERIFIED (E9).
-10. The persistent sandbox keeps state in `~/.hermes/sandboxes/docker/<key>/{home,workspace}`. Files are root-owned on the host until the handback runs (`docker_ownership.py:1-25`).
+10. The persistent sandbox keeps state in `<profile home>/sandboxes/docker/<key>/{home,workspace}`. Files are root-owned on the host until the handback runs (`docker_ownership.py:1-25`). Live: removing the container with a plain `docker rm` left a root-owned `home/.hermes` that only `sudo` could delete (§9 cleanup).
 11. Changing only the *default* image keeps an existing container. Only a pinned `docker_image` recreates it (`docker.py:937-971`).
 12. A bot can author a skill whose `required_environment_variables` forwards non-provider secrets from its own profile `.env` into the sandbox (§3). Keep a sandboxed bot's `.env` minimal.
 13. **Confused deputy:** a sandboxed bot can ask an unsandboxed bot (`message_agent`, rooms) to read files or call Hermes for it (§2.1).
@@ -285,11 +286,16 @@ The dashboard schema enum is `local, docker, ssh, modal, daytona, vercel_sandbox
 16. On the local backend today: `cat ~/.hermes/.env` and `cat …/session-token` are unflagged, and file tools may read `~/.config/crew/*` and `~/.ssh/id_*` (P-10).
 17. A profile with an unreadable `.env` or unparseable `config.yaml` gets a refusal scope: the terminal fails closed (§1.3). That is good, but it looks like an outage.
 18. The dashboard's `terminal.modal_mode` select (`sandbox`/`function`) does not match the real values (`auto/direct/managed`) (§1.5).
-19. Crew's Phase 3 screen path should keep working, because the bridge relays a sandboxed Xvnc in source (`display.py:114-127`). UNVERIFIED live (E5).
+19. Crew's Phase 3 screen path should keep working, because the bridge relays a sandboxed Xvnc in source (`display.py:114-127`). Confirmed live: the screen starts in the container through Crew's own route, and the thumbnail works (§9 E5). The pixel leg in a browser was not exercised.
 20. `security.allow_private_urls` must stay false. Otherwise `web_extract` (a host tool) can fetch loopback URLs on 9120, 9119 and 7070; it sends no token, so only endpoints that need no auth are exposed.
+21. **arm64 sandbox browser is broken.** The Chromium probe misses `chrome-linux-arm64` (§2.2, §9 E3), so with docker on this VM there is no bot browser at all: no `browser_exec`, and nothing to show the human in the screen's browser. The screen itself still works (§9 E5).
+22. **Crew's e2e approval fixture needs crew-test on `local`.** `rm -r /tmp/crew-fixture/<dir>` raises a card on local ("delete in root path") but not under docker (§9 E7). Sandboxing crew-test would break `app/e2e/crew.spec.ts:55-56`.
+23. **Config writes can delete comments.** A key inserted by `PUT /api/config` at the end of a section takes over the following comment block, and deleting it later deletes that block (§9 restore). Crew's sparse writes that add new keys can do the same to a commented template.
 
 ---------------------------------------------------------------------------
-## 9. Open questions (need an experiment or the user's approval)
+## 9. Live experiments (E1–E10)
+
+### 9.1 Plan (written before the run)
 
 | # | Question | Experiment | Needs |
 |---|---|---|---|
@@ -303,3 +309,46 @@ The dashboard schema enum is `local, docker, ssh, modal, daytona, vercel_sandbox
 | E8 | Can a dedicated or host uid work? | `docker_run_as_host_user: true` or `docker_extra_args: ["--user","<uid>:<gid>"]` on crew-test. Check the desktop (`pn`), `apt`, and ownership in `~/.hermes/sandboxes/docker/profile_crew-test/` | config change; for a dedicated uid, sudo `useradd` |
 | E9 | Which backend do group/room turns use after a switch? | A room turn for crew-test after E1 running `hostname` | E1, a model call |
 | E10 | What does the real image cost? | `docker system df` after the pull; `docker stats` idle, with the desktop, and with Chromium | E1 |
+
+### 9.2 How the run was done (2026-11-10, about 10:20–10:37 KST)
+
+- **Scope.** Run with the coordinator's authorization, on **crew-test only**. Scripts are in `scratchpad/p6/` (`turn.mjs`, `display.mjs`, `crew-start.mjs`, `put.sh`, `get.sh`, `delete.mjs`; not committed). They use Crew's own compiled gateway client (`app/server/dist/hermes/gateway-client.js`). The Hermes token is read from its file into a header or URL and never printed.
+- **Model turns.** 5 of the allowed 6, all on crew-test (`anthropic/claude-haiku-5.5` via OpenRouter). Each ran in a fresh hidden session: `session.create {profile:"crew-test", hidden:true}` → `session.resume` → `prompt.submit {surface:"hud"}`, which is the path Crew's `capture.ts` uses.
+- **Config changes.** Made only through Hermes's API:
+  1. `PUT /api/config?profile=crew-test {"config":{"terminal":{"backend":"docker","container_memory":3072}}}` at 10:29:21. Comment-preserving; only those two lines changed.
+  2. `PUT /api/config?profile=crew-test {"config":{"agent":{"disabled_toolsets":["browser"]}}}` for E4.
+  3. Restore with `PUT /api/config/raw?profile=crew-test {"yaml_text": <backup>}`.
+  - Backup: `scratchpad/p6/crew-test-config.before.yaml`, taken with `cp -p` before any change.
+- **Image.** `docker pull nousresearch/hermes-sandbox:desktop` was run before any turn.
+- **Not touched.** No restart of hermes-gateway, hermes-dashboard or crew: their PIDs were 457306, 1515 and 406588 before and after, and the gateway has been active since 10:06:25 KST. The user's bots were not touched.
+
+### 9.3 Results
+
+| # | Result | Evidence |
+|---|---|---|
+| E1 | **Confirmed.** Commands ran as `uid=0(root)` in the container (hostname `5cd799ce89fb` = container id). Results: `no_env`, `no_token`, `no_crew`; `127.0.0.1:9120` closed, `172.17.0.1:9120` closed, `172.17.0.1:7070` closed; `172.17.0.1:22` **open**. No approval card was raised. | Turn 1 tool result (bash `/dev/tcp` probes, 3 s timeout each) |
+| E2 | **Confirmed: no restart needed.** Right after the PUT, `display.status` reported `placement: "terminal:docker"`. Container `hermes-f991858b` was created at 10:30:06 KST by the running gateway (PID 457306, up since 10:06:25). Labels: `hermes-agent=1, hermes-profile=crew-test, hermes-task-id=profile_crew-test, hermes-egress=off, hermes-environment=<fingerprint>`. Every fresh session afterwards used the container. Freezing of an already-open chat until `session.resume` was **not** tested. | `docker ps --filter label=hermes-profile=crew-test`; `systemctl --user show … ActiveEnterTimestamp` |
+| E3 | **Not reproducible here; it fails closed.** `browser_exec` returned "The local browser could not be started: the sandbox image has no Chromium to run the browser". The harness was never spawned, so no code ran on the host or anywhere else. Cause: a Hermes probe bug on arm64 (`sandbox_host.py:139-144` checks `chrome-linux/` and `chrome-linux64/`; the image has `/opt/playwright/chromium-1248/chrome-linux-arm64/chrome`, executable for `pn`). Host execution of `browser_exec` code therefore stays source-only (§2.2). Side effect: the failed call auto-started the sandbox screen (`tool_placement()` starts it, `runtime.py:395-408`). | Turn 2 tool result; `docker exec … ls /opt/playwright/chromium-1248/` |
+| E4 | **Confirmed.** With `agent.disabled_toolsets: [browser]`, the fresh session's tool inventory went from 21 tools to 20: `browser_exec` was gone. The bot answered `browser_tools=NONE`, and `terminal` still ran in the container (`hostname` = `5cd799ce89fb`). | `session.info.tools` in turns 1–3 (`browser_exec` present in E1/E3, absent in E4) |
+| E5 | **Confirmed.** Crew's own `POST /crew/bots/crew-test/screen/start` (e2e session cookie, Origin and CSRF) returned 200 in 2.7 s with `running:true, display:":20", placement:"terminal:docker"`. Xvnc, dbus, xfce4-panel, xfwm4, xfdesktop and the rest run **inside the container**; `docker top` shows them as user `ali`, because the image's uid 1000 `pn` equals host uid 1000. Xvnc listens on `-rfbunixpath /tmp/hermes-bot-desktop/crew-test/rfb.sock` in the container's tmpfs. No host Xvnc. `display.thumbnail` → JPEG data URL of 7,603 chars in 159 ms (the same RPC Crew proxies for its thumbnail). `display.stop {force:true}` → `stopped:true` in 768 ms; the container stays up. The pixel leg in a browser was not exercised. | `docker top`, `ps`, `display.*` over 9120 |
+| E5 container | `docker inspect`: `User=` (root), `NetworkMode=bridge`, `Memory=3 GiB`, `NanoCpus=1e9`, `PidsLimit=2048`, `Init=true`, `CapDrop=[ALL]`, `CapAdd=[CHOWN DAC_OVERRIDE FOWNER SETGID SETUID]`, `SecurityOpt=[no-new-privileges]`, `ShmSize=1 GiB`, restart policy `no`, not privileged, no extra hosts. The cgroup probe passed. **Mounts:** rw `~/.hermes/profiles/crew-test/sandboxes/docker/profile_crew-test-<hash>/{home,workspace}` → `/root`, `/workspace`. ro `crew-test/{attachments, composer-pastes, images, skills}` and `crew-test/cache/{audio, delegation, documents, generated, images, screenshots, spillover, videos, web}` under `/root/.hermes/`. tmpfs `/run` (noexec), `/tmp` 512m, `/var/tmp` (noexec). **No `.env`, `webapp/`, `config.yaml`, `state.db`, docker socket or `~/.config/crew`.** | `docker inspect hermes-f991858b` |
+| E6 | **No fallback to local, confirmed.** With docker stopped (`sudo systemctl stop docker.socket docker.service`), `terminal hostname` returned `{"output":"Cannot connect to the Docker daemon at unix:///var/run/docker.sock…","exit_code":1}`. The host hostname was never printed. Because the gateway already had the environment cached, this came back as plain command output, **not** the `status:"degraded"` shape (that shape is for a failure while creating the environment, §1.5). After `sudo systemctl start docker.socket docker.service`, the next turn's `hostname` returned `5cd799ce89fb` with `"environment_recreated": "The execution environment was recreated while running this command (the previous container/sandbox was gone)…"`. Hermes `docker start`ed the **same** container (it had exited with status 143 when the daemon stopped). | Turns 4 and 5; `systemctl is-active` → active/active/active afterwards |
+| E7 | **No approval card under docker.** `mkdir -p /tmp/crew-fixture/p6-e7` and `rm -r /tmp/crew-fixture/p6-e7 && echo removed_e7` ran in the container without any `approval.request` event. On the local backend the same command is flagged `delete in root path` (`detect_dangerous_command`), which is the card Crew's e2e relies on (`app/e2e/crew.spec.ts:55-56`). | Turn 1: `approvals=[]` |
+| E8, E9 | Not run (out of the authorized list). | — |
+| E10 | Image **4.38 GB on disk** (1.19 GB compressed). Container RAM: **620 KiB / 2 pids** idle with no screen; **311 MiB / 38 pids** with the sandbox desktop idle; 213 MiB / 2 pids right after `display.stop` (page cache). CPU about 0 % idle. | `docker stats --no-stream`; `docker images` |
+
+### 9.4 Restore and cleanup
+
+- **Config.** The parsed crew-test config is **identical** to the backup (`ruamel` safe-load equality: True; `terminal.backend: local`, `container_memory: 5120`, `approvals.mode: manual`, no `agent.disabled_toolsets` key; the API reports `active: local`, placement `gateway`). The file is **not byte-identical**: 9 comment or blank lines after the `agent:` section (the `personalities` example comments and the `# Gateway Lifecycle` banner, old lines 1406–1414) are gone. Hermes's comment-preserving writer attached that block to the inserted `disabled_toolsets` key and removed it with the key; the raw-config API cannot write comments back (it parses the YAML). A byte-exact fix is `cp -p scratchpad/p6/crew-test-config.before.yaml ~/.hermes/profiles/crew-test/config.yaml`, a direct file write, so it was **not** done without approval.
+- **Docker.** Container `hermes-f991858b` was removed (`docker rm -f`); `docker ps -a` is empty. The image `nousresearch/hermes-sandbox:desktop` was kept.
+- **Files.** `~/.hermes/profiles/crew-test/sandboxes/` was created by this run at 10:30:06. It held the profile container's sandbox, including a **root-owned** `home/.hermes`, and a Hermes-made `prompt-backend-probe/` sandbox with an `.hermes-owner-handback` file. It was deleted with `sudo rm -rf` on that exact path (156 KB). `crew-test/bot-desktop/` has no leftover `sandbox.json`.
+- **Sessions.** The 5 test sessions (`p6-e1e7, p6-e3, p6-e4, p6-e6, p6-e6b`) were deleted. The `session.delete` RPC does not exist on the canonical protocol ("unknown method"). `DELETE /api/sessions/{id}?profile=crew-test` requires `request_id` plus `expected_revision` (`runtime_revision`) and `expected_generation`; without them it answers 409 `client_upgrade_required` (`HA/hermes_cli/web_server_sessions.py:287-293`).
+- **Final state.** No Xvnc anywhere; docker active; gateway, dashboard and crew PIDs unchanged.
+
+### 9.5 What the run changes in the picture
+
+1. The docker sandbox does what the source says for terminal, files, background processes, the screen and secrets: no secrets, no 9120 or 7070, root in a capped container. The host sshd is the one host port it reaches.
+2. Switching a bot is live: one sparse PUT, no restart. A Crew "sandbox this bot" toggle can use `PUT /api/config?profile=` the way `screen-config.ts` already does. Removing keys again needs the raw API (or leaves comment damage, gotcha 23).
+3. On this arm64 VM a sandboxed bot has **no browser**, because of the Hermes probe bug (gotcha 21). Fixing it needs a Hermes change, an image whose Chromium sits at a path the probe knows, or the user's decision.
+4. Approvals effectively disappear for a sandboxed bot (E7). Crew's approvals UI and the crew-test e2e fixture assume the local backend (gotcha 22).
+5. Container processes run as host uid 0 (root shell) or 1000 (`ali`, desktop). Without userns-remap, a container escape lands as one of those (§5).
