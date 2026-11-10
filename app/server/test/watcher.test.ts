@@ -378,4 +378,14 @@ describe('watcher request and refresh', () => {
     expect(seenAtResolve).toEqual([before + 2, before + 2])
     watcher.stop()
   })
+
+  it('sync passes the roster names to sandboxStates and the view carries the state', async () => {
+    const client = new FakeClient()
+    const seen: (readonly string[])[] = []
+    const watcher = startWatcher({ client, connect: c => c.connect(), settings: fakeSettings, now: () => 1, reconnectDelayMs: () => 0, sandboxStates: async names => { seen.push(names); return new Map([['crew-test', 'on' as const]]) } })
+    await flush(); await flush()
+    expect(seen[0]).toEqual(['default', 'crew-test', 'no-chat'])
+    expect(watcher.state().bots.map(b => [b.name, b.sandbox])).toEqual([['default', 'off'], ['crew-test', 'on'], ['no-chat', 'off']])
+    watcher.stop()
+  })
 })

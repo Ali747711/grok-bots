@@ -1,3 +1,4 @@
+import type { SandboxState } from '../bots/sandbox-state.js'
 import { HermesRpcError, HermesUnavailableError, type Rpc } from '../hermes/errors.js'
 import { log as logger } from '../log.js'
 import type { SettingsStore } from '../settings/settings-store.js'
@@ -23,6 +24,8 @@ export interface WatcherDeps {
   readonly now: () => number
   readonly reconnectDelayMs: (attempt: number) => number
   /** Observe WebSocket close codes (4401 = Hermes says our token is no longer valid). */
+  /** Sandbox state per bot name for the roster; must not reject (the roster cache never does). */
+  readonly sandboxStates?: (names: readonly string[]) => Promise<ReadonlyMap<string, SandboxState>>
   readonly onSocketClose?: (handler: (code: number) => void) => () => void
 }
 
@@ -152,6 +155,7 @@ export function startWatcher(deps: WatcherDeps): Watcher {
   async function syncOnce(): Promise<boolean> {
     const { profiles } = await client.request<{ profiles: ProfileRow[] }>('profiles.list', { include_sessions: true })
     tracker.applyProfiles(profiles)
+    if (deps.sandboxStates) tracker.applySandbox(await deps.sandboxStates(profiles.map(row => row.name)))
     changed()
     let ok = true
     for (const row of profiles) {

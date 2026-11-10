@@ -1,9 +1,11 @@
 import { CreateBotError } from '../bots/create.js'
 import { NotSavedError, PrimaryBotError } from '../bots/edit.js'
 import { SandboxCleanupError } from '../bots/sandbox-cleanup.js'
+import { SandboxRefusedError } from '../bots/sandbox.js'
 import { BotNotFoundError } from '../bots/ui-meta.js'
 import { HermesRestError, HermesRpcError, HermesUnavailableError } from '../hermes/errors.js'
 import { ScheduleError } from '../routines/schedule.js'
+import { DockerError, InvalidImageError } from '../sandbox/docker.js'
 import { log } from '../log.js'
 
 export interface Failure {
@@ -29,6 +31,9 @@ export function failure(error: unknown, name: string): Failure {
   if (error instanceof ScheduleError) return { status: 400, body: { error: error.code, message: error.message } }
   if (error instanceof PrimaryBotError) return { status: 400, body: { error: 'cannot_delete_primary' } }
   if (error instanceof SandboxCleanupError) return { status: 409, body: { error: 'sandbox_cleanup_failed' } }
+  if (error instanceof SandboxRefusedError) return { status: 409, body: { error: error.code } }
+  if (error instanceof InvalidImageError) return { status: 502, body: { error: 'bad_image_name' } }
+  if (error instanceof DockerError) return { status: 503, body: { error: 'docker_unavailable' } }
   if (error instanceof NotSavedError) return { status: 502, body: { error: 'not_saved', section: error.section } }
   if (error instanceof CreateBotError) {
     return error.kind === 'name_taken' ? { status: 409, body: { error: 'name_taken' } } : { status: 400, body: { error: 'bad_name', message: error.message } }
