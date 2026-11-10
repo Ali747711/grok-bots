@@ -222,7 +222,7 @@ check('approvals apply at once, and Never ask asks first', async page => {
   await pickMode(page, 'Let a checker model decide first')
   await expect.poll(() => approvalsOf(page)).toBe('smart')
   await expect(tabPanel(page).getByText('Applies from the next risky command.', { exact: true })).toBeVisible()
-  await expect(tabPanel(page).getByText('App actions ask through their own prompt, whichever you pick here.', { exact: true })).toBeVisible()
+  await expect(tabPanel(page).getByText('App actions ask through their own prompt. Never ask turns that off too.', { exact: true })).toBeVisible()
 })
 
 check('the sleep chips and the use-screen switch write the screen config', async page => {

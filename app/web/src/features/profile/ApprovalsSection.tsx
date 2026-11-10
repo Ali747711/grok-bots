@@ -79,7 +79,7 @@ export function ApprovalsSection({ name, title, isPrimary, approvals, readError,
       {approvals === null && readError && <ReadError reason={readError} />}
       {isPrimary && <PrimaryReason title={title} />}
       <Note>Applies from the next risky command.</Note>
-      <Note>App actions ask through their own prompt, whichever you pick here.</Note>
+      <Note>App actions ask through their own prompt. Never ask turns that off too.</Note>
       {approvals?.sandboxed && (
         <Note>{`Inside the sandbox, ${title} runs commands and code without asking you. Hermes treats the sandbox as the safety boundary. Commands you've blocked in Hermes are still refused.`}</Note>
       )}

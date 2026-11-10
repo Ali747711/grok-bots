@@ -33,7 +33,7 @@ describe('ApprovalsSection', () => {
     expect(screen.getByText('A model may approve risky commands without asking you; when it refuses, you still decide (Allow once / Deny). Each check costs a model call.')).toBeInTheDocument()
     expect(screen.getByText('Risky commands run without asking you.')).toBeInTheDocument()
     expect(screen.getByText('Applies from the next risky command.')).toBeInTheDocument()
-    expect(screen.getByText('App actions ask through their own prompt, whichever you pick here.')).toBeInTheDocument()
+    expect(screen.getByText('App actions ask through their own prompt. Never ask turns that off too.')).toBeInTheDocument()
     first.unmount()
 
     state.approvals = { mode: 'manual', isDefault: false, sandboxed: false }
