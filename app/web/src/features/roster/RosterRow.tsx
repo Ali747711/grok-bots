@@ -11,7 +11,7 @@ interface RosterRowProps {
   onSelect: (name: string) => void
 }
 
-/** One bot in the roster: avatar, name, one-line preview. The selected row gets the sky fill and a left bar. */
+/** One bot in the roster: avatar, name, one-line preview. The selected row gets the raised fill. */
 export function RosterRow({ bot, active, showStatus, onSelect }: RosterRowProps) {
   return (
     <button

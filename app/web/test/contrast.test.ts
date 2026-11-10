@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { contrastRatio, parseColor } from './contrast'
+import { compositeOver, contrastOf, contrastRatio, parseColor } from './contrast'
 
 const css = readFileSync(resolve(__dirname, '../src/index.css'), 'utf8')
 
@@ -30,6 +30,8 @@ const RULES: [string, string[], number][] = [
   // Faint text never sits on --control (spec §5.1 ruling).
   ['faint', ['background', 'shell', 'raised'], TEXT],
   ['destructive', ['shell', 'raised'], TEXT],
+  // `text-background` on `bg-destructive` (the hidden-character marker in the approval card).
+  ['background', ['destructive'], TEXT],
   ['primary-foreground', ['primary'], TEXT],
   ['ring', SURFACES, NON_TEXT],
   ['status-working', ['shell', 'raised'], NON_TEXT],
@@ -50,8 +52,29 @@ function ratioOf(tokens: Record<string, string>, fg: string, bg: string): number
   }
 }
 
+/** [text token, fill token, fill alpha, surfaces under the fill, minimum]: class-map pairs with a translucent fill. */
+const TINT_RULES: [string, string, number, string[], number][] = [
+  // `text-destructive` on `bg-destructive/10` (error badges, the destructive button).
+  ['destructive', 'destructive', 0.1, ['shell', 'raised'], TEXT]
+]
+
+/** Like `ratioOf`, with `fill` at `alpha` composited over `under` as the background. */
+function tintRatioOf(tokens: Record<string, string>, fg: string, fill: string, alpha: number, under: string): number {
+  const [a, b, c] = [tokens[`--${fg}`], tokens[`--${fill}`], tokens[`--${under}`]]
+  if (!a || !b || !c) return 0
+  try {
+    return Math.floor(contrastOf(parseColor(a), compositeOver(parseColor(b), alpha, parseColor(c))) * 100) / 100
+  } catch {
+    return 0
+  }
+}
+
 const pairs = Object.entries(THEMES).flatMap(([theme, tokens]) =>
   RULES.flatMap(([fg, surfaces, min]) => surfaces.map(bg => ({ theme, fg, bg, min, ratio: ratioOf(tokens, fg, bg) }))))
+
+const tintPairs = Object.entries(THEMES).flatMap(([theme, tokens]) =>
+  TINT_RULES.flatMap(([fg, fill, alpha, surfaces, min]) =>
+    surfaces.map(under => ({ theme, fg, bg: `${fill}/${alpha * 100} over ${under}`, min, ratio: tintRatioOf(tokens, fg, fill, alpha, under) }))))
 
 describe('contrast check', () => {
   it('measures 21:1 for white on black and parses #ee2563', () => {
@@ -81,7 +104,14 @@ describe('contrast check', () => {
     }
   })
 
-  it.each(pairs)('$theme: $fg on $bg is $ratio:1 (needs $min)', ({ ratio, min }) => {
+  it('composites a translucent fill in gamma-encoded sRGB', () => {
+    // 50% black over white is #808080 (0.5 gamma), not linear 0.5 (#bcbcbc).
+    const grey = compositeOver(parseColor('#000000'), 0.5, parseColor('#ffffff'))
+    expect(grey.r).toBeCloseTo(0.2140, 3)
+    expect(contrastOf(compositeOver(parseColor('#000000'), 0, parseColor('#ffffff')), parseColor('#000000'))).toBeCloseTo(21, 5)
+  })
+
+  it.each([...pairs, ...tintPairs])('$theme: $fg on $bg is $ratio:1 (needs $min)', ({ ratio, min }) => {
     expect(ratio).toBeGreaterThanOrEqual(min)
   })
 })

@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { type Page, expect } from '@playwright/test'
+import { type Locator, type Page, expect } from '@playwright/test'
 
 // The UI 2 visual check (spec §10): every screen in both themes, with no console error and no CSP violation.
 
@@ -91,8 +91,37 @@ export async function prepare({ page, theme, size }: Ctx): Promise<void> {
   }, [THEME_KEY, theme] as const)
 }
 
-/** Save `docs/ui2/screenshots/<name>-<theme>-<w>x<h>.png` once the page shows the expected theme. Returns the path. */
+const E2E_HANDLE = /^e2e\d+$/
+/** XPath 1.0 has no regex: a handle is `e2e<digits>` when what follows "e2e" is non-empty and all digits. */
+const IS_E2E_HANDLE = "starts-with(@data-bot,'e2e') and string-length(@data-bot)>3 and translate(substring(@data-bot,4),'0123456789','')=''"
+const MASK_COLOR = '#808080'
+
+/**
+ * What every shot covers, because the screenshots are committed: anything named after a bot that is not a
+ * test bot (rail rows and their previews), every group row, and the credit balance.
+ */
+export function privateParts(page: Page): Locator[] {
+  return [
+    page.locator(`xpath=//*[@data-bot and not(${IS_E2E_HANDLE})]`),
+    page.locator('[data-group]'),
+    page.getByTestId('credit-pill')
+  ]
+}
+
+/** Throws when the page is a bot's chat that is not a test bot's: its transcript would be in the shot. */
+export function assertTestBotPage(url: string): void {
+  const name = /^\/bots\/([^/]+)/.exec(new URL(url).pathname)?.[1]
+  if (name !== undefined && !E2E_HANDLE.test(decodeURIComponent(name))) {
+    throw new Error(`refusing to shoot /bots/${name}: only e2e<digits> bot pages are shot`)
+  }
+}
+
+/**
+ * Save `docs/ui2/screenshots/<name>-<theme>-<w>x<h>.png` once the page shows the expected theme. Returns the path.
+ * Always masks `privateParts` and refuses a bot page that is not a test bot's.
+ */
 export async function shoot({ page, theme, size }: Ctx, name: string): Promise<string> {
+  assertTestBotPage(page.url())
   await page.setViewportSize(size)
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
   await page.evaluate(async () => {
@@ -100,6 +129,6 @@ export async function shoot({ page, theme, size }: Ctx, name: string): Promise<s
   })
   mkdirSync(SHOTS, { recursive: true })
   const path = join(SHOTS, `${name}-${theme}-${sizeLabel(size)}.png`)
-  await page.screenshot({ path, animations: 'disabled' })
+  await page.screenshot({ path, animations: 'disabled', mask: privateParts(page), maskColor: MASK_COLOR })
   return path
 }

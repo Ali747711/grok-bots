@@ -5,6 +5,7 @@ import { type Ctx, THEMES, prepare, shoot, shotName, sizeLabel, sizes, watch } f
 
 // Run one task's screens with `npx playwright test visual.spec.ts --grep @task<N>` on the deployed service.
 // The user's bots are only ever read; the one bot this spec makes and deletes is an `e2e<digits>` bot.
+// The shots are committed, so every screen opens on that bot and `shoot` masks the other bots' rows (see visual.ts).
 
 /** One screen of the visual check. `open` navigates and waits until the screen is ready to shoot. */
 interface Screen {
@@ -17,10 +18,9 @@ interface Screen {
 
 const E2E_BOT = /^e2e\d+$/
 const RUN = String(Math.floor(100000 + Math.random() * 800000))
-/** A test-owned bot for screens that need to change something. */
+/** The test-owned bot every screen opens on, and the only one a screen may change. */
 const BOT = `e2e${RUN}`
 const BOT_TITLE = `E2E Visual ${RUN}`
-const FIXTURE = 'crew-test'
 
 async function openBot(page: Page, name: string): Promise<void> {
   await page.goto(`${CREW}/bots/${name}`)
@@ -30,7 +30,7 @@ async function openBot(page: Page, name: string): Promise<void> {
 }
 
 const SCREENS: Screen[] = [
-  { id: 'workspace', task: 4, open: page => openBot(page, FIXTURE) }
+  { id: 'workspace', task: 4, open: page => openBot(page, BOT) }
 ]
 
 test.describe.configure({ mode: 'serial' })

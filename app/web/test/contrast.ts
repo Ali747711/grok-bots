@@ -48,8 +48,25 @@ export function parseColor(value: string): LinearRgb {
 
 const luminance = ({ r, g, b }: LinearRgb): number => 0.2126 * r + 0.7152 * g + 0.0722 * b
 
+/** Linear → gamma-encoded sRGB (0..1). */
+const toGamma = (c: number): number => (c <= 0.0031308 ? c * 12.92 : 1.055 * c ** (1 / 2.4) - 0.055)
+
+/**
+ * `fill` at `alpha` painted over the opaque `under`, e.g. `bg-destructive/10` on `--shell`.
+ * Browsers blend layers in gamma-encoded sRGB, so the mix happens there, not in linear light.
+ */
+export function compositeOver(fill: LinearRgb, alpha: number, under: LinearRgb): LinearRgb {
+  const mix = (f: number, u: number): number => toLinear(alpha * toGamma(f) + (1 - alpha) * toGamma(u))
+  return { r: mix(fill.r, under.r), g: mix(fill.g, under.g), b: mix(fill.b, under.b) }
+}
+
+/** WCAG 2 contrast ratio between two measured colours (1..21). */
+export function contrastOf(a: LinearRgb, b: LinearRgb): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x)
+  return (hi! + 0.05) / (lo! + 0.05)
+}
+
 /** WCAG 2 contrast ratio between two opaque colours (1..21). */
 export function contrastRatio(a: string, b: string): number {
-  const [hi, lo] = [luminance(parseColor(a)), luminance(parseColor(b))].sort((x, y) => y - x)
-  return (hi! + 0.05) / (lo! + 0.05)
+  return contrastOf(parseColor(a), parseColor(b))
 }
