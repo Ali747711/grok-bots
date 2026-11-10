@@ -23,7 +23,9 @@ type Section = Record<string, unknown>
 const section = (value: unknown): Section =>
   value && typeof value === 'object' && !Array.isArray(value) ? (value as Section) : {}
 const nonEmpty = (value: unknown): boolean =>
-  Array.isArray(value) ? value.length > 0 : typeof value === 'string' ? value.length > 0 : false
+  Array.isArray(value) ? value.length > 0
+    : typeof value === 'string' ? value.length > 0
+      : value !== null && typeof value === 'object' ? Object.keys(value).length > 0 : false
 
 /** A `[...]` string as Hermes's `ast.literal_eval` reads it (JSON or single-quoted items); null when it is not a list. */
 function parseListString(text: string): unknown[] | null {
@@ -81,7 +83,7 @@ function escapeKeys(raw: unknown): (keyof typeof REASONS)[] {
     ['privileged', args.some(a => a === '--privileged' || a === '--privileged=true')],
     ['pid', hasValued(args, ['--pid'], 'host')],
     ['caps', hasFlag(args, '--cap-add')],
-    ['env', nonEmpty(terminal.docker_forward_env)],
+    ['env', nonEmpty(terminal.docker_forward_env) || nonEmpty(terminal.docker_env) || nonEmpty(terminal.credential_files)],
     ['screen', section(root.bot_desktop).placement === 'gateway'],
     ['hostBrowser', nonEmpty(browser.cdp_url) || browser.engine === 'lightpanda' || browser.use_real_profile === true],
     ['shared', nonEmpty(terminal.docker_shared_container_key)]
@@ -139,7 +141,10 @@ export function offPatch(raw: unknown, marker: SandboxMarker): SandboxPatch {
  */
 export function createPatch(raw: unknown, on: boolean, primary: SandboxMarker): SandboxPatch {
   const crewBrowser = rawToolsetList(raw).includes('browser') && primary.addedBrowserDisable
-  return on
-    ? onPatch(raw, { on: false, addedBrowserDisable: crewBrowser })
-    : offPatch(raw, { on: true, addedBrowserDisable: crewBrowser })
+  if (on) return onPatch(raw, { on: false, addedBrowserDisable: crewBrowser })
+  const patch = offPatch(raw, { on: true, addedBrowserDisable: crewBrowser })
+  // Only a cloned docker backend needs `local`; an ssh or modal clone must keep its own.
+  if (section(section(raw).terminal).backend === 'docker') return patch
+  const { terminal: _terminal, ...rest } = patch.config
+  return { ...patch, config: rest }
 }

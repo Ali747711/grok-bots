@@ -15,7 +15,7 @@ const PRIMARY = 'default'
 export async function applyCreateSandbox(deps: BotDeps, bot: string, on: boolean): Promise<SandboxMarker> {
   const [raw, { meta }] = await Promise.all([readRawConfig(deps, bot), readBotMeta(deps.rpc, PRIMARY)])
   const patch = createPatch(raw, on, readMarker(meta))
-  await writeConfig(deps, bot, patch.config)
+  if (Object.keys(patch.config).length > 0) await writeConfig(deps, bot, patch.config)
   return patch.marker
 }
 

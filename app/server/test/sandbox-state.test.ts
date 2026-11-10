@@ -31,6 +31,8 @@ const ESCAPES: [string, unknown, keyof typeof REASONS][] = [
   ['--cap-add', base({ docker_extra_args: ['--cap-add', 'SYS_ADMIN'] }), 'caps'],
   ['--cap-add=', base({ docker_extra_args: ['--cap-add=ALL'] }), 'caps'],
   ['forward env', base({ docker_forward_env: ['KEY'] }), 'env'],
+  ['docker env', base({ docker_env: { TOKEN: 'x' } }), 'env'],
+  ['credential files', base({ credential_files: ['~/.netrc'] }), 'env'],
   ['gateway screen', base({}, { bot_desktop: { placement: 'gateway' } }), 'screen'],
   ['cdp url', base({}, { browser: { cdp_url: 'http://x' } }), 'hostBrowser'],
   ['lightpanda', base({}, { browser: { engine: 'lightpanda' } }), 'hostBrowser'],
@@ -73,7 +75,7 @@ describe('sandboxStateOf', () => {
 })
 
 describe('createPatch', () => {
-  const cloned = { agent: { disabled_toolsets: ['tts', 'browser'] } }
+  const cloned = { terminal: { backend: 'docker' }, agent: { disabled_toolsets: ['tts', 'browser'] } }
   it("counts a cloned browser entry as Crew's only when the primary's marker says so", () => {
     const crew = { on: true, addedBrowserDisable: true }
     const user = { on: true, addedBrowserDisable: false }
@@ -85,8 +87,18 @@ describe('createPatch', () => {
     expect(createPatch({}, false, crew).marker).toEqual(OFF_MARKER)
   })
 
+  it('writes local over a cloned docker backend only, never over ssh or modal', () => {
+    const crew = { on: true, addedBrowserDisable: true }
+    expect(createPatch({ terminal: { backend: 'docker' } }, false, OFF_MARKER).config).toEqual({ terminal: { backend: 'local' } })
+    expect(createPatch({ terminal: { backend: 'ssh' } }, false, OFF_MARKER).config).toEqual({})
+    expect(createPatch({ terminal: { backend: 'modal' }, agent: { disabled_toolsets: ['browser'] } }, false, crew).config)
+      .toEqual({ agent: { disabled_toolsets: [] } })
+    expect(createPatch({ terminal: { backend: 'local' } }, false, OFF_MARKER).config).toEqual({})
+    expect(createPatch({}, false, OFF_MARKER).config).toEqual({})
+  })
+
   it("keeps the user's own toolsets and reads a string list like Hermes", () => {
-    expect(createPatch({ agent: { disabled_toolsets: "['tts', 'browser']" } }, false, { on: true, addedBrowserDisable: true }).config)
+    expect(createPatch({ terminal: { backend: 'docker' }, agent: { disabled_toolsets: "['tts', 'browser']" } }, false, { on: true, addedBrowserDisable: true }).config)
       .toEqual({ terminal: { backend: 'local' }, agent: { disabled_toolsets: ['tts'] } })
   })
 })

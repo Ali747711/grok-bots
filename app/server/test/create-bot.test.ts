@@ -127,9 +127,9 @@ describe('createBot sandbox choice', () => {
     })
   }
 
-  it('writes the choice explicitly: backend local when unticked, docker + 3072 + host user + browser when ticked', async () => {
+  it('writes the choice explicitly: nothing when unticked from a local clone, docker + 3072 + host user + browser when ticked', async () => {
     await createBot(deps, draft)
-    expect(rest.puts).toEqual([{ profile: 'scout', config: { terminal: { backend: 'local' } } }])
+    expect(rest.puts).toEqual([])
     expect(sandboxMeta()).toEqual(OFF_MARKER)
     rpc.rows.set('scout', {}); rest.puts = []; rest.configs.set('scout', {})
     await createBot(deps, { ...draft, sandbox: true })
@@ -138,6 +138,13 @@ describe('createBot sandbox choice', () => {
       agent: { disabled_toolsets: ['browser'] }
     } }])
     expect(sandboxMeta()).toEqual({ on: true, addedBrowserDisable: true })
+  })
+
+  it('leaves a cloned non-docker backend alone when unticked', async () => {
+    rest.configs.set('scout', { terminal: { backend: 'ssh' } })
+    await createBot(deps, draft)
+    expect(rest.puts).toEqual([])
+    expect(terminalOf().backend).toBe('ssh')
   })
 
   it('removes a Crew-added browser cloned from a sandboxed primary when unticked', async () => {
