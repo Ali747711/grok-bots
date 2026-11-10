@@ -4,7 +4,7 @@ import { lstatSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
-import { type Page, expect } from '@playwright/test'
+import { type Locator, type Page, expect } from '@playwright/test'
 
 import { hermesRest, testBotNames, withRpc } from './hermes-rpc.js'
 
@@ -45,6 +45,14 @@ export async function send(page: Page, text: string): Promise<void> {
   await expect(box).toBeEnabled({ timeout: 30_000 })
   await box.fill(text)
   await box.press('Enter')
+}
+
+/** Open a routine row's accordion (the switch, Edit, History, Delete and Triggers live in it) unless it is open already. */
+export async function expandRoutine(row: Locator): Promise<void> {
+  const toggle = row.getByRole('button', { name: 'Routine details' })
+  await expect(toggle).toBeVisible()
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true')
 }
 
 export async function crewState(page: Page): Promise<{ hermes: string; bots: { name: string; status: string }[]; pending: unknown[] }> {

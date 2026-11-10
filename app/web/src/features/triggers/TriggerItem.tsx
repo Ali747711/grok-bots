@@ -1,9 +1,7 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 
-import { Badge } from '@/components/ui/badge'
-import { Switch } from '@/components/ui/switch'
-import { SWITCH } from '@/features/routines/row-styles'
+import { Switch } from '@/components/console/fields'
 import type { RoutineView } from '@/features/routines/types'
 
 import { OutcomeBadge } from './outcome-format'
@@ -35,13 +33,13 @@ export function TriggerItem({ trigger, routine, onChanged }: TriggerItemProps) {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-xl bg-card p-2.5 text-sm">
-      <span className="min-w-0 flex-1 truncate font-medium">{trigger.name}</span>
-      <Badge variant="outline" className="h-5 px-2 text-xs">{trigger.source === 'github' ? 'GitHub' : 'Generic'}</Badge>
-      <Switch checked={trigger.enabled} disabled={busy} onCheckedChange={v => void toggle(v)} aria-label={`${trigger.name} on`} className={SWITCH} />
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl bg-shell py-2 pr-1.5 pl-3 text-sm">
+      <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{trigger.name}</span>
+      <span className="shrink-0 text-xs font-medium text-muted-foreground">{trigger.source === 'github' ? 'GitHub' : 'Generic'}</span>
+      <Switch checked={trigger.enabled} disabled={busy} onChange={v => void toggle(v)} label={`${trigger.name} on`} />
       <TriggerMenu trigger={trigger} routine={routine} onChanged={onChanged} />
-      <div className="basis-full">
-        {trigger.lastEvent ? <OutcomeBadge outcome={trigger.lastEvent.outcome} /> : <span className="text-xs text-muted-foreground">No events yet</span>}
+      <div className="basis-full pb-0.5">
+        {trigger.lastEvent ? <OutcomeBadge outcome={trigger.lastEvent.outcome} /> : <span className="text-xs font-medium text-muted-foreground">No events yet</span>}
       </div>
     </div>
   )

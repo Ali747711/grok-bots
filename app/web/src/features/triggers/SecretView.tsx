@@ -25,9 +25,9 @@ async function copy(text: string) {
 function CopyRow({ label, value, button }: { label: string; value: string; button: string }) {
   return (
     <div className="flex flex-col gap-1">
-      <div className="text-xs font-medium text-muted-foreground">{label}</div>
+      <div className="px-1 text-xs font-medium text-muted-foreground">{label}</div>
       <div className="flex items-start gap-2">
-        <code className="min-w-0 flex-1 break-all rounded-lg bg-muted p-2 font-mono text-xs">{value}</code>
+        <code className="min-w-0 flex-1 rounded-xl bg-raised px-3 py-2 font-mono text-xs break-all">{value}</code>
         <Button type="button" size="sm" variant="outline" onClick={() => void copy(value)}>{button}</Button>
       </div>
     </div>
@@ -42,16 +42,16 @@ export function SecretView({ source, url, secret, events }: SecretViewProps) {
       <DialogTitle>Trigger ready</DialogTitle>
       <CopyRow label="URL" value={url} button="Copy URL" />
       <CopyRow label="Secret" value={secret} button="Copy secret" />
-      <p className="text-sm font-medium">The secret is shown once.</p>
-      <p className="text-xs text-muted-foreground">Reachable from this computer and your Mac tunnel; public access comes later.</p>
+      <p className="text-[13px] font-semibold">The secret is shown once.</p>
+      <p className="text-xs font-medium text-muted-foreground">Reachable from this computer and your Mac tunnel; public access comes later.</p>
       {source === 'github' ? (
-        <ol className="flex list-decimal flex-col gap-1 pl-5 text-sm">
+        <ol className="flex list-decimal flex-col gap-1 pl-5 text-[13px] font-medium">
           {githubSteps(events).map(step => <li key={step}>{step}</li>)}
         </ol>
       ) : (
         <div className="flex flex-col gap-2">
-          <p className="text-sm">{GENERIC_HELP}</p>
-          <pre data-testid="curl-example" className="overflow-x-auto rounded-lg bg-muted p-2 font-mono text-xs">{example}</pre>
+          <p className="text-[13px] font-medium">{GENERIC_HELP}</p>
+          <pre data-testid="curl-example" className="scroll-thin overflow-x-auto rounded-xl bg-raised px-3 py-2 font-mono text-xs">{example}</pre>
           <Button type="button" size="sm" variant="outline" className="self-start" onClick={() => void copy(example)}>Copy example</Button>
         </div>
       )}

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { fetchHistory } from '@/chat/open-bot-chat'
 import type { ChatItem } from '@/chat/types'
 import { MessageList } from '@/features/chat/MessageList'
@@ -66,16 +65,17 @@ export function RunTranscript({ bot, sessionId, instruction }: { bot: string; se
     }
   }, [bot, sessionId, instruction])
 
-  if (failed) return <p className="p-3 text-sm text-muted-foreground">Couldn't load this run.</p>
-  if (!items) return <p className="p-3 text-sm text-muted-foreground">Loading…</p>
+  if (failed) return <p className="p-3 text-[13px] font-medium text-muted-foreground">Couldn't load this run.</p>
+  if (!items) return <p className="p-3 text-[13px] font-medium text-muted-foreground">Loading…</p>
   return (
     <div className="flex flex-col gap-2">
       {hasBlockedStep(items) && (
-        <Alert role="status">
-          <AlertDescription>Blocked by policy — routines can't ask for approval, so that step was skipped.</AlertDescription>
-        </Alert>
+        <p role="status" className="flex items-start gap-2 rounded-xl bg-shell px-3 py-2 text-xs font-medium text-foreground ring-1 ring-border">
+          <span aria-hidden="true" className="mt-1 size-1.5 shrink-0 rounded-full bg-status-waiting" />
+          <span>Blocked by policy — routines can't ask for approval, so that step was skipped.</span>
+        </p>
       )}
-      <div className="max-h-96 overflow-y-auto rounded-xl border border-border bg-card"><MessageList items={items} /></div>
+      <div className="max-h-96 scroll-thin overflow-y-auto rounded-xl bg-shell ring-1 ring-border"><MessageList items={items} /></div>
     </div>
   )
 }

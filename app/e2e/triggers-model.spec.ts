@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 
 import { type Page, expect, test } from '@playwright/test'
 
-import { CREW, crewApi, githubHeaders, postHook } from './helpers.js'
+import { CREW, crewApi, expandRoutine, githubHeaders, postHook } from './helpers.js'
 import { cronJobsOf, deleteTestRoutines, deleteTriggerJobs, sessionMessages } from './hermes-rpc.js'
 
 // SPENDS CREDIT: every test here is tagged @model and runs a real model turn on crew-test (Haiku).
@@ -93,6 +93,7 @@ test('@model a signed issue event runs once, the bot names the title, the event 
   await soft('Open run shows the transcript', async () => {
     await page.goto(`${CREW}/bots/${BOT}?panel=routines`)
     const row = page.getByRole('listitem').filter({ hasText: TITLE }).first()
+    await expandRoutine(row)
     await row.getByRole('button', { name: /^Triggers \(/ }).click()
     await page.getByRole('button', { name: `E2E GitHub ${stamp} actions` }).click()
     await page.getByRole('menuitem', { name: 'Show events' }).click()
@@ -114,6 +115,7 @@ test('@model a signed issue event runs once, the bot names the title, the event 
 
   await soft('History shows the Zap label', async () => {
     const row = page.getByRole('listitem').filter({ hasText: TITLE }).first()
+    await expandRoutine(row)
     await row.getByRole('button', { name: 'History' }).click()
     // Two matches: RunHistory's sr-only title and the visible Zap label.
     await expect(row.getByText(`E2E GitHub ${stamp} · issues`, { exact: true })).toHaveCount(2)
@@ -127,6 +129,7 @@ test('@model a signed issue event runs once, the bot names the title, the event 
 test('@model the curl example of a Generic trigger finishes a run', async () => {
   await page.goto(`${CREW}/bots/${BOT}?panel=routines`)
   const row = page.getByRole('listitem').filter({ hasText: TITLE }).first()
+  await expandRoutine(row)
   await row.getByRole('button', { name: /^Triggers \(/ }).click()
   await row.getByRole('button', { name: 'Add trigger' }).click()
   await page.getByLabel('Name', { exact: true }).fill(`E2E Generic ${stamp}`)

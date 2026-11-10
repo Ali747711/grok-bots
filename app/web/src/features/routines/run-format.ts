@@ -1,3 +1,4 @@
+import type { PillTone } from './StatusPill'
 import type { RunView } from './types'
 
 export const STATUS_WORD: Record<RunView['status'], string> = {
@@ -15,11 +16,11 @@ export function durationText(run: Pick<RunView, 'startedAt' | 'endedAt' | 'statu
   return rest === 0 ? `${Math.floor(minutes / 60)} h` : `${Math.floor(minutes / 60)} h ${rest} min`
 }
 
-/** Badge colours per run status, from theme tokens. */
-export const RUN_TONE: Record<RunView['status'], string> = {
-  running: 'bg-raised text-foreground',
-  completed: 'bg-muted text-foreground',
-  failed: 'bg-destructive/10 text-destructive',
-  cancelled: 'bg-muted text-muted-foreground',
-  missed: 'bg-muted text-muted-foreground'
+/** The dot of each run status; the pill itself stays neutral. */
+export const RUN_TONE: Record<RunView['status'], PillTone> = {
+  running: 'ok',
+  completed: 'ok',
+  failed: 'error',
+  cancelled: 'quiet',
+  missed: 'quiet'
 }

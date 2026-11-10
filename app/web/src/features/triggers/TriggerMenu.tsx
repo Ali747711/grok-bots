@@ -5,7 +5,6 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { GHOST } from '@/features/routines/row-styles'
 import type { RoutineView } from '@/features/routines/types'
 
 import { ConfirmAction } from './ConfirmAction'
@@ -88,7 +87,7 @@ export function TriggerMenu({ trigger, routine, onChanged }: TriggerMenuProps) {
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger render={<Button type="button" size="icon-sm" variant="ghost" aria-label={`${trigger.name} actions`} className={GHOST} />}>
+        <DropdownMenuTrigger render={<Button type="button" size="icon-sm" variant="ghost" aria-label={`${trigger.name} actions`} className="text-muted-foreground hover:text-foreground" />}>
           <Ellipsis aria-hidden />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-44">
