@@ -116,7 +116,7 @@ describe('POST /crew/requests/:id/answer', () => {
       type: 'approval.request', session_id: 'run-fixture',
       payload: { prompt_id: 'app-1', execution_generation: 4, command: fixture.command, description: fixture.description, choices: fixture.choices }
     })
-    for (const choice of ['always', 'session']) {
+    for (const choice of ['always', 'session', 'Always', ' always']) {
       const res = await post('app-1', { choice })
       expect(res.status).toBe(400)
       expect(await res.json()).toEqual({ error: 'bad_choice' })

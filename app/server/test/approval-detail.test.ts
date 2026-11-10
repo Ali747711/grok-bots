@@ -73,7 +73,7 @@ describe('approval detail', () => {
     watcher.stop()
   })
 
-  it('stores an app approval with only once and deny from events, snapshots and server requests', () => {
+  it('stores an app approval with only once and deny from events and server requests', () => {
     const store = new PendingStore()
     const params = { command: fixture.command, description: fixture.description, choices: fixture.choices }
     applyGatewayEvent({ type: 'approval.request', session_id: 's', payload: { prompt_id: 'a-event', ...params } }, store, ctx)
@@ -82,6 +82,24 @@ describe('approval detail', () => {
     for (const id of ['a-event', 'a-srq', 'a-open']) {
       expect(store.get(id)).toMatchObject({ choices: ['once', 'deny'], app: { tool: 'GITHUB_CREATE_AN_ISSUE', argsTruncated: false } })
     }
+  })
+
+  it('clamps an app approval on the real snapshot path and exposes app in the public state', async () => {
+    const client = {
+      close: () => undefined, onRequest: () => () => undefined, onEvent: () => () => undefined, onState: () => () => undefined,
+      request: async (method: string) => {
+        if (method === 'profiles.list') return { profiles: [{ name: 'crew-test', canonical_session: { id: 'stored' } }] }
+        return {
+          session_id: 'run', stored_session_id: 'stored',
+          prompts: [{ kind: 'approval', prompt_id: 'p-app', execution_generation: 1, choices: fixture.choices, description: fixture.description, command: fixture.command }]
+        }
+      }
+    } as unknown as WatcherClient
+    const watcher = startWatcher({ client, connect: async () => undefined, settings: fakeSettings, now: () => 1, reconnectDelayMs: () => 60_000 })
+    await new Promise(r => setTimeout(r, 0)); await new Promise(r => setTimeout(r, 0))
+    const view = watcher.state().pending[0]!
+    expect(view).toMatchObject({ source: 'snapshot_prompt', choices: ['once', 'deny'], app: { tool: 'GITHUB_CREATE_AN_ISSUE', argsTruncated: false } })
+    watcher.stop()
   })
 
   it('leaves a non-app approval untouched', () => {
