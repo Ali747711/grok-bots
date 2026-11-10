@@ -97,7 +97,7 @@ async function writeMarker(deps: BotDeps, bot: string, marker: SandboxMarker): P
 }
 
 /** Best effort: the config already says `local`, so a leftover container is only a cost (R10). */
-async function removeQuietly(sb: SandboxDeps, bot: string): Promise<void> {
+export async function removeQuietly(sb: SandboxDeps, bot: string): Promise<void> {
   try {
     await sb.docker.removeContainers(bot)
   } catch (error) {

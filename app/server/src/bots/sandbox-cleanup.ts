@@ -65,16 +65,17 @@ async function runHelper(deps: BotDeps, sb: SandboxDeps, bot: string, dir: strin
  * Before Hermes deletes a profile, clear what Docker left behind: remove the containers, then
  * delete the root-owned mount-point folders with a root helper (§11.6). The helper only runs when
  * `sandboxes/docker` exists as a real folder, whatever the bot's config says now (R3, R4).
+ * Answers true when Docker was reachable.
  */
-export async function cleanupBeforeDelete(deps: BotDeps, sb: SandboxDeps, bot: string): Promise<void> {
+export async function cleanupBeforeDelete(deps: BotDeps, sb: SandboxDeps, bot: string): Promise<boolean> {
   const dir = sandboxesDirOf(sb.hermesHome, bot)
   const status = await sb.docker.status()
   if (status !== 'ok') {
     if (await hasDockerSandboxDir(dir)) throw new SandboxCleanupError('docker_unavailable')
     log.info('sandbox cleanup skipped', { bot, docker: status })
-    return
+    return false
   }
   await removeContainers(sb, bot)
-  if (!(await hasDockerSandboxDir(dir))) return
-  await runHelper(deps, sb, bot, dir)
+  if (await hasDockerSandboxDir(dir)) await runHelper(deps, sb, bot, dir)
+  return true
 }

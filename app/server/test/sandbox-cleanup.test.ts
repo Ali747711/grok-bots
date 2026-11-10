@@ -104,8 +104,25 @@ describe('deleteBot with a sandbox', () => {
       `imagePresent ${DEFAULT_IMAGE}`,
       `cleanupSandboxes scout ${dirOf()} ${DEFAULT_IMAGE}`,
       'DELETE /api/profiles/scout',
+      'removeContainers scout',
       'refresh'
     ])
+  })
+
+  it('sweeps containers once more after the delete and still resolves when that fails', async () => {
+    await seedDocker()
+    await deleteBot(deps(), 'scout')
+    expect(calls.filter(c => c === 'removeContainers scout').length).toBe(2)
+    expect(calls.indexOf('DELETE /api/profiles/scout')).toBeLessThan(calls.lastIndexOf('removeContainers scout'))
+    calls = []
+    await seedDocker()
+    let n = 0
+    const flaky = { ...docker, removeContainers: async (bot: string) => { n += 1; if (n === 2) throw new DockerError('failed'); calls.push(`removeContainers ${bot}`); return 1 } }
+    const d = deps()
+    await expect(deleteBot({ ...d, sandbox: { ...sb(), docker: flaky } }, 'scout')).resolves.toBeUndefined()
+    expect(n).toBe(2)
+    expect(lines.join('\n')).toContain('"kind":"failed"')
+    expect(lines.join('\n')).not.toContain(home)
   })
 
   it('runs the helper for a bot whose config is local but whose sandboxes/docker folder exists', async () => {
@@ -119,7 +136,7 @@ describe('deleteBot with a sandbox', () => {
   it('skips the helper when sandboxes is missing, so Docker never creates it root-owned', async () => {
     await mkdir(join(home, 'profiles', 'scout'), { recursive: true })
     await deleteBot(deps(), 'scout')
-    expect(calls).toEqual(['status', 'removeContainers scout', 'DELETE /api/profiles/scout', 'refresh'])
+    expect(calls).toEqual(['status', 'removeContainers scout', 'DELETE /api/profiles/scout', 'removeContainers scout', 'refresh'])
   })
 
   it('never runs the helper through a symlinked sandboxes or docker folder', async () => {
