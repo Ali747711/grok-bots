@@ -117,7 +117,13 @@ async function syncServer(
   deps: ConnectorDeps, bot: string, record: BotRecord, changed: boolean, minted: string | undefined
 ): Promise<void> {
   const server = await appsServer(deps.bots, bot)
-  if (server === null) {
+  if (server !== null && minted !== undefined) {
+    // The record is new but Hermes still holds the old token: replace the server so the hashes match.
+    await removeAppsServer(deps.bots, bot)
+    await addAppsServer(deps.bots, bot, deps.relayUrl(bot), minted)
+    // The live transport keeps its old header until it rebuilds.
+    deps.reconnector.schedule(bot)
+  } else if (server === null) {
     // R7: a token exists only in this call, so a record whose server is gone gets a new one.
     const token = minted ?? deps.newToken()
     if (minted === undefined) await deps.store.setRecord(bot, { ...record, tokenHash: hashToken(token) })

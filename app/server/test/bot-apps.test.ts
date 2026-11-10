@@ -107,6 +107,15 @@ describe('bot apps', () => {
     expect(store.record('scout')?.tokenHash).toBe(hashToken('tok2'))
   })
 
+  it('replaces an existing server when the record is new, so the token matches', async () => {
+    server = { enabled: true }
+    await setBotApps(deps, 'scout', { github: 'read' })
+    expect(calls.filter(c => /^(remove|env|add)$/.test(c))).toEqual(['remove', 'env', 'add'])
+    expect(rpc.params('mcp.servers.add')).toMatchObject({ bearer_token: 'tok1' })
+    expect(store.record('scout')?.tokenHash).toBe(hashToken('tok1'))
+    expect(scheduled).toEqual(['scout'])
+  })
+
   it('turns the last app off: server and env var removed, session deleted, record gone, also without a key', async () => {
     await setBotApps(deps, 'scout', { github: 'read' })
     calls.length = 0

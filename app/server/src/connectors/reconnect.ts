@@ -37,16 +37,30 @@ export function createReconnector(deps: Deps): Reconnector {
     }
   }
 
+  // The check shares the lock with the PUT: a turn-off or key removal holding the lock cannot be
+  // undone by an enable that was queued behind it.
+  const enableIfWanted = async (bot: string): Promise<boolean> => {
+    try {
+      return await withBotLock(bot, async () => {
+        if (!deps.wanted(bot)) return false
+        await setAppsServerEnabled(deps.hermes, bot, true)
+        return true
+      })
+    } catch (error) {
+      log.warn('apps reconnect step failed', { bot, step: 'enable', error: error instanceof Error ? error.name : 'unknown' })
+      return false
+    }
+  }
+
   const once = async (bot: string, run: Run): Promise<void> => {
     run.enabled = false
     await toggle(bot, false)
     if (recipe.nudge) await reloadMcp(deps.hermes, bot, false)
     await deps.sleep(recipe.gapMs)
-    // A bot that lost its record or the key meanwhile stays off: nothing may re-enable it.
-    if (!deps.wanted(bot)) return
     run.enabled = true
-    await toggle(bot, true)
-    if (recipe.nudge) await reloadMcp(deps.hermes, bot, true)
+    if (await enableIfWanted(bot)) {
+      if (recipe.nudge) await reloadMcp(deps.hermes, bot, true)
+    }
   }
 
   const loop = async (bot: string, run: Run): Promise<void> => {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { withBotLock } from '../src/bots/bot-lock.js'
 import { createReconnector } from '../src/connectors/reconnect.js'
 import { setLogSink } from '../src/log.js'
 import { FakeRest, FakeRpc } from './fake-rpc.js'
@@ -10,8 +11,11 @@ function setup(wanted: (bot: string) => boolean = () => true) {
   const events: string[] = []
   rpc.handlers.set('reload.mcp', p => { events.push(`reload${p.session_id ? ':chat' : ''}`); return {} })
   rpc.handlers.set('profiles.list', () => ({ profiles: [{ name: 'scout', canonical_session: { id: 'c1' } }] }))
-  rest.routes.set('PUT /api/mcp/servers/crew_apps/enabled', r => {
-    events.push(`enabled:${(r.body as { enabled: boolean }).enabled}`)
+  const hold: { enable: Promise<void> | null } = { enable: null }
+  rest.routes.set('PUT /api/mcp/servers/crew_apps/enabled', async r => {
+    const enabled = (r.body as { enabled: boolean }).enabled
+    events.push(`enabled:${enabled}`)
+    if (enabled && hold.enable) await hold.enable
     return { ok: true }
   })
   const gate: { release: () => void; sleeps: number[] } = { release: () => undefined, sleeps: [] }
@@ -19,7 +23,7 @@ function setup(wanted: (bot: string) => boolean = () => true) {
   const reconnector = createReconnector({
     hermes: { rpc: rpc.call, rest: rest as never }, wanted, sleep, recipe: { gapMs: 1234, nudge: true }
   })
-  return { reconnector, events, gate }
+  return { reconnector, events, gate, hold }
 }
 const tick = () => new Promise(r => setTimeout(r, 5))
 
@@ -35,21 +39,47 @@ describe('reconnector', () => {
   })
 
   it('coalesces schedules before the enable step and runs once more after it', async () => {
-    const { reconnector, events, gate } = setup()
+    const { reconnector, events, gate, hold } = setup()
+    let open: () => void = () => undefined
+    hold.enable = new Promise<void>(r => { open = r })
     reconnector.schedule('scout')
     reconnector.schedule('scout')
     await tick()
-    reconnector.schedule('scout')
     gate.release()
     await tick()
-    // Past the enable step now: one more run is queued, however many schedules arrive.
+    // The enable PUT is held: the run is past its enable step, so these queue exactly one more run.
     reconnector.schedule('scout')
     reconnector.schedule('scout')
+    let idle = false
+    void reconnector.idle('scout').then(() => { idle = true })
+    hold.enable = null
+    open()
     await tick()
+    expect(events.filter(e => e === 'enabled:false')).toHaveLength(2)
+    expect(idle).toBe(false)
     gate.release()
     await reconnector.idle('scout')
+    expect(idle).toBe(true)
     expect(events.filter(e => e === 'enabled:false')).toHaveLength(2)
     expect(events.filter(e => e === 'enabled:true')).toHaveLength(2)
+  })
+
+  it('does not enable after a turn-off that holds the lock while the enable waits', async () => {
+    let want = true
+    const { reconnector, events, gate } = setup(() => want)
+    reconnector.schedule('scout')
+    await tick()
+    let release: () => void = () => undefined
+    const turnOff = withBotLock('scout', async () => {
+      await new Promise<void>(r => { release = r })
+      want = false
+    })
+    gate.release()
+    await tick()
+    release()
+    await turnOff
+    await reconnector.idle('scout')
+    expect(events).toEqual(['enabled:false', 'reload', 'sleep'])
   })
 
   it('skips the enable when the bot no longer wants apps', async () => {
