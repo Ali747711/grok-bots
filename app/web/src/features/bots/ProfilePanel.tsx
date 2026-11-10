@@ -8,6 +8,7 @@ import { Switch } from '@/components/ui/switch'
 import { deriveAvatarType } from '@/features/avatars/avatar-model'
 import type { BotView } from '@/state/types'
 
+import { AppsSection } from './AppsSection'
 import { finishBot, updateBot } from './bots-api'
 import { DeleteBotDialog } from './DeleteBotDialog'
 import { ProfileAvatar } from './ProfileAvatar'
@@ -136,6 +137,7 @@ function Loaded({ bot, detail, setDetail, reload }: LoadedProps) {
       <Button type="button" disabled={saver.busy || avatarBusy || !hasChanges(patch)} onClick={() => void saver.send(patch)}>Save</Button>
       <HideSection detail={detail} onDetail={refreshed} />
       <SandboxSection bot={bot.name} title={detail.title} />
+      <AppsSection bot={bot.name} title={detail.title} sandboxed={bot.sandbox === 'on'} />
       {!bot.isPrimary && (
         <>
           <Button type="button" variant="destructive" onClick={() => setDeleting(true)}>Delete bot</Button>
