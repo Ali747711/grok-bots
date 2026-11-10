@@ -6,6 +6,8 @@ vi.mock('sonner', () => ({ toast }))
 
 import { AppsDialog } from '@/features/apps/AppsDialog'
 
+import { bot } from './fixtures'
+
 const json = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status }))
 const LIST = {
   apps: [
@@ -21,7 +23,8 @@ function stub(routes: Route) {
   vi.stubGlobal('fetch', fn)
   return fn
 }
-const open = (onOpenChange = vi.fn()) => render(<AppsDialog open onOpenChange={onOpenChange} />)
+const open = (onOpenChange = vi.fn(), bots: Parameters<typeof bot>[0][] = []) =>
+  render(<AppsDialog open onOpenChange={onOpenChange} bots={bots.map(bot)} />)
 
 beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }))
 afterEach(() => {
@@ -133,11 +136,12 @@ describe('AppsDialog', () => {
       if (url === '/crew/connectors/apps/ca_1') return Promise.resolve(new Response(null, { status: 204 }))
       return undefined
     })
-    open()
+    open(vi.fn(), [{ name: 'dev', title: 'Scout Bot' }])
     await screen.findByText('GitHub')
     fireEvent.click(screen.getAllByRole('button', { name: /Disconnect/ })[0]!)
     expect(await screen.findByText('Disconnect GitHub?')).toBeInTheDocument()
-    expect(screen.getByText("dev, research use GitHub. Disconnecting removes it from them and revokes Crew's access to your GitHub account.")).toBeInTheDocument()
+    // 'research' is not in the roster, so its name is the fallback.
+    expect(screen.getByText("Scout Bot, research use GitHub. Disconnecting removes it from them and revokes Crew's access to your GitHub account.")).toBeInTheDocument()
     const buttons = screen.getAllByRole('button', { name: 'Disconnect' })
     fireEvent.click(buttons[buttons.length - 1]!)
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('GitHub disconnected'))

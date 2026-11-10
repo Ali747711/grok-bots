@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import type { BotView } from '@/state/types'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 import type { ConnectedApp } from './apps-types'
@@ -23,7 +24,9 @@ function KeyProblem({ error }: { error: string }) {
   )
 }
 
-export function AppsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+interface AppsDialogProps { open: boolean; onOpenChange: (open: boolean) => void; bots?: readonly BotView[] }
+
+export function AppsDialog({ open, onOpenChange, bots = [] }: AppsDialogProps) {
   // Mounted only while open, so the list is read fresh each time.
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -32,13 +35,13 @@ export function AppsDialog({ open, onOpenChange }: { open: boolean; onOpenChange
           <DialogTitle>Apps</DialogTitle>
           <DialogDescription>Apps your bots can use, through Composio.</DialogDescription>
         </DialogHeader>
-        {open && <AppsBody />}
+        {open && <AppsBody bots={bots} />}
       </DialogContent>
     </Dialog>
   )
 }
 
-function AppsBody() {
+function AppsBody({ bots }: { bots: readonly BotView[] }) {
   const { list, error, reload } = useApps()
   const [connecting, setConnecting] = useState(false)
   if (error === 'no_key' || error === 'key_rejected') return <KeyProblem error={error} />
@@ -53,7 +56,7 @@ function AppsBody() {
             <AppTile name={app.name} />
             <span className="min-w-0 flex-1 truncate text-sm">{app.name}</span>
             <span className="text-xs text-muted-foreground">{STATUS_TEXT[app.status]}</span>
-            <DisconnectApp app={app} bots={list.usage[app.toolkit] ?? []} onDone={() => void reload()} />
+            <DisconnectApp app={app} bots={(list.usage[app.toolkit] ?? []).map(name => bots.find(b => b.name === name)?.title ?? name)} onDone={() => void reload()} />
           </li>
         ))}
       </ul>

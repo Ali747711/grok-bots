@@ -7,10 +7,11 @@ import { Separator } from '@/components/ui/separator'
 import { AppsDialog } from '@/features/apps/AppsDialog'
 import { useDialogRequests, type CrewDialog } from '@/features/apps/open-dialog'
 import { SettingsDialog } from '@/features/settings/SettingsDialog'
+import type { BotView } from '@/state/types'
 import { CreditPillView, useUsage } from '@/features/usage/CreditPill'
 
 /** Credit pill, settings button and dialog. Polls credit once and shares it with both. */
-export function RosterFooter({ maxWorkingBots }: { maxWorkingBots: number | null }) {
+export function RosterFooter({ maxWorkingBots, bots = [] }: { maxWorkingBots: number | null; bots?: readonly BotView[] }) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [appsOpen, setAppsOpen] = useState(false)
   const usage = useUsage()
@@ -27,7 +28,7 @@ export function RosterFooter({ maxWorkingBots }: { maxWorkingBots: number | null
           <Settings />
         </Button>
       </div>
-      <AppsDialog open={appsOpen} onOpenChange={setAppsOpen} />
+      <AppsDialog open={appsOpen} onOpenChange={setAppsOpen} bots={bots} />
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} maxWorkingBots={maxWorkingBots} usage={usage} />
     </>
   )

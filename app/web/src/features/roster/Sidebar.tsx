@@ -167,7 +167,7 @@ export function Sidebar({ state, selected, onSelect, crewConnected = true, onNee
       {state && <HermesBanner hermes={state.hermes} crewConnected={crewConnected} />}
       <NeedsYouRow count={state?.pending.length ?? 0} active={needsYouActive} onClick={onNeedsYou} />
       <RosterList state={state} stale={stale} selected={selected} onSelect={onSelect} onNewBot={onNewBot} groups={{ selectedGroupId, onSelectGroup, onNewGroup }} />
-      <RosterFooter maxWorkingBots={state?.settings ? state.settings.maxWorkingBots : DEFAULT_MAX_WORKING_BOTS} />
+      <RosterFooter bots={state?.bots ?? []} maxWorkingBots={state?.settings ? state.settings.maxWorkingBots : DEFAULT_MAX_WORKING_BOTS} />
     </>
   )
 }
