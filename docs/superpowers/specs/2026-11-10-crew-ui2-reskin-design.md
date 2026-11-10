@@ -47,7 +47,7 @@ Why it matters: Crew's current "Sky" look (sky canvas, lime primary, black cards
 **Anti-goals — failure even if it "works"**
 - Any Crew safety rule weakened: only Hermes-offered approval choices; never offer allow on a truncated command; hidden-character reveal; profile baselines and conflict banner; costly-model confirm; screen lease rules (hiding the screen hands control back); CSRF; showing every Hermes refusal.
 - Errors swallowed. crew-bots' `inline-action` resets silently on failure; the ported version must show the error.
-- A fake cosmetic control that looks real. Every switch either changes Hermes/Crew state or is clearly labelled as Crew-only cosmetics (role, pin, accessories).
+- A fake control that looks real. Every switch either changes what the bot does in Hermes or is plainly cosmetic (role, pin, accessories change only how Crew shows the bot).
 - Mock data, fake delays or the crew-bots reducer reaching production code.
 - Runtime imports from `crew-bots/`. Code is copied into `app/web` and adapted.
 - Any change to the user's own bots during testing (default/Hermes, reese, x, telegram). Tests use `e2e<digits>` bots and `crew-test` only.
@@ -56,7 +56,7 @@ Why it matters: Crew's current "Sky" look (sky canvas, lime primary, black cards
 ## 4. Constraints
 
 - **Routes stay**: `/`, `/bots/:name`, `/groups/:roomId`, `/needs-you`, `?panel=computer|routines|profile|group`, server `/login`. The deleted-bot redirect and the 3 s missing-bot grace stay.
-- **e2e accessible names and test ids stay** unless the plan names a rename and updates the spec in the same task. Current names used by specs include: `+ New bot`, `Create`, `Save`, `Save anyway`, `Delete`, `Delete bot`, `Change handle`, `Finish setup`, label `Name`, `Handle`, textbox `Message`, `Send`, `Stop`, `Allow once`, `Deny`, `Reject`, `Take control`, `Hand back`, `Expand the screen`, `Close expanded view`, `Start screen`, `Stop screen`, `Close panel`, `Close`, `Settings`, `New routine`, `Run now`, `History`, `Open run`, `Add trigger`, `/^Triggers \(/`, `Send test event`, `Make new secret`, `Back to events`, `Reset sandbox`, `Run in a sandbox`, heading `Sandbox`, `New group`, `Create group`, `Delete group`, `Rename`, `New topic`, `Yes, delete`, combobox `Bots working at the same time`, `When`, `Unit`, avatar buttons by type name (`cat`, `square`) and colour name (`Pink`, `Violet`) with `aria-pressed`, switches `Let <title> use its screen`, `Run <title> …`; test ids `transcript`, `request-card`, `live-view`, `member-message`, `who-will-answer`, `curl-example`; `[data-bot="<handle>"]` on rail rows. The plan re-greps `app/e2e/*.spec.ts` for the full list before the first UI task.
+- **e2e accessible names and test ids stay** unless the plan names a rename and updates the spec in the same task. **Flows and copy** may change where this design requires it (a control that moved, a section that became a tab, a row that now expands) under the same rule: named in the plan, spec updated in the same task, the behaviour under test kept. Where crew-bots' copy differs from Crew's only in wording, Crew's copy wins (e.g. the run card keeps "Working · n steps" / "Worked for …"). Current names used by specs include: `+ New bot`, `Create`, `Save`, `Save anyway`, `Delete`, `Delete bot`, `Change handle`, `Finish setup`, label `Name`, `Handle`, textbox `Message`, `Send`, `Stop`, `Allow once`, `Deny`, `Reject`, `Take control`, `Hand back`, `Expand the screen`, `Close expanded view`, `Start screen`, `Stop screen`, `Close panel`, `Close`, `Settings`, `New routine`, `Run now`, `History`, `Open run`, `Add trigger`, `/^Triggers \(/`, `Send test event`, `Make new secret`, `Back to events`, `Reset sandbox`, `Run in a sandbox`, heading `Sandbox`, `New group`, `Create group`, `Delete group`, `Rename`, `New topic`, `Yes, delete`, combobox `Bots working at the same time`, `When`, `Unit`, avatar buttons by type name (`cat`, `square`) and colour name (`Pink`, `Violet`) with `aria-pressed`, switches `Let <title> use its screen`, `Run <title> …`; test ids `transcript`, `request-card`, `live-view`, `member-message`, `who-will-answer`, `curl-example`; `[data-bot="<handle>"]` on rail rows. The plan re-greps `app/e2e/*.spec.ts` for the full list before the first UI task.
 - **CSP unchanged** (`CS/http/spa.ts`). Fonts bundled same-origin. Do not port `view-on-map.tsx` or anything loading remote images or frames.
 - **Stack**: React 19.2, Vite 8, Tailwind v4, TypeScript ^7, `@base-ui/react` ^1.9, react-router-dom 7, react-markdown, sonner, @novnc/novnc, bot-avatars 0.2.2. Crew's code style (single quotes, no semicolons, 2-space indent; no formatter config in the repo, so match the surrounding files). Ported crew-bots code (double quotes) is reformatted to it. Server: Node 24, Hono, Zod, Vitest.
 - **New dependencies allowed**: `motion` (springs, `layoutId`, `AnimatePresence`) and `@fontsource-variable/inter`. Not allowed: `@hugeicons/*`, `react-icons`, `cn` package, `react-use-measure` (noVNC scales itself). Remove Geist and Geist Mono.
@@ -75,7 +75,12 @@ Port the crew-bots token set from `CB/index.css` into `CW/index.css`, replacing 
 - Avatars are the only other colour on screen.
 - shadcn semantic tokens (`--primary`, `--muted`, `--border`, `--ring`, …) take crew-bots' values.
 
-**Dark theme** = crew-bots' `.dark` values exactly (e.g. background `oklch(0.145 0 0)`, shell `0.205`, raised `0.269`, control `0.371`, faint `oklch(0.65 0 0)`, border `oklch(1 0 0 / 10%)`).
+**Dark theme** = crew-bots' `.dark` values (e.g. background `oklch(0.145 0 0)`, shell `0.205`, raised `0.269`, control `0.371`, faint `oklch(0.65 0 0)`, border `oklch(1 0 0 / 10%)`). The surfaces, the accent and the status colours stay exactly as the user made them. The builder check found that some pairs fail the review rule below: `--muted-foreground` on `--control` 4.0:1, `--faint` on `--control` 3.2:1, `--ring` on `--control` 2.2:1, and the `ring-ring/30` focus ring about 1.4:1. Ruling (my call): fix only **text and ring tokens and their use**, with the smallest change that passes:
+- lighten `--muted-foreground` just enough to pass on `--control`;
+- never put `--faint` text on `--control` (use `--muted-foreground` there);
+- give the focus ring a `--ring` value and opacity that pass 3:1 on every surface.
+
+Each change is recorded with before/after values.
 
 **Light theme** = new design (crew-bots' light values were never reviewed and collapse the ladder: background and raised are both white). Starting values, mine to tune within the review rule below:
 
@@ -151,7 +156,9 @@ Three floating `rounded-3xl` panels on the canvas, `gap-2 p-2`, full height:
 
 ### 6.3 Hidden panels
 
-crew-bots keeps both work panels mounted while hidden. Crew must not keep a live view mounted while hidden: a mounted viewer keeps a socket and possibly the human control lease. Rule: when the side panel closes, Screen hands control back (if held) and unmounts the viewer — Crew's existing rule. Chat drafts survive because they live in Crew's chat session state, outside the panel.
+crew-bots keeps both work panels mounted while hidden. Crew must not keep a live view mounted while hidden: a mounted viewer keeps a socket and possibly the human control lease. Rule: when the side panel closes, Screen hands control back (if held) and unmounts the viewer — Crew's existing rule.
+
+Composer drafts today live in `Composer`'s own `useState` and are lost when the conversation unmounts. New rule (crew-bots behaviour): drafts are kept **per bot and per group in memory for the life of the tab**. They survive opening the profile or the queue, switching bots and closing the side panel. They are not persisted to storage.
 
 ### 6.4 Keyboard
 
@@ -193,7 +200,7 @@ Guard: every window shortcut ignores events from editable fields (`isEditableTar
   - user bubble right (`raised`, `rounded-2xl`), with Crew's delivery states ("Checking…", "Not sent" + Retry) and a "Queued" caption while the `prompt.submit` admission is `queued` until the turn starts;
   - assistant text via Crew's Markdown renderer, restyled to tokens (crew-bots' backtick-only renderer is not used);
   - notices as centered meta lines;
-  - **run card** = Crew's tool steps in crew-bots' RunCard form: collapsed pill shows the running step's summary (`BlurSwap`) with an indeterminate bar while running; when done "n steps · 12s"; when interrupted "Stopped after n steps"; expanded = step list on a connector line with done / running / failed markers; each step's detail expands with Crew's 4000-character "Show more". No title, no planned steps, no "Step n of N".
+  - **run card** = Crew's tool steps in crew-bots' RunCard form: collapsed pill shows the running step's summary (`BlurSwap`) with an indeterminate bar while running, with Crew's copy ("Working · n steps"); when done Crew's "Worked for 12s · n steps"; when interrupted "Stopped after n steps"; expanded = step list on a connector line with done / running / failed markers; each step's detail expands with Crew's 4000-character "Show more". No title, no planned steps, no "Step n of N".
   - empty thread: large playful avatar, "Start with <title>", button "Set up profile" (or "Finish setup" when setup is incomplete).
 - **Requests stay pinned above the composer** (not interleaved in the thread) because they are live Hermes state, not transcript items. My call. They take the approval-card look: title, reason, command block, then **only Hermes's choices** with Crew's copy (`Allow once`, `Deny`, …); app prompts once / deny only; truncation guard; hidden-character reveal; clarify (choices + free text + Skip), secret and sudo (masked), not-answerable, failed + retry. A real request drives the sending state — no fake delay. Focus parks on the card when its buttons unmount. `data-testid="request-card"` stays.
 - **Composer**: crew-bots composer (growing textarea, Enter / ⇧Enter, IME-safe, `/` focus, round Send `Send`, round square Stop `Stop` while the chat session is running — driven by the session, not the roster status). The caption drawer under it shows, highest priority first: Crew's disabled reasons (Hermes offline, reconnecting, connecting, working-bot limit), then "Waiting for you above" when a request is open, then the queued note. crew-bots' "asleep → sending wakes" line is dropped (untrue for Hermes).
@@ -211,7 +218,7 @@ Guard: every window shortcut ignores events from editable fields (`isEditableTar
   - controls row: `Take control` (disabled until connected) / `Hand back` / "Give control back to <title>" (force, when someone else holds it), `Expand the screen` (dialog, one viewer at a time), paste, `Stop screen` (confirm).
   - **Now strip**: the open chat session's running step summary (`BlurSwap`, `aria-live="polite"`), "Idle" otherwise. No CPU or memory meters.
   - **Recent actions**: this bot's chat tool steps, newest first, at most 50: tool label + summary + failed marker; live steps carry client `HH:MM`; history steps show a time only if history rows carry one (builder checks).
-- **Routines tab**: Crew's routines feature restyled. Each routine is an accordion row (crew-bots `card-split-accordian` pattern): name, schedule, next run, last result; expands to Run now, pause/resume (`Run <title> …` switch), Edit, History, Triggers (n). The routine form, schedule picker, preview, run history and transcripts, and all trigger flows (one-time secret, events dialog, test event, new secret, orphan triggers) keep their behaviour and names.
+- **Routines tab**: Crew's routines feature restyled. Each routine is an accordion row (crew-bots `card-split-accordian` pattern): name, schedule, next run, last result, and `Run now` visible without expanding; expands to pause/resume (`Run <title> …` switch), Edit, History, Triggers (n). The routine form, schedule picker, preview, run history and transcripts, and all trigger flows (one-time secret, events dialog, test event, new secret, orphan triggers) keep their behaviour and names.
 
 ### 7.4 Bot profile
 
@@ -223,10 +230,11 @@ Replaces conversation + side panel at `?panel=profile`. Back button and `Esc` re
   - **Soul**: Crew's persona (SOUL.md) editor with Crew's limit (not crew-bots' 1200), crew-bots' starters ("Careful / Fast / Friendly") inserting text only when the user clicks them, never replacing Hermes's composed SOUL silently.
   - **Skills**: Hermes toolsets on/off (§8.2). Each row: name, description, switch; locked rows show why ("Off while <title> runs in a sandbox").
   - **Apps**: Crew's per-bot apps section (levels Read only / Read and change / Everything as `ChoiceChips`), restyled.
-  - **Advanced**: Approvals (§8.3), Computer (`Let <title> use its screen` switch — not for the primary — and "Stop the screen after" 15 min / 1 hour / Never, §8.4), Sandbox section (heading `Sandbox`, status, image download, on/off, `Reset sandbox`), Hide switch, Danger zone (`Delete bot` → Crew's typed-handle confirm dialog, primary protected, `sandbox_cleanup_failed` shown).
+  - **Advanced**: Approvals (§8.3), Computer (`Let <title> use its screen` switch — moved here from the screen panel; not for the primary — and "Stop the screen after" 15 min / 1 hour / Never, §8.4; the Screen tab's off state links here as "Screen settings"), Sandbox section (heading `Sandbox`, status, image download, on/off, `Reset sandbox`), Hide switch, Danger zone (`Delete bot` → Crew's typed-handle confirm dialog, primary protected, `sandbox_cleanup_failed` shown).
 - **Saving** — two kinds, said plainly in the UI:
-  - **Text and look fields** (title, role, job, model, soul, avatar and accessories) share one sticky save bar: "Unsaved changes · Discard · `Save`" across tabs, `⌘↵` saves. Crew's baselines, conflict banner (`Save anyway`) and `confirm_required` flows stay.
-  - **Switches and choices** (skills, apps levels, approvals, screen use, sleep, sandbox, hide, pin) apply at once, each row with its own pending and error state.
+  - **Text fields** (title, role, job, model, soul) share one sticky save bar: "Unsaved changes · Discard · `Save`" across tabs, `⌘↵` saves. Crew's baselines, conflict banner (`Save anyway`) and `confirm_required` flows stay.
+  - **Switches and choices** (avatar type, colour, photo and accessories; skills, apps levels, approvals, screen use, sleep, sandbox, hide, pin) apply at once, each row with its own pending and error state. Avatar picks keep Crew's current rule: saved on click, but held until `Finish setup` while setup is unfinished.
+- **Primary bot** (Hermes `default`): Skills, Approvals and Sleep are **shown read-only** with the reason ("New bots copy <title>'s settings, so change these in Hermes"). New bots are created by cloning the primary's config, so changing these on the primary would change every future bot. This follows the existing rule that already refuses screen settings on the primary (`primary_not_supported`, Phase 3 §11 R8). The server refuses the writes the same way.
 - **Summary card** (hidden under 820 px container width): playful avatar, title, `@handle`, role · model, job excerpt, sandbox, apps connected, approvals mode, screen sleep.
 - **Finish setup**: banner at the top when setup is incomplete, `Finish setup` as an InlineAction.
 
@@ -252,7 +260,7 @@ All through existing patterns: bot lock, Zod-validated routes, CSRF, sparse `PUT
 
 ### 8.1 Crew-stored cosmetics (ui_meta `hermes-bots`)
 
-- `pinned: boolean` — via `PATCH /crew/bots/:name {pinned}` like `hidden`; exposed on `BotView`.
+- `pinned: boolean` — the **existing** field the Hermes Webapp already uses for its own pins (`docs/phase2/hermes-facts.md` §2), shared the same way `hidden` is. Pins therefore sync both ways with the Webapp, and the user's current Webapp pins appear in Crew's Pinned section on day one. Written via `PATCH /crew/bots/:name {pinned}` like `hidden`; exposed on `BotView`.
 - `role: 'researcher' | 'engineer' | 'operator' | 'analyst' | 'ops' | 'generalist' | null` — via the same PATCH (part of the save bar); exposed on `BotView` and `BotDetail`. Purely descriptive; it sets nothing else.
 - Avatar accessories — extend `crewAvatarSchema` with optional `face: 'eyes'|'mouth'`, `hat: 'none'|'beret'|'beanie'|'party'|'crown'`, `glasses: 'none'|'round'|'square'|'shades'`, `headphones: boolean`, `bowTie: boolean` (values = bot-avatars 0.2.2's types); `readCrewAvatar` and the web `CrewAvatar` pass them through. The Hermes Webapp ignores them (its parity stays shape + colour).
 
@@ -271,6 +279,8 @@ All through existing patterns: bot lock, Zod-validated routes, CSRF, sparse `PUT
   - **Let a checker model decide first** (`smart`) — "A model may approve or deny risky commands before you see them. Each check costs a model call.";
   - **Never ask** (`off`) — needs an inline confirm; states its effect on apps (Crew's `level_unavailable` rule: app levels above Read only are unavailable while approvals are off; the builder confirms the exact rule in `CS/connectors/levels.ts`).
 - Note in the UI that app (MCP) calls follow their own trust prompt, not this setting (Phase 7 facts §4).
+- For a sandboxed bot, add a note that Hermes skips dangerous-command approvals inside the sandbox (`docs/phase6/hermes-facts.md` §2.3). The builder confirms the exact rule before writing the copy.
+- Primary: read-only, refused with `primary_not_supported` (§7.4). The same applies to §8.2 and §8.4.
 - The builder checks whether a running session picks up a mode change live and states it in the UI.
 
 ### 8.4 Computer sleep = `bot_desktop.idle_stop_minutes`
@@ -315,3 +325,12 @@ Component file layout inside `CW/`; exact copy beyond the preserved names; anima
 13. Theme toggle in the rail footer plus the `d` key, ignored in fields and in the live screen.
 14. Inter + system mono; Geist removed.
 15. The New bot morph panel keeps every field today's dialog has.
+
+Added after the builder check:
+
+16. Dark theme: surfaces, accent and status colours exactly as yours. Muted text and the focus ring get the smallest change that passes contrast (they fail today on input and tab surfaces).
+17. Existing e2e specs may change flows and copy where the design moves things. Crew's wording wins where the two differ only in words.
+18. On the primary bot, Skills, Approvals and Sleep are read-only, because new bots copy the primary's settings.
+19. Pins use the Hermes Webapp's existing pin, so pins sync both ways.
+20. Avatar picks save on click, as now. Only text fields use the save bar.
+21. Composer drafts are kept per bot in memory, so they survive opening the profile.
