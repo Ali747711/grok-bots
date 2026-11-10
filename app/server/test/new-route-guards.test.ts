@@ -42,7 +42,8 @@ const MUTATING: readonly (readonly [string, string])[] = [
   ['DELETE', '/crew/connectors/key'],
   ['POST', '/crew/connectors/connect'],
   ['DELETE', '/crew/connectors/apps/x'],
-  ['PUT', '/crew/bots/scout/apps']
+  ['PUT', '/crew/bots/scout/apps'],
+  ['PUT', '/crew/bots/scout/toolsets']
 ]
 
 function app() {

@@ -197,3 +197,6 @@ What a bot ends up with: phase 6 P-2 recorded `platform_toolsets.cli: [hermes-cl
   - next-turn toolset apply in a Bot Chat;
   - room-member policy timing;
   - which plugin toolsets are installed.
+
+## Q1 live check (Task 3, 2026-11-10)
+`GET /api/tools/toolsets?profile=crew-test` answered 200 (GET only, run by the controller). Row keys seen: `name, label, description, platform, platform_label, enabled, available, configured, tools`. Rows carry `platform` `cli` except `discord` and `discord_admin`. Enabled `cli` names: web, browser, terminal, file, code_execution, vision, image_gen, tts, stt, skills, todo, memory, session_search, connections, clarify, delegation, cronjob, computer_use. Off: video, video_gen, x_search, kanban, context_engine, yuanbao, a2a.
