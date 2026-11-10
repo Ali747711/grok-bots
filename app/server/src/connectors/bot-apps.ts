@@ -4,7 +4,7 @@ import { log } from '../log.js'
 import {
   addAppsServer, appsServer, removeAppsServer, setAppsServerEnabled, type Hermes
 } from './hermes-mcp.js'
-import { ComposioError, type Composio, type ToolHint } from './composio.js'
+import { ComposioError, HINTS_VERSION, type Composio, type ToolHint } from './composio.js'
 import type { KeyStore } from './key.js'
 import { TOOLKIT_RE, allowList, allowedSlugs, approvalsAsk, offeredLevels, type AppLevel } from './levels.js'
 import { PRELOAD_CAP, ROOM_WRITES_DECLINED } from './policy.js'
@@ -46,13 +46,13 @@ export interface BotAppsView {
 
 export const TOOLS_TTL_MS = 86_400_000
 
-/** Tool hints for a toolkit: the cache while under 24 h old, else Composio (which also refreshes the name). */
+/** Tool hints for a toolkit: the cache while under 24 h old and made under the current hint rules, else Composio (which also refreshes the name). */
 export async function toolsFor(deps: ConnectorDeps, toolkit: string): Promise<readonly ToolHint[]> {
   const cached = deps.store.toolkit(toolkit)
-  if (cached && deps.now() - cached.fetchedAt < TOOLS_TTL_MS) return cached.tools
+  if (cached && cached.hintsVersion === HINTS_VERSION && deps.now() - cached.fetchedAt < TOOLS_TTL_MS) return cached.tools
   const tools = await deps.composio.toolsOf(toolkit)
   const { name } = await deps.composio.toolkit(toolkit)
-  await deps.store.setToolkit(toolkit, { fetchedAt: deps.now(), tools })
+  await deps.store.setToolkit(toolkit, { fetchedAt: deps.now(), hintsVersion: HINTS_VERSION, tools })
   await deps.store.setName(toolkit, name)
   return tools
 }

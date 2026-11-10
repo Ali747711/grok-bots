@@ -58,6 +58,9 @@ const boolField = (obj: unknown, key: string): boolean | undefined => {
   return typeof v === 'boolean' ? v : undefined
 }
 
+/** Version of the rules in `hintsOf`. Bump it whenever `hintsOf`'s rules change, so cached hints are refetched. */
+export const HINTS_VERSION = 2
+
 /**
  * Ruling 5: Composio's REST returns `annotations: null` and carries hints as tags, so an explicit boolean annotation wins,
  * else the tag. A tool with no boolean annotation and no `*Hint` tag counts as destructive. Bad fields are ignored.

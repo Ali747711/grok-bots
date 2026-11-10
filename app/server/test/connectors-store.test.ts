@@ -84,6 +84,16 @@ describe('ConnectorStore', () => {
     expect(tokenMatches(undefined, null)).toBe(false)
   })
 
+  it('loads an old toolkit entry with no hints version without moving the file aside', async () => {
+    const id = randomUUID()
+    const old = { fetchedAt: 5, tools: [{ slug: 'G1', readOnly: true, destructive: false }] }
+    await writeFile(file, JSON.stringify({ version: 1, userId: id, bots: {}, toolkits: { github: old }, names: {}, pending: [] }))
+    const store = await ConnectorStore.load(file, () => randomUUID())
+    expect(store.toolkit('github')).toEqual(old)
+    expect(store.toolkit('github')?.hintsVersion).toBeUndefined()
+    expect((await readdir(dir)).some(f => f.includes('corrupt'))).toBe(false)
+  })
+
   it('moves a corrupt file aside and keeps a valid userId from it', async () => {
     const id = randomUUID()
     await writeFile(file, JSON.stringify({ version: 1, userId: id, bots: 'nope' }))

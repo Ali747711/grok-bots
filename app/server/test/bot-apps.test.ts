@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   AppsRefusedError, TOOLS_TTL_MS, clampIfNoApprovals, forgetBot, readBotApps, rebuildSession, setBotApps, toolsFor, type ConnectorDeps
 } from '../src/connectors/bot-apps.js'
-import { ComposioError, type Composio, type ToolHint } from '../src/connectors/composio.js'
+import { ComposioError, HINTS_VERSION, type Composio, type ToolHint } from '../src/connectors/composio.js'
 import { ConnectorStore, hashToken } from '../src/connectors/store.js'
 import { HermesRestError } from '../src/hermes/errors.js'
 import { FakeRest, FakeRpc } from './fake-rpc.js'
@@ -166,6 +166,18 @@ describe('bot apps', () => {
     await toolsFor(deps, 'github')
     expect(calls.filter(c => c === 'tools:github')).toHaveLength(2)
     expect(store.name('github')).toBe('GitHub')
+  })
+
+  it('refetches an entry cached without a hints version, and keeps one at the current version', async () => {
+    const old = [{ slug: 'GITHUB_CREATE_AN_ISSUE', readOnly: false, destructive: true }]
+    await store.setToolkit('github', { fetchedAt: now - 60_000, tools: old })
+    await toolsFor(deps, 'github')
+    expect(calls.filter(c => c === 'tools:github')).toHaveLength(1)
+    expect(store.toolkit('github')?.hintsVersion).toBe(HINTS_VERSION)
+    expect(HINTS_VERSION).toBe(2)
+    await store.setToolkit('github', { fetchedAt: now - 60_000, hintsVersion: HINTS_VERSION, tools: old })
+    expect(await toolsFor(deps, 'github')).toEqual(old)
+    expect(calls.filter(c => c === 'tools:github')).toHaveLength(1)
   })
 
   it('reads the view without calling Composio', async () => {

@@ -16,7 +16,7 @@ const recordSchema = z.object({
   sessionId: z.string(), mcpUrl: z.string(), allowed: z.array(z.string()), tokenHash: z.string().regex(/^[0-9a-f]{64}$/)
 })
 const hint = z.object({ slug: z.string(), readOnly: z.boolean(), destructive: z.boolean() })
-const toolkitSchema = z.object({ fetchedAt: z.number(), tools: z.array(hint) })
+const toolkitSchema = z.object({ fetchedAt: z.number(), hintsVersion: z.number().optional(), tools: z.array(hint) })
 const pendingSchema = z.object({ id: z.string(), toolkit: slugKey, startedAt: z.number() })
 const fileSchema = z.object({
   version: z.literal(1), userId: z.uuid(),
@@ -32,7 +32,7 @@ export interface BotRecord {
   readonly allowed: readonly string[]
   readonly tokenHash: string
 }
-export interface ToolkitEntry { readonly fetchedAt: number; readonly tools: readonly ToolHint[] }
+export interface ToolkitEntry { readonly fetchedAt: number; readonly hintsVersion?: number; readonly tools: readonly ToolHint[] }
 export interface PendingSignIn { readonly id: string; readonly toolkit: string; readonly startedAt: number }
 
 interface State {
