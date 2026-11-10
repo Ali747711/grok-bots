@@ -87,6 +87,30 @@ describe('connector accounts', () => {
     expect(store.pending()).toEqual([])
   })
 
+  it('rebuilds the sessions of bots that use the app when a sign-in turns connected, not on the sweep', async () => {
+    await store.setRecord('scout', record({ github: 'read' }))
+    await store.setRecord('anna', record({ slack: 'read' }))
+    const built: string[] = []
+    const composio = {
+      ...deps.composio,
+      toolsOf: async () => [{ slug: 'GITHUB_GET', readOnly: true, destructive: false }],
+      createSession: async () => { built.push('s'); return { sessionId: 's2', mcpUrl: 'https://backend.composio.dev/tool_router/s/mcp' } },
+      deleteSession: async () => undefined
+    } as unknown as Composio
+    const d = { ...deps, composio }
+    status = 'connected'
+    await store.addPending({ id: 'ca_old', toolkit: 'github', startedAt: 1_000 })
+    now = 1_000 + SIGN_IN_TIMEOUT_MS + 1
+    await expirePending(d)
+    await new Promise(r => setTimeout(r, 20))
+    expect(built).toEqual([])
+    await store.addPending({ id: 'ca_new', toolkit: 'github', startedAt: now })
+    expect(await pollConnect(d, 'ca_new')).toBe('connected')
+    await vi.waitFor(() => expect(built).toEqual(['s']))
+    expect(store.record('scout')?.sessionId).toBe('s2')
+    expect(store.record('anna')?.sessionId).toBe('s')
+  })
+
   it('reports connected, failed and pending, and expires a sign-in after 10 minutes by deleting the account', async () => {
     await expect(pollConnect(deps, 'ca_x')).rejects.toMatchObject({ code: 'not_found' })
     await store.addPending({ id: 'ca_1', toolkit: 'github', startedAt: 1_000 })

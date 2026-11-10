@@ -59,7 +59,22 @@ async function abandon(deps: ConnectorDeps, id: string): Promise<void> {
   await deps.store.removePending(id)
 }
 
+/** Sessions are fixed at creation: after a sign-in each bot using the app gets a fresh one. Background, best effort. */
+function rebuildForToolkit(deps: ConnectorDeps, toolkit: string): void {
+  for (const bot of deps.store.bots()) {
+    if (!(toolkit in (deps.store.record(bot)?.apps ?? {}))) continue
+    void rebuildSession(deps, bot).catch(() => log.warn('rebuilding a bot after sign-in failed', { bot }))
+  }
+}
+
 export async function pollConnect(deps: ConnectorDeps, id: string): Promise<SignInState> {
+  const entry = deps.store.pending().find(p => p.id === id)
+  const state = await settle(deps, id)
+  if (state === 'connected' && entry) rebuildForToolkit(deps, entry.toolkit)
+  return state
+}
+
+async function settle(deps: ConnectorDeps, id: string): Promise<SignInState> {
   const entry = deps.store.pending().find(p => p.id === id)
   if (!entry) throw new ComposioError('not_found')
   let status: AccountStatus
@@ -90,7 +105,7 @@ export async function expirePending(deps: ConnectorDeps): Promise<void> {
   for (const entry of [...deps.store.pending()]) {
     if (deps.now() - entry.startedAt <= SIGN_IN_TIMEOUT_MS) continue
     try {
-      await pollConnect(deps, entry.id)
+      await settle(deps, entry.id)
     } catch (error) {
       log.warn('sign-in sweep failed', { error: errorName(error) })
     }

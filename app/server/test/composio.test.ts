@@ -135,13 +135,45 @@ describe('composio client', () => {
     })
   })
 
+  it('pins auth_configs in the session body only when given', () => {
+    const spec = { tools: { github: ['A'] } }
+    expect(sessionBody('u', spec, { github: 'ac_x' })).toMatchObject({ auth_configs: { github: 'ac_x' } })
+    expect(sessionBody('u', spec, {})).not.toHaveProperty('auth_configs')
+    expect(sessionBody('u', spec)).not.toHaveProperty('auth_configs')
+  })
+
+  it('pins the found managed auth config per toolkit, skips toolkits without one and never creates one', async () => {
+    const sess = { status: 201, body: { session_id: 's', mcp: { url: 'https://backend.composio.dev/m' } } }
+    const { calls, composio } = harness([
+      { body: { items: [{ id: 'ac_gh', is_composio_managed: true, status: 'ENABLED' }] } },
+      { body: { items: [{ id: 'ac_own', is_composio_managed: false, status: 'ENABLED' }] } },
+      sess
+    ])
+    await composio.createSession('u', { tools: { github: ['A'], slack: ['B'] } })
+    expect(calls.map(c => `${c.init.method} ${c.url}`)).toEqual([
+      `GET ${COMPOSIO_API}/auth_configs?toolkit_slug=github`,
+      `GET ${COMPOSIO_API}/auth_configs?toolkit_slug=slack`,
+      `POST ${COMPOSIO_API}/tool_router/session`
+    ])
+    expect(JSON.parse(String(calls[2].init.body))).toEqual(sessionBody('u', { tools: { github: ['A'], slack: ['B'] } }, { github: 'ac_gh' }))
+  })
+
+  it('still creates the session when an auth config lookup fails', async () => {
+    const { calls, composio } = harness([
+      { status: 500 },
+      { status: 201, body: { session_id: 's', mcp: { url: 'https://backend.composio.dev/m' } } }
+    ])
+    await composio.createSession('u', { tools: { github: ['A'] } })
+    expect(JSON.parse(String(calls[1].init.body))).not.toHaveProperty('auth_configs')
+  })
+
   it('creates a session and returns its id and MCP URL', async () => {
-    const { calls, composio } = harness([{ status: 201, body: { session_id: 'trs_1', mcp: { type: 'http', url: 'https://backend.composio.dev/tool_router/trs_1/mcp' } } }])
+    const { calls, composio } = harness([{ body: { items: [] } }, { status: 201, body: { session_id: 'trs_1', mcp: { type: 'http', url: 'https://backend.composio.dev/tool_router/trs_1/mcp' } } }])
     const spec = { tools: { github: ['A'] } }
     expect(await composio.createSession('u-1', spec)).toEqual({ sessionId: 'trs_1', mcpUrl: 'https://backend.composio.dev/tool_router/trs_1/mcp' })
-    expect(calls[0].url).toBe(`${COMPOSIO_API}/tool_router/session`)
-    expect(calls[0].init.method).toBe('POST')
-    expect(JSON.parse(String(calls[0].init.body))).toEqual(sessionBody('u-1', spec))
+    expect(calls[1].url).toBe(`${COMPOSIO_API}/tool_router/session`)
+    expect(calls[1].init.method).toBe('POST')
+    expect(JSON.parse(String(calls[1].init.body))).toEqual(sessionBody('u-1', spec))
   })
 
   it('refuses a session MCP URL outside https://backend.composio.dev and a sign-in URL outside composio.dev', async () => {

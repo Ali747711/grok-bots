@@ -27,6 +27,7 @@ export interface Composio {
   searchToolkits(search: string): Promise<Toolkit[]>
   toolkit(slug: string): Promise<Toolkit>
   toolsOf(slug: string): Promise<ToolHint[]>
+  findManagedAuthConfig(slug: string): Promise<string | null>
   managedAuthConfig(slug: string): Promise<string>
   link(authConfigId: string, userId: string): Promise<{ redirectUrl: string; accountId: string }>
   accounts(userId: string): Promise<ConnectedAccount[]>
@@ -82,7 +83,9 @@ export function accountStatusOf(status: string): AccountStatus {
   return status === 'INITIALIZING' || status === 'INITIATED' ? 'pending' : 'failed'
 }
 
-export function sessionBody(userId: string, spec: SessionSpec): Record<string, unknown> {
+export function sessionBody(
+  userId: string, spec: SessionSpec, authConfigs?: Readonly<Record<string, string>>
+): Record<string, unknown> {
   const keys = Object.keys(spec.tools)
   return {
     user_id: userId,
@@ -93,7 +96,9 @@ export function sessionBody(userId: string, spec: SessionSpec): Record<string, u
     search: { enable: false },
     manage_connections: { enable: false },
     execute: { enable_multi_execute: false },
-    preload: { tools: keys.flatMap(k => spec.tools[k]) }
+    preload: { tools: keys.flatMap(k => spec.tools[k]) },
+    // Pins Crew's own managed config: without it the router finds no account created through that config.
+    ...(authConfigs && Object.keys(authConfigs).length > 0 ? { auth_configs: authConfigs } : {})
   }
 }
 
@@ -160,6 +165,11 @@ export function createComposio(deps: { readonly fetch: typeof fetch; readonly ke
   const toAccount = (a: z.infer<typeof accountSchema>): ConnectedAccount =>
     ({ id: a.id, toolkit: a.toolkit.slug, status: accountStatusOf(a.status) })
 
+  async function findManaged(slug: string, call = 'findManagedAuthConfig'): Promise<string | null> {
+    const found = await get(call, `/auth_configs?toolkit_slug=${enc(slug)}`, authConfigsSchema)
+    return found.items.find(c => c.is_composio_managed === true && c.status === 'ENABLED')?.id ?? null
+  }
+
   return {
     checkKey: async key => {
       await send('checkKey', key, 'GET', '/toolkits?limit=1', toolkitsSchema)
@@ -187,10 +197,10 @@ export function createComposio(deps: { readonly fetch: typeof fetch; readonly ke
       }
       return hints
     },
+    findManagedAuthConfig: findManaged,
     managedAuthConfig: async slug => {
-      const found = await get('managedAuthConfig', `/auth_configs?toolkit_slug=${enc(slug)}`, authConfigsSchema)
-      const ok = found.items.find(c => c.is_composio_managed === true && c.status === 'ENABLED')
-      if (ok) return ok.id
+      const existing = await findManaged(slug, 'managedAuthConfig')
+      if (existing) return existing
       const made = await post('managedAuthConfig', '/auth_configs', authConfigCreatedSchema, {
         toolkit: { slug }, auth_config: { type: 'use_composio_managed_auth' }
       }, 'app_unsupported') // 401/403/404 keep their own codes; other 4xx: no managed sign-in for this app
@@ -212,7 +222,18 @@ export function createComposio(deps: { readonly fetch: typeof fetch; readonly ke
     deleteAccount: id => del('deleteAccount', `/connected_accounts/${enc(id)}`),
     deleteSession: id => del('deleteSession', `/tool_router/session/${enc(id)}`),
     createSession: async (userId, spec) => {
-      const res = await post('createSession', '/tool_router/session', sessionSchema, sessionBody(userId, spec))
+      const toolkits = Object.keys(spec.tools)
+      const found = await Promise.all(toolkits.map(async slug => {
+        try {
+          return await findManaged(slug)
+        } catch (err) {
+          // A lookup failure already logged {call, status}; only a missing or rejected key stops the session.
+          if (err instanceof ComposioError && (err.code === 'no_key' || err.code === 'key_rejected')) throw err
+          return null
+        }
+      }))
+      const pinned = Object.fromEntries(toolkits.flatMap((slug, i) => (found[i] ? [[slug, found[i]]] : [])))
+      const res = await post('createSession', '/tool_router/session', sessionSchema, sessionBody(userId, spec, pinned))
       if (!mcpUrlOk(res.mcp.url)) {
         log.warn('composio call failed', { call: 'createSession', status: null })
         throw unavailable()
