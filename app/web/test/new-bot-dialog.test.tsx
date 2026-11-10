@@ -2,6 +2,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { deriveAvatarType } from '@/features/avatars/avatar-model'
+import { describeCreateFailure } from '@/features/bots/create-errors'
+import { CrewApiError } from '@/features/bots/bots-api'
 import { NewBotDialog } from '@/features/bots/NewBotDialog'
 import type { CreateResult } from '@/features/bots/types'
 
@@ -11,7 +13,7 @@ vi.mock('bot-avatars', async () => {
 })
 
 const json = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status }))
-const complete: CreateResult = { name: 'research-bot', complete: true, steps: { profile: 'ok', look: 'ok', avatar: 'skipped', chat: 'ok' }, needsModel: false }
+const complete: CreateResult = { name: 'research-bot', complete: true, steps: { profile: 'ok', look: 'ok', avatar: 'skipped', chat: 'ok', sandbox: 'skipped' }, needsModel: false }
 const incomplete: CreateResult = {
   ...complete, complete: false, steps: { ...complete.steps, look: 'failed' }, error: { step: 'look', message: 'boom' }
 }
@@ -79,7 +81,7 @@ describe('NewBotDialog', () => {
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith('research-bot'))
     expect(onOpenChange).toHaveBeenCalledWith(false)
     expect(JSON.parse(String(call(fn, '/crew/bots')?.[1]?.body))).toEqual({
-      name: 'research-bot', title: 'Research Bot', mission: 'Find things', avatar: { type: deriveAvatarType('research-bot'), color: '#7c5cff' }
+      name: 'research-bot', title: 'Research Bot', mission: 'Find things', avatar: { type: deriveAvatarType('research-bot'), color: '#7c5cff' }, sandbox: false
     })
   })
 
@@ -230,5 +232,101 @@ describe('NewBotDialog', () => {
     release({ width: 10, height: 10, close: vi.fn() })
     await waitFor(() => expect(screen.getByRole('button', { name: 'Finish setup' })).toBeEnabled())
     vi.restoreAllMocks()
+  })
+
+  describe('sandbox choice', () => {
+    const image = (over: Record<string, unknown> = {}) => ({ pulling: false, progress: null, error: null, image: 'x', docker: 'ok', present: true, ...over })
+    function stubSandbox(img: Record<string, unknown>) {
+      const fn = vi.fn((url: string, _init?: RequestInit) => {
+        if (url === '/api/model/options') return json(MODELS)
+        if (url === '/crew/sandbox/image') return json(image(img))
+        if (url === '/crew/bots') return json(complete, 201)
+        return json({})
+      })
+      vi.stubGlobal('fetch', fn)
+      return fn
+    }
+    const box = () => screen.getByRole('checkbox', { name: 'Run in a sandbox' })
+
+    it('creates a sandboxed bot when Run in a sandbox is ticked', async () => {
+      const fn = stubSandbox({})
+      setup()
+      type('Name', 'Scout')
+      expect(box()).not.toBeChecked()
+      fireEvent.click(box())
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled())
+      fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+      await waitFor(() => expect(call(fn, '/crew/bots')).toBeDefined())
+      expect(JSON.parse(String(call(fn, '/crew/bots')?.[1]?.body)).sandbox).toBe(true)
+    })
+
+    it('sends sandbox false when unticked', async () => {
+      const fn = stubSandbox({})
+      setup()
+      type('Name', 'Scout')
+      fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+      await waitFor(() => expect(call(fn, '/crew/bots')).toBeDefined())
+      expect(JSON.parse(String(call(fn, '/crew/bots')?.[1]?.body)).sandbox).toBe(false)
+    })
+
+    it('says why when the image status fails and keeps Create off', async () => {
+      vi.stubGlobal('fetch', vi.fn((url: string) => {
+        if (url === '/api/model/options') return json(MODELS)
+        if (url === '/crew/sandbox/image') return json({}, 500)
+        return json({})
+      }))
+      setup()
+      type('Name', 'Scout')
+      fireEvent.click(box())
+      expect(await screen.findByText("Couldn't change the sandbox. Try again.")).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled()
+    })
+
+    it('offers the download first when the image is missing and keeps Create off', async () => {
+      stubSandbox({ present: false })
+      setup()
+      type('Name', 'Scout')
+      fireEvent.click(box())
+      expect(await screen.findByText("The sandbox image isn't downloaded")).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Download (about 1.2 GB)' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled()
+      fireEvent.click(box())
+      expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled()
+    })
+
+    it('enables Create once the download finishes, without unticking', async () => {
+      let phase: 'missing' | 'pulling' | 'present' = 'missing'
+      vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+        if (url === '/api/model/options') return json(MODELS)
+        if (url === '/crew/sandbox/image/pull' && init?.method === 'POST') { phase = 'pulling'; return json(image({ present: false, pulling: true }), 202) }
+        if (url === '/crew/sandbox/image') {
+          if (phase === 'pulling') phase = 'present'
+          return json(image({ present: phase === 'present', pulling: false }))
+        }
+        return json({})
+      }))
+      setup()
+      type('Name', 'Scout')
+      fireEvent.click(box())
+      fireEvent.click(await screen.findByRole('button', { name: 'Download (about 1.2 GB)' }))
+      expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled()
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled(), { timeout: 4000 })
+    })
+
+    it("says Docker isn't available and keeps Create off", async () => {
+      stubSandbox({ docker: 'missing', present: false })
+      setup()
+      type('Name', 'Scout')
+      fireEvent.click(box())
+      expect(await screen.findByText("Docker isn't available on this computer")).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled()
+    })
+
+    it('shows the create refusal codes in words', () => {
+      const refuse = (code: string) => describeCreateFailure(new CrewApiError(409, { error: code }))
+      expect(refuse('docker_unavailable')).toEqual({ general: "Docker isn't available on this computer" })
+      expect(refuse('image_missing')).toEqual({ general: "The sandbox image isn't downloaded" })
+      expect(refuse('other')).toEqual({ general: 'That bot is still being created. Wait a moment.' })
+    })
   })
 })

@@ -1,6 +1,9 @@
 import { type CrewAvatar, avatarMetaPatch, readCrewAvatar } from './avatar.js'
 import { withBotLock } from './bot-lock.js'
-import { type BotDeps, refreshQuietly } from './create.js'
+import type { BotDeps } from './create.js'
+import { refreshQuietly } from './refresh.js'
+import { cleanupBeforeDelete } from './sandbox-cleanup.js'
+import { removeQuietly } from './sandbox.js'
 import { type BotMeta, BotNotFoundError, BotMetaWriteError, updateBotMeta } from './ui-meta.js'
 
 const PRIMARY = 'default'
@@ -203,7 +206,12 @@ export function clearAvatar(deps: BotDeps, name: string): Promise<BotDetail> {
 export function deleteBot(deps: BotDeps, name: string): Promise<void> {
   if (name === PRIMARY) return Promise.reject(new PrimaryBotError())
   return withBotLock(name, async () => {
+    // Docker leaves root-owned mount points that make Hermes's own delete fail, so clear them first.
+    const dockerReached = deps.sandbox ? await cleanupBeforeDelete(deps, deps.sandbox, name) : false
     await deps.rest.request('DELETE', `/api/profiles/${enc(name)}`, { timeoutMs: DELETE_TIMEOUT_MS })
+    // A chat that started during the delete can leave a container behind; sweep once more, never fail the delete.
+    if (deps.sandbox && dockerReached) await removeQuietly(deps.sandbox, name)
+    deps.sandbox?.onChanged?.(name)
     await refreshQuietly(deps)
   })
 }

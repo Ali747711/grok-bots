@@ -106,4 +106,12 @@ describe('BotStateTracker', () => {
     expect(by.noRevisions!.setupIncomplete).toBe(true)
     expect(by.done).toMatchObject({ setupIncomplete: false, hidden: true, created: 99 })
   })
+
+  it('defaults sandbox to off and applies on and partial', () => {
+    const t = new BotStateTracker()
+    t.applyProfiles([{ name: 'a' }, { name: 'b' }, { name: 'c' }])
+    expect(t.view([]).map(b => b.sandbox)).toEqual(['off', 'off', 'off'])
+    t.applySandbox(new Map([['b', 'on'], ['c', 'partial']]))
+    expect(t.view([]).map(b => b.sandbox)).toEqual(['off', 'on', 'partial'])
+  })
 })

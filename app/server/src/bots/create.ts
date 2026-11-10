@@ -3,6 +3,10 @@ import type { HermesRest } from '../hermes/rest-client.js'
 import { log } from '../log.js'
 import { type CrewAvatar, avatarMetaPatch, deriveAvatarType } from './avatar.js'
 import { withBotLock } from './bot-lock.js'
+import { refreshQuietly } from './refresh.js'
+import { applyCreateSandbox } from './sandbox-create.js'
+import type { SandboxDeps } from './sandbox.js'
+import type { SandboxMarker } from './sandbox-state.js'
 import { composeSoul } from './soul.js'
 import { readBotMeta, updateBotMeta } from './ui-meta.js'
 
@@ -16,15 +20,17 @@ export interface BotDraft {
   readonly avatar: CrewAvatar
   readonly image?: string
   readonly model?: { readonly provider: string; readonly model: string }
+  /** Run the bot's tools in a sandbox; absent means off. */
+  readonly sandbox?: boolean
 }
 
 export type StepOutcome = 'ok' | 'skipped' | 'failed'
-type FailedStep = 'look' | 'avatar' | 'chat'
+type FailedStep = 'sandbox' | 'look' | 'avatar' | 'chat'
 
 export interface CreateResult {
   readonly name: string
   readonly complete: boolean
-  readonly steps: { readonly profile: 'ok'; readonly look: StepOutcome; readonly avatar: StepOutcome; readonly chat: StepOutcome }
+  readonly steps: { readonly profile: 'ok'; readonly sandbox: StepOutcome; readonly look: StepOutcome; readonly avatar: StepOutcome; readonly chat: StepOutcome }
   readonly needsModel: boolean
   readonly error?: { readonly step: FailedStep; readonly message: string }
 }
@@ -34,6 +40,8 @@ export interface BotDeps {
   readonly rest: HermesRest
   refresh(): Promise<void>
   now(): number
+  /** Absent only in tests: delete then skips the sandbox cleanup. */
+  readonly sandbox?: SandboxDeps
 }
 
 /** `profiles.create` refused the name: it exists, or Hermes rejected it (message from Hermes). */
@@ -59,7 +67,7 @@ const titleCase = (name: string): string => name.replace(/[-_]+/g, ' ').trim().r
 /** Run one best-effort step; a failure is recorded and never stops the steps after it. */
 class Steps {
   private first: CreateResult['error']
-  readonly outcome: Record<FailedStep, StepOutcome> = { look: 'skipped', avatar: 'skipped', chat: 'skipped' }
+  readonly outcome: Record<FailedStep, StepOutcome> = { sandbox: 'skipped', look: 'skipped', avatar: 'skipped', chat: 'skipped' }
 
   async run(step: FailedStep, action: () => Promise<void>): Promise<void> {
     try {
@@ -101,12 +109,6 @@ async function runtimeNeedsModel(deps: BotDeps, name: string): Promise<boolean> 
   }
 }
 
-export async function refreshQuietly(deps: BotDeps): Promise<void> {
-  await deps.refresh().catch((error: unknown) => {
-    log.warn('roster refresh failed', { error: messageOf(error).slice(0, 200) })
-  })
-}
-
 async function createProfile(deps: BotDeps, draft: BotDraft): Promise<void> {
   const { name, title, mission, model } = draft
   try {
@@ -136,20 +138,29 @@ export function createBot(deps: BotDeps, draft: BotDraft): Promise<CreateResult>
   return withBotLock(draft.name, () => runCreate(deps, draft))
 }
 
+/** The look and, when the sandbox step produced one, its marker go in one write (R7). */
+const writeLook = (deps: BotDeps, draft: BotDraft, marker: SandboxMarker | undefined) => async (): Promise<void> => {
+  await updateBotMeta(deps.rpc, draft.name, {
+    ...avatarMetaPatch(draft.avatar),
+    imageKind: draft.image ? 'photo' : 'shape',
+    title: draft.title,
+    created: deps.now(),
+    ...(marker ? { sandbox: marker } : {})
+  })
+}
+
 async function runCreate(deps: BotDeps, draft: BotDraft): Promise<CreateResult> {
   await createProfile(deps, draft)
   const steps = new Steps()
-  await steps.run('look', async () => {
-    await updateBotMeta(deps.rpc, draft.name, {
-      ...avatarMetaPatch(draft.avatar),
-      imageKind: draft.image ? 'photo' : 'shape',
-      title: draft.title,
-      created: deps.now()
-    })
+  let marker: SandboxMarker | undefined
+  await steps.run('sandbox', async () => {
+    marker = await applyCreateSandbox(deps, draft.name, draft.sandbox ?? false)
   })
+  await steps.run('look', writeLook(deps, draft, marker))
   if (draft.image) await steps.run('avatar', setAvatar(deps, draft.name, draft.image))
   const needsModel = await runtimeNeedsModel(deps, draft.name)
   await steps.run('chat', ensureChat(deps, draft.name))
+  deps.sandbox?.onChanged?.(draft.name)
   await refreshQuietly(deps)
   return steps.result(draft.name, needsModel)
 }

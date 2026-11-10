@@ -51,7 +51,7 @@ export function RoutinesPanel({ bot }: { bot: BotView }) {
         <ul className="flex flex-col gap-2">
           {routines.map(r => <RoutineRow
               key={r.id} routine={r} onChanged={changed} onEdit={() => setEditing({ kind: 'edit', routine: r })}
-              triggers={of(r.id)} triggerCount={of(r.id)?.length ?? 0}
+              sandboxed={bot.sandbox === 'on'} triggers={of(r.id)} triggerCount={of(r.id)?.length ?? 0}
               historyOpen={historyFor === r.id} onToggleHistory={() => setHistoryFor(cur => (cur === r.id ? null : r.id))}
             />)}
         </ul>

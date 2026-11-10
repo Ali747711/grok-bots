@@ -14,6 +14,7 @@ import { ProfileAvatar } from './ProfileAvatar'
 import { ProfileFields } from './ProfileFields'
 import { buildPatch, freshSync, hasChanges, mergeFresh, type FormSync, type ProfileForm } from './profile-form'
 import { ConfirmModelDialog, ConflictBanner } from './ProfileNotices'
+import { SandboxSection } from './SandboxSection'
 import { useBotDetail } from './use-bot-detail'
 import { failureText, useProfileSave } from './use-profile-save'
 import type { AvatarChoice, BotDetail } from './types'
@@ -134,6 +135,7 @@ function Loaded({ bot, detail, setDetail, reload }: LoadedProps) {
       {saver.error && <ErrorAlert>{saver.error}</ErrorAlert>}
       <Button type="button" disabled={saver.busy || avatarBusy || !hasChanges(patch)} onClick={() => void saver.send(patch)}>Save</Button>
       <HideSection detail={detail} onDetail={refreshed} />
+      <SandboxSection bot={bot.name} title={detail.title} />
       {!bot.isPrimary && (
         <>
           <Button type="button" variant="destructive" onClick={() => setDeleting(true)}>Delete bot</Button>

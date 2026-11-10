@@ -1,3 +1,4 @@
+import type { SandboxState } from '../bots/sandbox-state.js'
 import { HermesRpcError, HermesUnavailableError, type Rpc } from '../hermes/errors.js'
 import { log as logger } from '../log.js'
 import type { SettingsStore } from '../settings/settings-store.js'
@@ -23,6 +24,8 @@ export interface WatcherDeps {
   readonly now: () => number
   readonly reconnectDelayMs: (attempt: number) => number
   /** Observe WebSocket close codes (4401 = Hermes says our token is no longer valid). */
+  /** Sandbox state per bot name for the roster; must not reject (the roster cache never does). */
+  readonly sandboxStates?: (names: readonly string[]) => Promise<ReadonlyMap<string, SandboxState>>
   readonly onSocketClose?: (handler: (code: number) => void) => () => void
 }
 
@@ -153,6 +156,12 @@ export function startWatcher(deps: WatcherDeps): Watcher {
     const { profiles } = await client.request<{ profiles: ProfileRow[] }>('profiles.list', { include_sessions: true })
     tracker.applyProfiles(profiles)
     changed()
+    // Not awaited: a stalled config read must not delay the roster, status or approval updates.
+    if (deps.sandboxStates) {
+      void deps.sandboxStates(profiles.map(row => row.name)).then(states => {
+        if (tracker.applySandbox(states)) changed()
+      }).catch(() => undefined)
+    }
     let ok = true
     for (const row of profiles) {
       const chat = row.canonical_session

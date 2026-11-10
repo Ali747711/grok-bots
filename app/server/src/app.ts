@@ -8,6 +8,7 @@ import { restProxy } from './hermes/rest-proxy.js'
 import type { HermesToken } from './hermes/token.js'
 import { botEditRoutes } from './http/bot-edit-routes.js'
 import { botRoutes } from './http/bot-routes.js'
+import { sandboxRoutes } from './http/sandbox-routes.js'
 import { screenRoutes } from './http/screen-routes.js'
 import { routineRoutes } from './http/routine-routes.js'
 import { groupRoutes, type GroupRouteDeps } from './http/group-routes.js'
@@ -76,6 +77,7 @@ export function createApp(deps: AppDeps): Hono<CrewEnv> {
   app.route('/', botRoutes(deps.bots))
   app.route('/', botEditRoutes(deps.bots))
   app.route('/', screenRoutes(deps.bots))
+  app.route('/', sandboxRoutes(deps.bots))
   app.route('/', hookRoutes(deps.triggers?.hooks))
   app.route('/', routineRoutes(deps.routines, deps.now))
   app.route('/', groupRoutes(deps.groups))

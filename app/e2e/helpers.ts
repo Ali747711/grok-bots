@@ -1,5 +1,8 @@
 import { execFileSync } from 'node:child_process'
 import { createHmac } from 'node:crypto'
+import { lstatSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 
 import { type Page, expect } from '@playwright/test'
 
@@ -54,22 +57,105 @@ export async function waitIdle(page: Page, bot: string, timeoutMs = 120_000): Pr
   await expect.poll(async () => (await crewState(page)).bots.find(b => b.name === bot)?.status, { timeout: timeoutMs }).toBe('idle')
 }
 
+const E2E_BOT_RE = /^e2e\d+$/
+const SANDBOX_IMAGE = 'nousresearch/hermes-sandbox:desktop'
+const DOCKER_TIMEOUT_MS = 5000
+const CLEANUP_TIMEOUT_MS = 60_000
+
+/** The e2e runs on the VM, so docker is local: a fixed argv through execFileSync, never a shell. */
+const docker = (argv: readonly string[], timeout = DOCKER_TIMEOUT_MS): string =>
+  execFileSync('docker', [...argv], { encoding: 'utf8', timeout, killSignal: 'SIGKILL' }).trim()
+
+function assertTestBot(name: string): void {
+  if (!E2E_BOT_RE.test(name)) throw new Error('test sandboxes belong to e2e<digits> bots only')
+}
+
+/** Container ids carrying `hermes-profile=<bot>` (the label Hermes puts on a sandboxed bot's container). */
+export function containersOf(bot: string): string[] {
+  assertTestBot(bot)
+  return docker(['ps', '-aq', '--filter', `label=hermes-profile=${bot}`]).split('\n').filter(Boolean)
+}
+
+/** Ids of leftover cleanup-helper containers (label `crew-cleanup`), whatever bot they name. */
+export function cleanupContainers(): string[] {
+  return docker(['ps', '-aq', '--filter', 'label=crew-cleanup']).split('\n').filter(Boolean)
+}
+
+const isRealDir = (path: string): boolean => {
+  try {
+    return lstatSync(path).isDirectory()
+  } catch {
+    return false
+  }
+}
+
+/** True when `~/.hermes/profiles/<bot>/sandboxes/docker` exists as a real folder (not a symlink). */
+export const hasSandboxFolder = (bot: string): boolean => {
+  const dir = join(homedir(), '.hermes', 'profiles', bot, 'sandboxes')
+  return isRealDir(dir) && isRealDir(join(dir, 'docker'))
+}
+
+/**
+ * Remove a test bot's containers and its root-owned `sandboxes/docker` folder, so Hermes can delete the profile.
+ * The helper argv is the same as the server's `cleanupArgs` (app/server/src/sandbox/docker.ts).
+ */
+export function removeTestSandbox(name: string): void {
+  assertTestBot(name)
+  for (const id of containersOf(name)) docker(['rm', '-f', id])
+  if (!hasSandboxFolder(name)) return
+  const sandboxes = join(homedir(), '.hermes', 'profiles', name, 'sandboxes')
+  try {
+    docker(['image', 'inspect', SANDBOX_IMAGE])
+  } catch {
+    // `docker run` would download the 1.2 GB image unasked.
+    throw new Error('The sandbox image is not downloaded; refusing to let docker run pull it')
+  }
+  docker([
+    'run', '--rm', '--network', 'none', '--user', '0:0', '--label', `crew-cleanup=${name}`,
+    '--entrypoint', 'rm', '-v', `${sandboxes}:/s`, SANDBOX_IMAGE, '-rf', '/s/docker'
+  ], CLEANUP_TIMEOUT_MS)
+}
+
+/** Remove every container labelled for an `e2e<digits>` bot, including orphans of bots already gone. */
+function removeOrphanContainers(): void {
+  const rows = docker(['ps', '-a', '--filter', 'label=hermes-profile', '--format', '{{.ID}} {{.Label "hermes-profile"}}'])
+  for (const row of rows.split('\n')) {
+    const [id, bot] = row.trim().split(/\s+/)
+    if (id && bot && E2E_BOT_RE.test(bot)) docker(['rm', '-f', id])
+  }
+}
+
 /** Delete every profile whose handle is `e2e<digits>` (test-owned bots, incl. leftovers of a failed run). Nothing else is touched. */
 export async function deleteTestBots(): Promise<string[]> {
+  try {
+    removeOrphanContainers()
+  } catch {
+    // Docker may be absent on a machine that only runs the other specs; the profile delete below still goes on.
+  }
   const list = await hermesRest('GET', '/api/profiles')
   const rows = (list.body as { profiles?: { name: string }[] } | null)?.profiles ?? []
   const names = testBotNames(rows.map(r => r.name))
-  for (const name of names) await hermesRest('DELETE', `/api/profiles/${encodeURIComponent(name)}`)
+  for (const name of names) {
+    try {
+      removeTestSandbox(name)
+    } catch {
+      // Without Docker a never-sandboxed bot has nothing to clean; a sandboxed one is left for the next run.
+      // Hermes's own DELETE would fail on the root-owned folders and drop the bot from the roster (gotcha 24).
+      if (hasSandboxFolder(name)) continue
+    }
+    await hermesRest('DELETE', `/api/profiles/${encodeURIComponent(name)}`)
+  }
   return names
 }
 
 /** Create a bot through the New bot dialog with a chosen handle (test-owned: `e2e<digits>`), and wait until Crew opens it. */
-export async function createBotInDialog(page: Page, title: string, handle: string): Promise<void> {
+export async function createBotInDialog(page: Page, title: string, handle: string, opts: { sandbox?: boolean } = {}): Promise<void> {
   await page.goto(CREW)
   await page.getByRole('button', { name: '+ New bot', exact: true }).click()
   await page.getByLabel('Name', { exact: true }).fill(title)
   await page.getByRole('button', { name: 'Change handle', exact: true }).click()
   await page.getByLabel('Handle').fill(handle)
+  if (opts.sandbox) await page.getByRole('checkbox', { name: 'Run in a sandbox' }).click()
   await page.getByRole('button', { name: 'Create', exact: true }).click()
   await expect(page).toHaveURL(new RegExp(`/bots/${handle}$`), { timeout: 120_000 })
 }

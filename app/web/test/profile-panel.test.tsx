@@ -189,6 +189,16 @@ describe('ProfilePanel', () => {
     expect(fn.mock.calls.some(([u, i]) => u === '/crew/bots/dev' && i?.method === 'DELETE')).toBe(true)
   })
 
+  it('explains a sandbox cleanup failure when deleting', async () => {
+    stub({ del: () => json({ error: 'sandbox_cleanup_failed' }, 409) })
+    open()
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: 'Delete bot' }))
+    fireEvent.change(screen.getByLabelText('Type dev to confirm'), { target: { value: 'dev' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    expect(await screen.findByText("Crew couldn't remove Dev's sandbox files. Start Docker, or download the sandbox image again, then try again.")).toBeInTheDocument()
+  })
+
   it('has no delete for the primary bot', async () => {
     stub({ get: () => json(detail({ name: 'default', isPrimary: true, title: 'Hermes' })) })
     open(bot({ name: 'default', title: 'Hermes', isPrimary: true }))

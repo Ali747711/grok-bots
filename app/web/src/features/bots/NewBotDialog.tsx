@@ -10,6 +10,7 @@ import { AvatarPicker, type AvatarValue } from '@/features/avatars/AvatarPicker'
 import { createBot, finishBot } from './bots-api'
 import { describeCreateFailure } from './create-errors'
 import { ModelSelect } from './ModelSelect'
+import { SandboxChoice } from './SandboxChoice'
 import { NAME_MESSAGES, slugifyProfileName, validateBotName } from './slug'
 import type { CreateResult, ModelChoice } from './types'
 
@@ -105,6 +106,8 @@ function NewBotForm(props: Omit<NewBotDialogProps, 'open'>) {
   const [pickedType, setPickedType] = useState<AvatarType | null>(null)
   const [look, setLook] = useState<{ color?: string; photo?: string | null }>({})
   const [model, setModel] = useState<ModelChoice | null>(null)
+  const [sandbox, setSandbox] = useState(false)
+  const [sandboxReady, setSandboxReady] = useState(true)
   const flow = useCreateFlow(props)
 
   const handle = handleEdit ?? slugifyProfileName(name)
@@ -117,7 +120,7 @@ function NewBotForm(props: Omit<NewBotDialogProps, 'open'>) {
   const choice = { type: avatar.type, ...(avatar.color ? { color: avatar.color } : {}) }
   const forget = <T,>(set: (v: T) => void) => (v: T) => { set(v); flow.setFailure({}) }
 
-  const create = () => flow.run(() => createBot({ name: handle, title: finalTitle, mission, avatar: choice, ...image, ...(model ? { model } : {}) }))
+  const create = () => flow.run(() => createBot({ name: handle, title: finalTitle, mission, avatar: choice, ...image, ...(model ? { model } : {}), sandbox }))
   const finish = (botName: string) => flow.run(() => finishBot(botName, { avatar: choice, title: finalTitle, ...image }))
 
   return (
@@ -128,13 +131,14 @@ function NewBotForm(props: Omit<NewBotDialogProps, 'open'>) {
         mission={mission} onMission={setMission} avatar={avatar} onAvatar={next => setLook({ color: next.color, photo: next.photo })} onTypePick={setPickedType} model={model} onModel={setModel}
         onPhotoBusy={setPhotoBusy}
       />
+      <SandboxChoice checked={sandbox} onChange={forget(setSandbox)} onReadyChange={setSandboxReady} />
       {flow.failure.general && <p role="alert" className="text-sm text-destructive">{flow.failure.general}</p>}
       {flow.partial ? (
         <PartialNotice result={flow.partial} busy={flow.busy || photoBusy} onFinish={() => void finish(flow.partial!.name)} onOpen={() => { onOpenChange(false); onCreated(flow.partial!.name) }} />
       ) : (
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button type="button" disabled={flow.busy || photoBusy || !check.ok} onClick={() => void create()}>Create</Button>
+          <Button type="button" disabled={flow.busy || photoBusy || !check.ok || !sandboxReady} onClick={() => void create()}>Create</Button>
         </div>
       )}
     </>

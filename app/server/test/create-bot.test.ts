@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
+import { OFF_MARKER } from '../src/bots/sandbox-state.js'
+
 import { composeSoul } from '../src/bots/soul.js'
 import { type BotDraft, type BotDeps, createBot, CreateBotError, finishBot } from '../src/bots/create.js'
 import { BotNotFoundError } from '../src/bots/ui-meta.js'
@@ -11,23 +13,50 @@ const draft: BotDraft = { name: 'scout', title: 'Researcher', mission: 'Find pap
 let rpc: FakeRpc
 let refreshes: number
 let deps: BotDeps
+type Obj = Record<string, unknown>
+
+/** Per-bot raw config: GET returns it, PUT deep-merges dicts and replaces arrays like Hermes. */
+class ConfigRest {
+  configs = new Map<string, Obj>()
+  puts: { profile: string; config: Obj }[] = []
+  request = async <T>(method: string, _path: string, opts: { query?: Record<string, string>; body?: unknown } = {}): Promise<T> => {
+    const profile = opts.query?.profile ?? ''
+    if (method === 'GET') return structuredClone(this.configs.get(profile) ?? {}) as T
+    const config = (opts.body as { config: Obj }).config
+    this.puts.push({ profile, config })
+    const plain = (x: unknown): x is Obj => !!x && typeof x === 'object' && !Array.isArray(x)
+    const merge = (into: Obj, patch: Obj): Obj => Object.fromEntries([...new Set([...Object.keys(into), ...Object.keys(patch)])].map(k =>
+      [k, k in patch ? (plain(patch[k]) && plain(into[k]) ? merge(into[k], patch[k]) : patch[k]) : into[k]]))
+    this.configs.set(profile, merge(this.configs.get(profile) ?? {}, config))
+    return { ok: true } as T
+  }
+}
+let rest: ConfigRest
+const sandboxMeta = (): unknown => (rpc.rows.get('scout')?.meta as Obj | undefined)?.sandbox
+const agentOf = (): Obj | undefined => rest.configs.get('scout')?.agent as Obj | undefined
+const terminalOf = (): Obj => rest.configs.get('scout')?.terminal as Obj
+
 beforeEach(() => {
   rpc = new FakeRpc()
+  rpc.meta('default', { title: 'Hermes' }, 1)
+  rest = new ConfigRest()
+  // Hermes's clone copies the primary's config; here the primary is plain.
+  rest.configs.set('scout', {})
   refreshes = 0
-  deps = { rpc: rpc.call, rest: { request: async () => { throw new Error('rest unused') } }, refresh: async () => { refreshes += 1 }, now: () => 1234 }
+  deps = { rpc: rpc.call, rest: rest as unknown as BotDeps['rest'], refresh: async () => { refreshes += 1 }, now: () => 1234 }
 })
 
 describe('createBot', () => {
   it('calls hermes in the official order with the official params', async () => {
     const result = await createBot(deps, draft)
-    expect(rpc.methods()).toEqual(['profiles.create', 'profiles.list', 'profiles.configure', 'setup.runtime_check', 'session.create'])
+    expect(rpc.methods()).toEqual(['profiles.create', 'profiles.list', 'profiles.list', 'profiles.configure', 'setup.runtime_check', 'session.create'])
     expect(rpc.params('profiles.create')).toEqual({ name: 'scout', description: 'Find papers', clone_from: 'default',
       share_auth: true, no_skills: false, soul: composeSoul({ name: 'scout', title: 'Researcher', mission: 'Find papers' }) })
     expect(rpc.of('profiles.create')[0]!.timeoutMs).toBe(120_000)
     expect(rpc.params('session.create')).toEqual({ profile: 'scout', title: 'Bot Chat', hidden: true, follow_profile_config: true })
     expect(rpc.params('setup.runtime_check')).toEqual({ profile: 'scout' })
-    expect((rpc.configures[0]!.ui_meta as Record<string, unknown>)['hermes-bots']).toEqual({ crewAvatar: { type: 'square', color: '#7c3aed' }, shape: 'squircle', color: '#7c3aed', custom: true, imageKind: 'shape', title: 'Researcher', created: 1234 })
-    expect(result).toEqual({ name: 'scout', complete: true, steps: { profile: 'ok', look: 'ok', avatar: 'skipped', chat: 'ok' }, needsModel: false })
+    expect((rpc.configures[0]!.ui_meta as Record<string, unknown>)['hermes-bots']).toEqual({ crewAvatar: { type: 'square', color: '#7c3aed' }, shape: 'squircle', color: '#7c3aed', custom: true, imageKind: 'shape', title: 'Researcher', created: 1234, sandbox: OFF_MARKER })
+    expect(result).toEqual({ name: 'scout', complete: true, steps: { profile: 'ok', sandbox: 'ok', look: 'ok', avatar: 'skipped', chat: 'ok' }, needsModel: false })
     expect(refreshes).toBe(1)
   })
 
@@ -35,7 +64,7 @@ describe('createBot', () => {
     const image = 'data:image/png;base64,AAAA'
     const result = await createBot(deps, { ...draft, mission: '', image, model: { provider: 'openrouter', model: 'x/y' } })
     expect(rpc.params('profiles.create')).toMatchObject({ description: '', model: 'x/y', provider: 'openrouter' })
-    expect(rpc.methods()).toEqual(['profiles.create', 'profiles.list', 'profiles.configure', 'profiles.set_asset', 'setup.runtime_check', 'session.create'])
+    expect(rpc.methods()).toEqual(['profiles.create', 'profiles.list', 'profiles.list', 'profiles.configure', 'profiles.set_asset', 'setup.runtime_check', 'session.create'])
     expect(rpc.params('profiles.set_asset')).toEqual({ name: 'scout', asset: 'avatar', data: image })
     expect(((rpc.configures[0]!.ui_meta as Record<string, unknown>)['hermes-bots'] as Record<string, unknown>).imageKind).toBe('photo')
     expect(result.steps.avatar).toBe('ok')
@@ -50,7 +79,7 @@ describe('createBot', () => {
   it('reports needsModel when the runtime check says not ok, and ignores a failing check', async () => {
     rpc.handlers.set('setup.runtime_check', () => ({ ok: false }))
     expect((await createBot(deps, draft)).needsModel).toBe(true)
-    rpc = new FakeRpc(); deps = { ...deps, rpc: rpc.call }
+    rpc = new FakeRpc(); rpc.meta('default', {}, 1); deps = { ...deps, rpc: rpc.call }
     rpc.fail('setup.runtime_check', new Error('boom'))
     const result = await createBot(deps, draft)
     expect(result.needsModel).toBe(false)
@@ -60,7 +89,7 @@ describe('createBot', () => {
   it('keeps going when the look fails and reports it', async () => {
     rpc.fail('profiles.configure', new Error('disk full'))
     const result = await createBot(deps, draft)
-    expect(result.steps).toEqual({ profile: 'ok', look: 'failed', avatar: 'skipped', chat: 'ok' })
+    expect(result.steps).toEqual({ profile: 'ok', sandbox: 'ok', look: 'failed', avatar: 'skipped', chat: 'ok' })
     expect(result.complete).toBe(false)
     expect(result.error).toEqual({ step: 'look', message: 'disk full' })
     expect(rpc.methods()).toContain('session.create')
@@ -86,6 +115,98 @@ describe('createBot', () => {
     await expect(createBot(deps, draft)).rejects.toEqual(new CreateBotError('bad_name', 'Invalid profile name'))
     rpc.fail('profiles.create', new HermesRpcError(5062, 'internal'))
     await expect(createBot(deps, draft)).rejects.toBeInstanceOf(HermesRpcError)
+  })
+})
+
+describe('createBot sandbox choice', () => {
+  const primaryOn = (added: boolean): void => {
+    rpc.meta('default', { title: 'Hermes', sandbox: { on: true, addedBrowserDisable: added } }, 2)
+    rest.configs.set('scout', {
+      terminal: { backend: 'docker', container_memory: 3072, docker_run_as_host_user: true },
+      agent: { disabled_toolsets: ['tts', 'browser'] }
+    })
+  }
+
+  it('writes the choice explicitly: nothing when unticked from a local clone, docker + 3072 + host user + browser when ticked', async () => {
+    await createBot(deps, draft)
+    expect(rest.puts).toEqual([])
+    expect(sandboxMeta()).toEqual(OFF_MARKER)
+    rpc.rows.set('scout', {}); rest.puts = []; rest.configs.set('scout', {})
+    await createBot(deps, { ...draft, sandbox: true })
+    expect(rest.puts).toEqual([{ profile: 'scout', config: {
+      terminal: { backend: 'docker', container_memory: 3072, docker_run_as_host_user: true },
+      agent: { disabled_toolsets: ['browser'] }
+    } }])
+    expect(sandboxMeta()).toEqual({ on: true, addedBrowserDisable: true })
+  })
+
+  it('leaves a cloned non-docker backend alone when unticked', async () => {
+    rest.configs.set('scout', { terminal: { backend: 'ssh' } })
+    await createBot(deps, draft)
+    expect(rest.puts).toEqual([])
+    expect(terminalOf().backend).toBe('ssh')
+  })
+
+  it('removes a Crew-added browser cloned from a sandboxed primary when unticked', async () => {
+    primaryOn(true)
+    await createBot(deps, draft)
+    expect(terminalOf().backend).toBe('local')
+    expect(agentOf()?.disabled_toolsets).toEqual(['tts'])
+    expect(sandboxMeta()).toEqual(OFF_MARKER)
+  })
+
+  it("keeps the primary's Crew browser entry and marker when ticked from a sandboxed primary", async () => {
+    primaryOn(true)
+    await createBot(deps, { ...draft, sandbox: true })
+    expect(agentOf()?.disabled_toolsets).toEqual(['tts', 'browser'])
+    expect(sandboxMeta()).toEqual({ on: true, addedBrowserDisable: true })
+  })
+
+  it('keeps a browser entry the user set on the primary', async () => {
+    primaryOn(false)
+    await createBot(deps, draft)
+    expect(agentOf()?.disabled_toolsets).toEqual(['tts', 'browser'])
+    expect(rest.puts[0]!.config).toEqual({ terminal: { backend: 'local' } })
+    expect(sandboxMeta()).toEqual(OFF_MARKER)
+    rpc.rows.set('scout', {})
+    await createBot(deps, { ...draft, sandbox: true })
+    expect(sandboxMeta()).toEqual({ on: true, addedBrowserDisable: false })
+    expect(agentOf()?.disabled_toolsets).toEqual(['tts', 'browser'])
+  })
+
+  it('reads the primary marker, never the clone', async () => {
+    primaryOn(true)
+    rpc.meta('scout', { sandbox: { on: true, addedBrowserDisable: false } }, 1)
+    await createBot(deps, draft)
+    expect(agentOf()?.disabled_toolsets).toEqual(['tts'])
+  })
+
+  it('stores the marker with the look, so a failed look still leaves the bot unfinished', async () => {
+    rpc.rejectWrites = true
+    const result = await createBot(deps, { ...draft, sandbox: true })
+    expect(result.steps).toMatchObject({ sandbox: 'ok', look: 'failed' })
+    expect(rpc.of('profiles.configure').every(c => 'ui_meta' in c.params)).toBe(true)
+    expect(rpc.rows.get('scout')?.rev).toBeUndefined()
+    expect(rpc.rows.get('scout')?.meta).toBeUndefined()
+  })
+
+  it('reports a failed sandbox step and still runs the later steps', async () => {
+    const failing = { request: async () => { throw new Error('config down') } }
+    deps = { ...deps, rest: failing as unknown as BotDeps['rest'] }
+    const result = await createBot(deps, { ...draft, image: 'data:image/png;base64,AAAA' })
+    expect(result.steps).toEqual({ profile: 'ok', sandbox: 'failed', look: 'ok', avatar: 'ok', chat: 'ok' })
+    expect(result.complete).toBe(false)
+    expect(result.error).toEqual({ step: 'sandbox', message: 'config down' })
+    expect(rpc.methods()).toContain('session.create')
+    expect((rpc.rows.get('scout')?.meta as Obj).sandbox).toBeUndefined()
+    expect(refreshes).toBe(1)
+  })
+
+  it('drops the roster sandbox cache for the new bot', async () => {
+    const changed: string[] = []
+    deps = { ...deps, sandbox: { onChanged: (bot: string) => { changed.push(bot) } } as unknown as BotDeps['sandbox'] }
+    await createBot(deps, draft)
+    expect(changed).toEqual(['scout'])
   })
 })
 

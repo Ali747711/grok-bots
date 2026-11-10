@@ -1,4 +1,4 @@
-import { dirname, join, resolve } from 'node:path'
+import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { z } from 'zod'
@@ -12,6 +12,8 @@ export interface CrewConfig {
   readonly stateDir: string
   /** Hermes dotenv file; only the OpenRouter key is read from it (credit pill). */
   readonly hermesEnvFile: string
+  /** Hermes home folder (`~/.hermes`); a bot's sandbox files live under `profiles/<bot>/sandboxes`. */
+  readonly hermesHome: string
   /** Directory with the built web app (`index.html`, `assets/`). */
   readonly webDist: string
   readonly allowedHosts: readonly string[]
@@ -29,6 +31,7 @@ const envSchema = z.object({
   CREW_STATE_DIR: z.string().min(1).optional(),
   CREW_HERMES_TOKEN_FILE: z.string().min(1).optional(),
   CREW_HERMES_ENV_FILE: z.string().min(1).optional(),
+  CREW_HERMES_HOME: z.string().min(1).optional(),
   CREW_WEB_DIST: z.string().min(1).optional()
 })
 
@@ -38,6 +41,11 @@ const DEFAULT_WEB_DIST = resolve(dirname(fileURLToPath(import.meta.url)), '../..
 function expandHome(path: string, home: string): string {
   return path === '~' || path.startsWith('~/') ? join(home, path.slice(1)) : path
 }
+
+// The path becomes a `-v <path>:...` source for the cleanup helper, so `:` and `,` would change its meaning.
+const hermesHomeSchema = z.string()
+  .refine(isAbsolute, 'CREW_HERMES_HOME must be an absolute path')
+  .refine(path => !/[:,]/.test(path), 'CREW_HERMES_HOME must not contain a colon or comma')
 
 /** Build the config from the environment; throws on invalid values so the service fails fast. */
 export function loadConfig(env: NodeJS.ProcessEnv): CrewConfig {
@@ -52,6 +60,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): CrewConfig {
     hermesUrl: parsed.CREW_HERMES_URL ?? DEFAULT_HERMES_URL,
     hermesTokenFile: expandHome(parsed.CREW_HERMES_TOKEN_FILE ?? '~/.hermes/webapp/session-token', home),
     hermesEnvFile: expandHome(parsed.CREW_HERMES_ENV_FILE ?? '~/.hermes/.env', home),
+    hermesHome: hermesHomeSchema.parse(expandHome(parsed.CREW_HERMES_HOME ?? '~/.hermes', home)),
     stateDir: expandHome(parsed.CREW_STATE_DIR ?? '~/.config/crew', home),
     webDist: expandHome(parsed.CREW_WEB_DIST ?? DEFAULT_WEB_DIST, home),
     allowedHosts: hosts,

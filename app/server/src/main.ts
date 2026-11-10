@@ -12,9 +12,13 @@ import { connectGateway, createGatewayClient } from './hermes/gateway-client.js'
 import { createHermesRest } from './hermes/rest-client.js'
 import { HermesToken } from './hermes/token.js'
 import { attachWsProxy } from './hermes/ws-proxy.js'
+import { readRawConfig } from './bots/sandbox.js'
+import { createSandboxRoster } from './bots/sandbox-roster.js'
 import { createGroupRpc } from './groups/group-rpc.js'
 import { startGroupWatcher } from './groups/group-watcher.js'
 import { log } from './log.js'
+import { createDocker, createDockerRunner } from './sandbox/docker.js'
+import { createImagePuller } from './sandbox/pull.js'
 import { createRoutineService } from './routines/service.js'
 import { SettingsStore } from './settings/settings-store.js'
 import { composeCrewState } from './state/crew-state.js'
@@ -36,6 +40,9 @@ export async function start(): Promise<Server> {
   const client = createGatewayClient(gateway, code => {
     for (const listener of closeListeners) listener(code)
   })
+  const rest = createHermesRest({ hermesUrl: config.hermesUrl, token })
+  const roster = createSandboxRoster(name => readRawConfig({ rest }, name), Date.now)
+  const runner = createDockerRunner()
   const watcher = startWatcher({
     client,
     connect: async () => {
@@ -54,10 +61,10 @@ export async function start(): Promise<Server> {
       }
     },
     settings,
+    sandboxStates: roster.states,
     now: Date.now,
     reconnectDelayMs: attempt => Math.min(30_000, 1000 * 2 ** attempt)
   })
-  const rest = createHermesRest({ hermesUrl: config.hermesUrl, token })
   const groupRpc = createGroupRpc(watcher.request)
   const connectionListeners = new Set<(connected: boolean) => void>()
   let wasConnected = watcher.state().hermes === 'connected'
@@ -86,7 +93,8 @@ export async function start(): Promise<Server> {
     hookUrl: (id: string) => `http://${config.host}:${config.port}/hooks/${id}`,
     now: Date.now, newTriggerId: () => randomBytes(16).toString('hex'), newSecret: () => randomBytes(32).toString('hex'), newId: randomUUID
   } : undefined
-  const app = createApp({ config, secrets, tickets: new TicketStore(), now: Date.now, token, fetchUpstream: fetch, watcher: crewState, groups: { rpc: groupRpc, groups: groupWatcher, roster: () => crewState.state().bots.map(b => ({ name: b.name, title: b.title, displayName: b.displayName })), newId: randomUUID, sleep: ms => new Promise(resolve => setTimeout(resolve, ms)) }, settings, bots: { rpc: watcher.request, rest, refresh: watcher.refresh, now: Date.now }, routines, triggers, usage: createUsageSource({ envFile: config.hermesEnvFile, fetch, now: Date.now }) })
+  const sandbox = { docker: createDocker(runner), puller: createImagePuller(runner), hermesHome: config.hermesHome, groups: () => crewState.state().groups, onChanged: roster.invalidate }
+  const app = createApp({ config, secrets, tickets: new TicketStore(), now: Date.now, token, fetchUpstream: fetch, watcher: crewState, groups: { rpc: groupRpc, groups: groupWatcher, roster: () => crewState.state().bots.map(b => ({ name: b.name, title: b.title, displayName: b.displayName })), newId: randomUUID, sleep: ms => new Promise(resolve => setTimeout(resolve, ms)) }, settings, bots: { rpc: watcher.request, rest, refresh: watcher.refresh, now: Date.now, sandbox }, routines, triggers, usage: createUsageSource({ envFile: config.hermesEnvFile, fetch, now: Date.now }) })
   const server = serve({ fetch: app.fetch, hostname: config.host, port: config.port }, info => {
     log.info('crew listening', { host: config.host, port: info.port })
   }) as Server

@@ -21,7 +21,7 @@ function stub(handler: () => Promise<Response>) {
 }
 const posted = (fn: ReturnType<typeof stub>) => JSON.parse(String((fn.mock.calls.find(([, i]) => (i as RequestInit | undefined)?.method === 'POST')![1] as RequestInit).body))
 const onCreated = vi.fn()
-const renderDialog = () => render(<AddTriggerDialog open onOpenChange={() => {}} bot="dev" routine={routine} onCreated={onCreated} />)
+const renderDialog = (sandboxed = false) => render(<AddTriggerDialog open onOpenChange={() => {}} bot="dev" routine={routine} onCreated={onCreated} sandboxed={sandboxed} />)
 const name = (v: string) => fireEvent.change(screen.getByLabelText('Name'), { target: { value: v } })
 const create = () => fireEvent.click(screen.getByRole('button', { name: 'Create' }))
 const writeText = vi.fn(() => Promise.resolve())
@@ -30,6 +30,15 @@ beforeEach(() => { Object.defineProperty(navigator, 'clipboard', { value: { writ
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
 
 describe('AddTriggerDialog', () => {
+  it('shows the sandbox tip in Add trigger only for bots not sandboxed', () => {
+    const tip = 'Tip: turn on the sandbox for bots that act on outside events'
+    const { unmount } = renderDialog(false)
+    expect(screen.getByText(tip)).toBeInTheDocument()
+    unmount()
+    renderDialog(true)
+    expect(screen.queryByText(tip)).toBeNull()
+  })
+
   it('creates a GitHub trigger from checkboxes, other types and actions', async () => {
     const fn = stub(() => json(created(), 201))
     renderDialog()
@@ -144,12 +153,12 @@ describe('AddTriggerDialog', () => {
 
   it('forgets the secret when the dialog closes', async () => {
     stub(() => json(created(), 201))
-    const view = render(<AddTriggerDialog open onOpenChange={() => {}} bot="dev" routine={routine} onCreated={onCreated} />)
+    const view = render(<AddTriggerDialog open onOpenChange={() => {}} bot="dev" routine={routine} onCreated={onCreated} sandboxed={false} />)
     name('Hooks')
     create()
     await screen.findByText(SECRET)
-    view.rerender(<AddTriggerDialog open={false} onOpenChange={() => {}} bot="dev" routine={routine} onCreated={onCreated} />)
-    view.rerender(<AddTriggerDialog open onOpenChange={() => {}} bot="dev" routine={routine} onCreated={onCreated} />)
+    view.rerender(<AddTriggerDialog open={false} onOpenChange={() => {}} bot="dev" routine={routine} onCreated={onCreated} sandboxed={false} />)
+    view.rerender(<AddTriggerDialog open onOpenChange={() => {}} bot="dev" routine={routine} onCreated={onCreated} sandboxed={false} />)
     expect(screen.queryByText(SECRET)).toBeNull()
     expect(screen.getByLabelText('Name')).toHaveValue('')
   })

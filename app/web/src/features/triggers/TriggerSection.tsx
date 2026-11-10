@@ -12,11 +12,12 @@ interface TriggerSectionProps {
   bot: string
   routine: RoutineView
   triggers: readonly TriggerView[]
+  sandboxed: boolean
   onChanged: () => void
 }
 
 /** The triggers of one routine, behind a "Triggers (n)" disclosure, with Add trigger. */
-export function TriggerSection({ bot, routine, triggers, onChanged }: TriggerSectionProps) {
+export function TriggerSection({ bot, routine, triggers, sandboxed, onChanged }: TriggerSectionProps) {
   const [open, setOpen] = useState(false)
   const [adding, setAdding] = useState(false)
 
@@ -37,7 +38,7 @@ export function TriggerSection({ bot, routine, triggers, onChanged }: TriggerSec
           <Button type="button" size="sm" variant="ghost" onClick={() => setAdding(true)} className={`self-start ${GHOST}`}>Add trigger</Button>
         </>
       )}
-      <AddTriggerDialog open={adding} onOpenChange={setAdding} bot={bot} routine={routine} onCreated={onChanged} />
+      <AddTriggerDialog open={adding} onOpenChange={setAdding} bot={bot} routine={routine} sandboxed={sandboxed} onCreated={onChanged} />
     </div>
   )
 }

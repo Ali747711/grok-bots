@@ -1,4 +1,5 @@
 import { type CrewAvatar, readCrewAvatar } from '../bots/avatar.js'
+import type { SandboxState } from '../bots/sandbox-state.js'
 import type { GroupsState } from '../groups/types.js'
 import type { CrewSettings } from '../settings/settings-store.js'
 import type { PendingRequest } from './pending-store.js'
@@ -27,6 +28,8 @@ export interface BotView {
   /** A non-primary bot whose look was never written (create stopped half-way); finish it. */
   readonly setupIncomplete: boolean
   readonly created: number | null
+  /** Terminal sandbox state from the roster cache; `off` until a read says otherwise. */
+  readonly sandbox: SandboxState
 }
 
 export type PendingView = Omit<PendingRequest, 'settled'> & {
@@ -80,9 +83,17 @@ export class BotStateTracker {
   private readonly sessionProfile = new Map<string, string>()
   private readonly working = new Set<string>()
   private readonly generations = new Map<string, number>()
+  private sandboxes: ReadonlyMap<string, SandboxState> = new Map()
 
   applyProfiles(rows: readonly ProfileInput[]): void {
     this.profiles = rows
+  }
+
+  /** Returns true when any known bot's state differs from the one held before. */
+  applySandbox(states: ReadonlyMap<string, SandboxState>): boolean {
+    const differs = this.profiles.some(row => (states.get(row.name) ?? 'off') !== (this.sandboxes.get(row.name) ?? 'off'))
+    this.sandboxes = states
+    return differs
   }
 
   markSubscribed(profile: string, sessionId: string): void {
@@ -134,7 +145,8 @@ export class BotStateTracker {
         status,
         hidden: meta.hidden === true,
         setupIncomplete: !isPrimary && !(num(row.ui_meta_revisions?.['hermes-bots']) ?? 0),
-        created: num(meta.created) ?? null
+        created: num(meta.created) ?? null,
+        sandbox: this.sandboxes.get(row.name) ?? 'off'
       }
     })
   }

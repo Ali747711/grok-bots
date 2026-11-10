@@ -5,6 +5,8 @@ import { CSRF_COOKIE } from '../src/auth/routes.js'
 import { signSession } from '../src/auth/session-cookie.js'
 import type { BotDeps } from '../src/bots/create.js'
 import { HermesRpcError, HermesUnavailableError } from '../src/hermes/errors.js'
+import type { SandboxDeps } from '../src/bots/sandbox.js'
+import { DEFAULT_IMAGE, type Docker } from '../src/sandbox/docker.js'
 import { FakeRpc } from './fake-rpc.js'
 import { HOST, makeDeps, ORIGIN } from './helpers.js'
 
@@ -17,6 +19,8 @@ const headers = {
 const body = { name: 'scout', title: 'Researcher', mission: 'Find papers', avatar: { type: 'square', color: '#7c3aed' } }
 
 let rpc: FakeRpc
+let puts: unknown[]
+let configGets: string[]
 let bots: BotDeps
 let current: ReturnType<typeof createApp>
 const app = () => current
@@ -25,7 +29,14 @@ const post = (path: string, payload: unknown, extra: Record<string, string> = {}
 
 beforeEach(() => {
   rpc = new FakeRpc()
-  bots = { rpc: rpc.call, rest: { request: async () => { throw new Error('unused') } }, refresh: async () => undefined, now: () => 1 }
+  rpc.meta('default', { title: 'Hermes' }, 1)
+  puts = []
+  configGets = []
+  bots = { rpc: rpc.call, rest: { request: async (method: string, _path: string, opts: { query?: Record<string, unknown>; body?: unknown } = {}) => {
+    if (method === 'GET') { configGets.push(String(opts.query?.profile)); return {} }
+    puts.push(opts.body)
+    return { ok: true }
+  } } as unknown as BotDeps['rest'], refresh: async () => undefined, now: () => 1 }
   current = createApp({ ...base, bots })
 })
 
@@ -34,6 +45,50 @@ describe('POST /crew/bots', () => {
     const res = await post('/crew/bots', body)
     expect(res.status).toBe(201)
     expect(await res.json()).toMatchObject({ name: 'scout', complete: true, steps: { profile: 'ok', look: 'ok', chat: 'ok' } })
+  })
+
+  it('sends sandbox false by default', async () => {
+    expect((await post('/crew/bots', body)).status).toBe(201)
+    expect(puts).toEqual([])
+    expect((rpc.configures[0]!.ui_meta as Record<string, Record<string, unknown>>)['hermes-bots']!.sandbox).toEqual({ on: false, addedBrowserDisable: false })
+  })
+
+  describe('sandbox: true', () => {
+    const withDocker = (status: string, present: boolean | Error): void => {
+      const docker = { status: async () => status, imagePresent: async () => { if (present instanceof Error) throw present; return present } }
+      bots = { ...bots, sandbox: { docker: docker as unknown as Docker } as unknown as SandboxDeps }
+      current = createApp({ ...base, bots })
+    }
+
+    it('refuses with 409 docker_unavailable or image_missing before profiles.create', async () => {
+      const refuse = async (error: string): Promise<void> => {
+        const res = await post('/crew/bots', { ...body, sandbox: true })
+        expect(res.status).toBe(409)
+        expect(await res.json()).toEqual({ error })
+        expect(rpc.methods()).toEqual([])
+        expect(puts).toEqual([])
+      }
+      await refuse('docker_unavailable')
+      withDocker('down', true)
+      await refuse('docker_unavailable')
+      withDocker('missing', true)
+      await refuse('docker_unavailable')
+      withDocker('ok', false)
+      await refuse('image_missing')
+      expect(configGets).toEqual(['default', 'default', 'default'])
+    })
+
+    it('creates the sandboxed bot when docker answers and the image is present', async () => {
+      withDocker('ok', true)
+      const res = await post('/crew/bots', { ...body, sandbox: true })
+      expect(res.status).toBe(201)
+      expect(puts).toEqual([{ config: { terminal: { backend: 'docker', container_memory: 3072, docker_run_as_host_user: true }, agent: { disabled_toolsets: ['browser'] } } }])
+      expect(DEFAULT_IMAGE).toContain('hermes-sandbox')
+    })
+
+    it('rejects a non-boolean sandbox', async () => {
+      expect((await post('/crew/bots', { ...body, sandbox: 'yes' })).status).toBe(400)
+    })
   })
 
   it('stores the avatar with its hermes shape and colour, and rejects an unknown type', async () => {

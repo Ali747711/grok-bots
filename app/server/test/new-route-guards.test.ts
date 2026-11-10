@@ -32,7 +32,10 @@ const MUTATING: readonly (readonly [string, string])[] = [
   ['PATCH', `/crew/triggers/${'a'.repeat(32)}`],
   ['POST', `/crew/triggers/${'a'.repeat(32)}/secret`],
   ['POST', `/crew/triggers/${'a'.repeat(32)}/test`],
-  ['DELETE', `/crew/triggers/${'a'.repeat(32)}`]
+  ['DELETE', `/crew/triggers/${'a'.repeat(32)}`],
+  ['PUT', '/crew/bots/scout/sandbox'],
+  ['POST', '/crew/bots/scout/sandbox/reset'],
+  ['POST', '/crew/sandbox/image/pull']
 ]
 
 function app() {

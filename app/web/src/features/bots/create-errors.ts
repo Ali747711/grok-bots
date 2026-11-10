@@ -15,6 +15,8 @@ export function describeCreateFailure(error: unknown): CreateFailure {
   const code = error.body?.error
   const message = typeof error.body?.message === 'string' ? error.body.message : null
   if (error.status === 409 && code === 'name_taken') return { handle: 'That handle is taken' }
+  if (error.status === 409 && code === 'docker_unavailable') return { general: "Docker isn't available on this computer" }
+  if (error.status === 409 && code === 'image_missing') return { general: "The sandbox image isn't downloaded" }
   if (error.status === 409) return { general: 'That bot is still being created. Wait a moment.' }
   if (error.status === 400 && code === 'bad_name') return { handle: message ?? 'Hermes does not accept that handle' }
   if (error.status === 413) return { general: 'That photo is too large' }

@@ -14,6 +14,15 @@ interface DeleteBotDialogProps {
   onDeleted: () => void
 }
 
+function deleteFailure(e: unknown, title: string): string {
+  if (!(e instanceof CrewApiError)) return 'Could not delete the bot. Try again.'
+  if (e.status === 503) return 'Hermes is offline'
+  if (e.status === 409 && e.body?.error === 'sandbox_cleanup_failed') {
+    return `Crew couldn't remove ${title}'s sandbox files. Start Docker, or download the sandbox image again, then try again.`
+  }
+  return 'Could not delete the bot. Try again.'
+}
+
 function DeleteForm({ name, title, onOpenChange, onDeleted }: Omit<DeleteBotDialogProps, 'open'>) {
   const [typed, setTyped] = useState('')
   const [busy, setBusy] = useState(false)
@@ -27,7 +36,7 @@ function DeleteForm({ name, title, onOpenChange, onDeleted }: Omit<DeleteBotDial
       onOpenChange(false)
       onDeleted()
     } catch (e) {
-      setError(e instanceof CrewApiError && e.status === 503 ? 'Hermes is offline' : 'Could not delete the bot. Try again.')
+      setError(deleteFailure(e, title))
     } finally {
       setBusy(false)
     }
