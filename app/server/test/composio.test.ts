@@ -225,6 +225,15 @@ describe('composio client', () => {
     expect(JSON.parse(String(made.calls[1].init.body))).toEqual({ toolkit: { slug: 'github' }, auth_config: { type: 'use_composio_managed_auth' } })
   })
 
+  it('maps a 4xx from creating the auth config to app_unsupported, keeping 401 as key_rejected', async () => {
+    const unsupported = harness([{ body: { items: [] } }, { status: 400, body: { error: { message: 'x' } } }])
+    expect(await code(unsupported.composio.managedAuthConfig('weird'))).toBe('app_unsupported')
+    const rejected = harness([{ body: { items: [] } }, { status: 401 }])
+    expect(await code(rejected.composio.managedAuthConfig('weird'))).toBe('key_rejected')
+    const down = harness([{ body: { items: [] } }, { status: 500 }])
+    expect(await code(down.composio.managedAuthConfig('weird'))).toBe('composio_unavailable')
+  })
+
   it('lists only accounts of this user and maps their status', async () => {
     const { calls, composio } = harness([{ body: { items: [
       { id: 'c1', status: 'ACTIVE', user_id: 'u', toolkit: { slug: 'github' } },

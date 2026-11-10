@@ -97,6 +97,7 @@ describe('connector routes', () => {
       [new AppsRefusedError('level_unavailable'), 409, 'level_unavailable'],
       [new AppsRefusedError('unknown_app'), 400, 'unknown_app'],
       [new AppsRefusedError('no_key'), 409, 'no_key'],
+      [new ComposioError('app_unsupported'), 409, 'app_unsupported'],
       [new AlreadyConnectedError(), 409, 'already_connected'],
       [new HermesUnavailableError(), 503, 'hermes_offline'],
       [new HermesRestError(404, 'x'), 404, 'not_found'],

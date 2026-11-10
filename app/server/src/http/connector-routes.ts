@@ -32,7 +32,7 @@ const codeOf = (error: string, status: Failure['status']): Failure => ({ status,
 /** Codes only, never a message: nothing an upstream said can reach a reply. */
 export function connectorFailure(error: unknown, route: string): Failure {
   if (error instanceof ComposioError || error instanceof AppsRefusedError) {
-    const status = { no_key: 409, key_rejected: 409, composio_unavailable: 502, not_found: 404, level_unavailable: 409, unknown_app: 400 } as const
+    const status = { no_key: 409, key_rejected: 409, composio_unavailable: 502, not_found: 404, app_unsupported: 409, level_unavailable: 409, unknown_app: 400 } as const
     return codeOf(error.code, status[error.code])
   }
   if (error instanceof AlreadyConnectedError) return codeOf('already_connected', 409)

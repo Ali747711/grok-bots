@@ -6,7 +6,7 @@ export const COMPOSIO_API = 'https://backend.composio.dev/api/v3.1'
 export const COMPOSIO_TIMEOUT_MS = 15_000
 const MAX_TOOL_PAGES = 10
 
-export type ComposioErrorCode = 'no_key' | 'key_rejected' | 'composio_unavailable' | 'not_found'
+export type ComposioErrorCode = 'no_key' | 'key_rejected' | 'composio_unavailable' | 'not_found' | 'app_unsupported'
 
 /** Carries a code only: no key, URL or upstream body can reach a message. */
 export class ComposioError extends Error {
@@ -115,7 +115,8 @@ const unavailable = () => new ComposioError('composio_unavailable')
 
 export function createComposio(deps: { readonly fetch: typeof fetch; readonly key: () => string | null }): Composio {
   async function send<T>(
-    call: string, key: string | null, method: string, path: string, schema: z.ZodType<T> | null, body?: unknown
+    call: string, key: string | null, method: string, path: string, schema: z.ZodType<T> | null, body?: unknown,
+    clientError?: ComposioErrorCode
   ): Promise<T> {
     if (key === null) throw new ComposioError('no_key')
     const headers: Record<string, string> = { 'x-api-key': key, accept: 'application/json' }
@@ -132,6 +133,7 @@ export function createComposio(deps: { readonly fetch: typeof fetch; readonly ke
       status = res.status
       if (status === 401 || status === 403) throw new ComposioError('key_rejected')
       if (status === 404) throw new ComposioError('not_found')
+      if (clientError && status >= 400 && status < 500) throw new ComposioError(clientError)
       if (!res.ok) throw unavailable()
       return schema === null ? (undefined as T) : schema.parse(await res.json())
     } catch (err) {
@@ -146,8 +148,8 @@ export function createComposio(deps: { readonly fetch: typeof fetch; readonly ke
   }
 
   const get = <T>(call: string, path: string, schema: z.ZodType<T>) => send(call, deps.key(), 'GET', path, schema)
-  const post = <T>(call: string, path: string, schema: z.ZodType<T>, body: unknown) =>
-    send(call, deps.key(), 'POST', path, schema, body)
+  const post = <T>(call: string, path: string, schema: z.ZodType<T>, body: unknown, clientError?: ComposioErrorCode) =>
+    send(call, deps.key(), 'POST', path, schema, body, clientError)
   const del = async (call: string, path: string): Promise<void> => {
     try {
       await send(call, deps.key(), 'DELETE', path, null)
@@ -191,7 +193,7 @@ export function createComposio(deps: { readonly fetch: typeof fetch; readonly ke
       if (ok) return ok.id
       const made = await post('managedAuthConfig', '/auth_configs', authConfigCreatedSchema, {
         toolkit: { slug }, auth_config: { type: 'use_composio_managed_auth' }
-      })
+      }, 'app_unsupported') // 401/403/404 keep their own codes; other 4xx: no managed sign-in for this app
       return made.auth_config.id
     },
     link: async (authConfigId, userId) => {
