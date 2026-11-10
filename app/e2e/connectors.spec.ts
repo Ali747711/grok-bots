@@ -129,7 +129,7 @@ test('a level change reaches Hermes as the new tool set', async () => {
   }, { timeout: RECONNECT_MS, intervals: [3000] }).toBe(true)
 })
 
-test('the relay refuses a missing or wrong token and never asks for a session', async () => {
+test('the relay refuses a missing or wrong token and never asks for a session, but a nested path is not exempt', async () => {
   for (const method of ['POST', 'GET', 'DELETE']) {
     for (const token of [undefined, 'not-the-token']) {
       const res = await relay(method, `/mcp/${A}`, token)
@@ -138,8 +138,9 @@ test('the relay refuses a missing or wrong token and never asks for a session', 
     }
   }
   const nested = await relay('POST', `/mcp/${A}/x`)
-  expect(nested.status).toBe(401)
-  expect(nested.body).toEqual({ error: 'login_required' })
+  // Not exempt: the origin guard refuses a POST without Origin before the session guard runs.
+  expect(nested.status).toBe(403)
+  expect(nested.body).toEqual({ error: 'bad_origin' })
 })
 
 test('turning apps off removes the server, the token and the usage entry', async () => {

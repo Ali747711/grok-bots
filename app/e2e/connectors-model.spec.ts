@@ -17,6 +17,7 @@ const RECONNECT_MS = 150_000
 const TURN_MS = 180_000
 
 let page: Page
+let created = false
 
 test.beforeAll(async ({ browser }) => {
   test.skip(!LOGIN, 'E2E_GITHUB_LOGIN is not set')
@@ -26,8 +27,13 @@ test.beforeAll(async ({ browser }) => {
   const list = await crewApi(page, 'GET', '/crew/connectors/apps')
   const github = (list.body?.apps as { toolkit: string; status: string }[] | undefined)?.find(a => a.toolkit === 'github')
   test.skip(github?.status !== 'connected', 'GitHub is not connected in Crew')
-  const usage = (await crewApi(page, 'GET', '/crew/usage')).body as { state?: string; remaining?: number | null }
-  test.skip(usage.state === 'ok' && typeof usage.remaining === 'number' && usage.remaining <= MIN_CREDIT, 'credit is at or below $0.12')
+  const res = await crewApi(page, 'GET', '/crew/usage')
+  const usage = (res.body ?? {}) as { state?: string; remaining?: number | null }
+  // Fail closed: an unknown credit (stale, unavailable, not configured) skips the paid turn.
+  test.skip(
+    !(res.status === 200 && usage.state === 'ok' && typeof usage.remaining === 'number' && usage.remaining > MIN_CREDIT),
+    'credit is unknown or at or below $0.12'
+  )
   await deleteTestBots()
   const made = await crewApi(page, 'POST', '/crew/bots', {
     name: BOT,
@@ -36,6 +42,7 @@ test.beforeAll(async ({ browser }) => {
     model: { provider: 'openrouter', model: 'anthropic/claude-haiku-5.5' }
   })
   expect(made.status).toBeLessThan(300)
+  created = true
   const put = await crewApi(page, 'PUT', `/crew/bots/${BOT}/apps`, { github: 'change' })
   expect(put.status).toBe(200)
   const tools = (put.body.apps as { toolkit: string; tools: number }[]).find(a => a.toolkit === 'github')?.tools ?? -1
@@ -47,9 +54,11 @@ test.beforeAll(async ({ browser }) => {
 
 test.afterAll(async () => {
   if (page) {
-    await appsOff(page, BOT)
-    const res = await crewApi(page, 'DELETE', `/crew/bots/${BOT}`)
-    if (res.status !== 204) test.info().annotations.push({ type: 'delete-status', description: String(res.status) })
+    if (created) {
+      await appsOff(page, BOT)
+      const res = await crewApi(page, 'DELETE', `/crew/bots/${BOT}`)
+      if (res.status !== 204) test.info().annotations.push({ type: 'delete-status', description: String(res.status) })
+    }
     await page.context().close()
   }
   await deleteTestBots()
