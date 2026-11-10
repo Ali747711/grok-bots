@@ -191,6 +191,45 @@ async function openNewBot(page: Page, name: string): Promise<void> {
   await expect.poll(async () => Math.round((await panel.boundingBox())?.width ?? 0)).toBe(440)
 }
 
+/** The header's own controls, by their accessible names. */
+const chatHeader = (page: Page) => page.getByRole('main').locator('header')
+
+/**
+ * The conversation beside the side panel, where it is narrowest (about 460 px at 1440): the title must keep
+ * its room next to the status chip and the Computer, Routines and Profile icon buttons.
+ */
+async function openConversation(page: Page, name: string, title: string): Promise<void> {
+  await openSide(page, name)
+  const header = chatHeader(page)
+  const titleButton = header.getByRole('heading', { name: title, exact: true }).getByRole('button', { name: title, exact: true })
+  await expect(titleButton).toBeVisible()
+  expect(await titleButton.evaluate(el => el.scrollWidth <= el.clientWidth), 'the title is not cut off').toBe(true)
+  await expect(header.getByRole('button', { name: 'Computer', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(header.getByRole('button', { name: 'Routines', exact: true })).toHaveAttribute('aria-pressed', 'false')
+  await expect(header.getByRole('button', { name: 'Profile', exact: true })).toBeVisible()
+  await expect(header.getByText('Idle', { exact: true })).toBeVisible()
+  await expect(page.getByRole('log')).toHaveAttribute('data-testid', 'transcript')
+}
+
+/** A new bot's conversation before its first message: the empty thread, whose button opens the profile. */
+async function openEmptyThread(page: Page, name: string, title: string): Promise<void> {
+  await openBot(page, name)
+  const thread = page.getByTestId('transcript')
+  await expect(thread.getByText(`Start with ${title}`, { exact: true })).toBeVisible()
+  await thread.getByRole('button', { name: 'Set up profile', exact: true }).click()
+  await expect(page).toHaveURL(new RegExp(`/bots/${name}\\?panel=profile$`))
+  await page.getByRole('button', { name: 'Back to chat' }).click()
+  await expect(page).toHaveURL(new RegExp(`/bots/${name}$`))
+  await expect(thread.getByText(`Start with ${title}`, { exact: true })).toBeVisible()
+  // The Computer tooltip names its shortcut; it is closed again before the shot.
+  await chatHeader(page).getByRole('button', { name: 'Computer', exact: true }).hover()
+  const tip = page.locator('[data-slot="tooltip-content"]')
+  await expect(tip).toContainText('Computer')
+  await expect(tip).toContainText('\\')
+  await page.mouse.move(0, 0)
+  await expect(tip).toHaveCount(0)
+}
+
 const SCREENS: Screen[] = [
   { id: 'workspace', task: 4, open: page => openBot(page, BOT) },
   { id: 'workspace-side', task: 6, open: page => openSide(page, BOT) },
@@ -199,7 +238,9 @@ const SCREENS: Screen[] = [
   { id: 'rail-pinned', task: 7, open: page => openRailPinned(page, BOT, BOT_TITLE), teardown: ({ page }) => resetRailBot(page, BOT) },
   { id: 'rail-hidden', task: 7, open: page => openRailHidden(page, BOT, BOT_TITLE), teardown: ({ page }) => resetRailBot(page, BOT) },
   { id: 'rail-theme', task: 7, open: (page, { theme }) => openRailTheme(page, BOT, theme) },
-  { id: 'new-bot', task: 8, open: page => openNewBot(page, BOT) }
+  { id: 'new-bot', task: 8, open: page => openNewBot(page, BOT) },
+  { id: 'conversation', task: 9, open: page => openConversation(page, BOT, BOT_TITLE) },
+  { id: 'empty-thread', task: 9, open: page => openEmptyThread(page, BOT, BOT_TITLE) }
 ]
 
 test.describe.configure({ mode: 'serial' })

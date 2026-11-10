@@ -61,3 +61,8 @@ export function finishWork(items: readonly ChatItem[]): ChatItem[] {
     .map(i => (i.kind === 'work' ? { ...i, steps: i.steps.map(s => (s.running ? { ...s, running: false } : s)) } : i))
     .filter(i => !(i.kind === 'work' && i.steps.length === 0))
 }
+
+/** Mark a generation's work block as stopped before it finished. */
+export function markInterrupted(items: readonly ChatItem[], workId: string): ChatItem[] {
+  return replaceWork(items, workId, work => ({ ...work, interrupted: true }))
+}

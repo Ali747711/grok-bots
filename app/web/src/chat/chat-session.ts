@@ -3,6 +3,7 @@ import type { GatewayEvent } from '@/vendor/hermes/gateway-events'
 import { JsonRpcGatewayError } from '@/vendor/hermes/json-rpc-channel'
 
 import { fetchHistory, openBotChat, type HistoryResult, type OpenedChat, type RpcClient } from './open-bot-chat'
+import { clearQueued, markQueued } from './queued'
 import { applyFrame, initialTurnState, type TurnFrame, type TurnState } from './turn-reducer'
 import type { ChatItem } from './types'
 
@@ -170,6 +171,7 @@ export class ChatSession {
       // For a re-ask, "duplicate" means the first attempt did land, so the message stays.
       if (admission === 'duplicate' && mode === 'send') this.replaceItem(`user-${submissionId}`, null)
       else this.setDelivery(submissionId, undefined)
+      if (admission === 'queued') this.pending = markQueued(this.pending, submissionId)
       if (admission === 'lost') this.pending = [...this.pending, { kind: 'notice', id: `lost-${submissionId}`, text: 'This message was lost when Hermes restarted' }]
       this.emit()
       return admission
@@ -288,7 +290,11 @@ export class ChatSession {
   /** A new generation starts after the previous turn finished: move that turn and the queued items into `base`. */
   private foldBeforeNextTurn(event: TurnFrame): void {
     const g = num(event.execution_generation)
-    if (event.type !== 'message.start' || this.turn.running || (g !== undefined && g <= this.turn.generation)) return
+    if (event.type !== 'message.start' || (g !== undefined && g <= this.turn.generation)) return
+    // The next turn is under way, so no message is waiting behind the old one any more.
+    this.base = clearQueued(this.base)
+    this.pending = clearQueued(this.pending)
+    if (this.turn.running) return
     this.base = [...this.base, ...this.turn.items, ...this.pending]
     this.pending = []
     this.turn = { ...initialTurnState, generation: this.turn.generation }

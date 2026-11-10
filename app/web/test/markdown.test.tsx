@@ -24,6 +24,16 @@ describe('Markdown', () => {
     for (const label of ['d', 'r']) expect(screen.getByText(label).closest('a')?.getAttribute('href') ?? '').toBe('')
   })
 
+  it('styles code, blocks and links with theme tokens', () => {
+    render(<Markdown text={'`inline` [b](https://ok.example)\n\n```\necho hi\n```\n\n> quoted'} />)
+    expect(screen.getByText('inline')).toHaveClass('bg-raised', 'font-mono')
+    const block = screen.getByText('echo hi').closest('pre')!
+    expect(block).toHaveClass('rounded-2xl', 'bg-raised')
+    expect(screen.getByText('echo hi').className).toMatch(/\[pre_&\]:bg-transparent/)
+    expect(screen.getByText('quoted').closest('blockquote')).toHaveClass('border-l-2', 'text-muted-foreground')
+    expect(document.body.innerHTML).not.toMatch(/bg-muted\b/)
+  })
+
   it('renders code blocks and lists', () => {
     render(<Markdown text={'- one\n- two\n\n```\necho hi\n```'} />)
     expect(screen.getAllByRole('listitem')).toHaveLength(2)

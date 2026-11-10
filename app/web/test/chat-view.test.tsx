@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import type { ReactElement } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -64,11 +64,50 @@ describe('MessageList: look', () => {
       { kind: 'assistant', id: 'a', text: '[docs](https://example.com) and `code`' }
     ]
     render(<MessageList items={items} />)
-    expect(screen.getByText('hi there')).toHaveClass('bg-raised', 'text-foreground', 'rounded-[16px_16px_4px_16px]')
+    expect(screen.getByText('hi there')).toHaveClass('bg-raised', 'text-foreground', 'rounded-2xl')
+    expect(screen.getByText('hi there').parentElement).toHaveClass('self-end')
     const reply = screen.getByText('docs').closest('div')!
     expect(reply.closest('.bg-raised')).toBeNull()
     expect(screen.getByRole('link', { name: 'docs' })).toHaveAttribute('href', 'https://example.com')
     expect(screen.getByText('code').closest('code')).toBeInTheDocument()
+  })
+})
+
+describe('MessageList: thread', () => {
+  it('is a log named transcript, with notices as centered meta lines', () => {
+    render(<MessageList items={[{ kind: 'notice', id: 'n', text: 'Stopped' }]} />)
+    expect(screen.getByRole('log')).toBe(screen.getByTestId('transcript'))
+    const notice = screen.getByText('Stopped')
+    expect(notice).toHaveClass('text-center', 'text-xs')
+    expect(notice.className).not.toMatch(/bg-/)
+  })
+
+  it('shows a run card for a turn with steps', () => {
+    const items: ChatItem[] = [{ kind: 'work', id: 'w', steps: [{ id: 's', name: 'terminal', summary: 'ls', running: true }] }]
+    render(<MessageList items={items} />)
+    expect(screen.getByText('Working · 1 step')).toBeInTheDocument()
+    expect(screen.getByRole('progressbar')).toBeInTheDocument()
+  })
+
+  it('shows the Queued caption under a queued message', () => {
+    const items: ChatItem[] = [
+      { kind: 'user', id: 'u1', text: 'first' },
+      { kind: 'user', id: 'u2', text: 'second', submissionId: 's2', queued: true }
+    ]
+    const { rerender } = render(<MessageList items={items} />)
+    const caption = screen.getByText('Queued')
+    expect(screen.getAllByText('Queued')).toHaveLength(1)
+    expect(caption.parentElement).toContainElement(screen.getByText('second'))
+    expect(caption).toHaveClass('text-faint')
+    rerender(<MessageList items={[items[0]!, { kind: 'user', id: 'u2', text: 'second', submissionId: 's2' }]} />)
+    expect(screen.queryByText('Queued')).toBeNull()
+  })
+
+  it('shows what it is given for an empty thread, and only while there is no item', () => {
+    const { rerender } = render(<MessageList items={[]} empty={<p>Nothing yet</p>} />)
+    expect(screen.getByText('Nothing yet')).toBeInTheDocument()
+    rerender(<MessageList items={[{ kind: 'user', id: 'u', text: 'hi' }]} empty={<p>Nothing yet</p>} />)
+    expect(screen.queryByText('Nothing yet')).toBeNull()
   })
 })
 
@@ -111,12 +150,95 @@ describe('ChatView', () => {
     }
   })
 
-  it('shows the working status in the header, with a 40 px avatar', async () => {
+  it('shows the status as a chip in the header, with a 32 px avatar', async () => {
     render(chat(<ChatView bot={{ ...dev, status: 'working' }} state={crewState()} crewConnected />))
     await flush()
-    expect(screen.getByText('Working')).toHaveClass('text-foreground', 'text-xs')
-    expect(screen.getByText('Working')).not.toHaveClass('text-muted-foreground')
-    expect(screen.getByTestId('stub')).toHaveAttribute('data-size', '40')
+    const chip = screen.getByText('Working')
+    expect(chip).toHaveClass('rounded-full', 'bg-raised', 'text-xs')
+    expect(chip.closest('header')).not.toBeNull()
+    expect(within(screen.getByRole('banner')).getByTestId('stub')).toHaveAttribute('data-size', '32')
+  })
+
+  it('keeps the title heading inside a header and opens the profile from it', async () => {
+    const onPanel = vi.fn()
+    render(chat(<ChatView bot={{ ...dev, sandbox: 'on' }} state={crewState()} crewConnected onPanel={onPanel} />))
+    await flush()
+    const heading = screen.getByRole('heading', { name: 'Dev', level: 2 })
+    const header = heading.closest('header')!
+    expect(header).not.toBeNull()
+    expect(within(header).getByRole('img', { name: 'Sandboxed' })).toBeInTheDocument()
+    fireEvent.click(within(heading).getByRole('button', { name: 'Dev' }))
+    expect(onPanel).toHaveBeenLastCalledWith('profile')
+  })
+
+  it('shows the title as plain text when there is no panel to open', async () => {
+    render(chat(<ChatView bot={dev} state={crewState()} crewConnected />))
+    await flush()
+    expect(within(screen.getByRole('heading', { name: 'Dev' })).queryByRole('button')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Profile' })).toBeNull()
+  })
+
+  it('shows role, short model and cost in the meta line', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({ messages: [], estimated_cost_usd: 0.123 })))))
+    render(chat(<ChatView bot={{ ...dev, role: 'engineer', model: 'anthropic/claude-haiku-5.5' }} state={crewState()} crewConnected />))
+    await flush()
+    const meta = await screen.findByText('Engineer · claude-haiku-5.5 · ≈ $0.12')
+    expect(meta.closest('header')).not.toBeNull()
+    expect(meta).toHaveClass('truncate', 'text-xs')
+  })
+
+  it('leaves the meta line out when the bot has no role, model or cost', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({ messages: [] })))))
+    render(chat(<ChatView bot={dev} state={crewState()} crewConnected />))
+    await flush()
+    expect(screen.getByRole('banner').querySelector('p')).toBeNull()
+  })
+
+  it('shows the empty thread with Set up profile, or Finish setup for an unfinished bot', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({ messages: [] })))))
+    const onPanel = vi.fn()
+    const first = render(chat(<ChatView bot={dev} state={crewState()} crewConnected onPanel={onPanel} />))
+    await flush()
+    const transcript = screen.getByTestId('transcript')
+    expect(within(transcript).getByText('Start with Dev')).toBeInTheDocument()
+    expect(within(transcript).queryByRole('button', { name: 'Finish setup' })).toBeNull()
+    fireEvent.click(within(transcript).getByRole('button', { name: 'Set up profile' }))
+    expect(onPanel).toHaveBeenLastCalledWith('profile')
+    first.unmount()
+
+    render(chat(<ChatView bot={{ ...dev, setupIncomplete: true }} state={crewState()} crewConnected onPanel={onPanel} />))
+    await flush()
+    expect(screen.queryByRole('button', { name: 'Set up profile' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Finish setup' }))
+    expect(onPanel).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows no empty thread before the chat has loaded, or once it has messages', async () => {
+    const { unmount } = render(<ChatSessionProvider bot={bot({ name: 'researcher', title: 'Researcher' })}><ChatView bot={dev} state={crewState()} crewConnected /></ChatSessionProvider>)
+    await flush()
+    expect(screen.queryByText('Start with Dev')).toBeNull()
+    unmount()
+    render(chat(<ChatView bot={dev} state={crewState()} crewConnected />))
+    await flush()
+    expect(screen.getByText('earlier question')).toBeInTheDocument()
+    expect(screen.queryByText('Start with Dev')).toBeNull()
+  })
+
+  it('shows the Queued caption on a message Hermes queued, until the next turn starts', async () => {
+    render(chat(<ChatView bot={dev} state={crewState()} crewConnected />))
+    await flush()
+    client.handlers['prompt.submit'] = () => ({ status: 'queued' })
+    act(() => { client.emit({ type: 'message.start', session_id: 'live-1', payload: {}, execution_generation: 2 }) })
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'next thing' } })
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' })
+    await flush()
+    expect(screen.getByText('Queued')).toBeInTheDocument()
+    act(() => {
+      client.emit({ type: 'message.complete', session_id: 'live-1', payload: { text: 'done', status: 'complete' }, execution_generation: 2 })
+      client.emit({ type: 'message.start', session_id: 'live-1', payload: {}, execution_generation: 3 })
+    })
+    expect(screen.queryByText('Queued')).toBeNull()
+    expect(screen.getByText('next thing')).toBeInTheDocument()
   })
 
   it.each([
@@ -133,13 +255,17 @@ describe('ChatView', () => {
     }
   })
 
-  it('marks the pressed panel button with the foreground fill and hides the avatar from assistive tech', async () => {
+  it('shows Computer, Routines and Profile as icon buttons, pressed for the open panel, and hides the avatar from assistive tech', async () => {
     render(chat(<ChatView bot={dev} state={crewState()} crewConnected panel="routines" onPanel={() => undefined} />))
     await flush()
-    expect(screen.getByRole('button', { name: 'Routines' })).toHaveClass('bg-foreground', 'text-background')
-    expect(screen.getByRole('button', { name: 'Routines' }).className).not.toMatch(/dark:bg-input|bg-primary/)
-    expect(screen.getByRole('button', { name: 'Profile' })).not.toHaveClass('bg-foreground')
-    expect(screen.getByTestId('stub').closest('[aria-hidden="true"]')).not.toBeNull()
+    const header = screen.getByRole('banner')
+    for (const name of ['Computer', 'Routines', 'Profile']) {
+      const button = within(header).getByRole('button', { name })
+      expect(button, name).toHaveTextContent('')
+      expect(button, name).toHaveAttribute('aria-pressed', name === 'Routines' ? 'true' : 'false')
+    }
+    expect(within(header).getByRole('button', { name: 'Routines' })).toHaveClass('bg-raised', 'text-foreground')
+    expect(within(header).getByTestId('stub').closest('[aria-hidden="true"]')).not.toBeNull()
   })
 
   it('reports a header button as the next panel, and null for the open one', async () => {
@@ -162,12 +288,13 @@ describe('ChatView', () => {
     expect(screen.getByText('Connecting to the chat…')).toBeInTheDocument()
   })
 
-  it('lets the cost estimate give way before the bot name', async () => {
-    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({ messages: [], estimated_cost_usd: 1.25 })))))
-    render(chat(<ChatView bot={{ ...dev, status: 'working' }} state={crewState()} crewConnected />))
+  it('gives the title the room: it truncates last, and the controls never shrink', async () => {
+    render(chat(<ChatView bot={{ ...dev, status: 'working' }} state={crewState()} crewConnected onPanel={() => undefined} />))
     await flush()
-    expect(screen.getByRole('heading', { name: 'Dev' }).closest('.min-w-24')).toHaveClass('min-w-24', 'flex-1')
-    expect(await screen.findByText(/estimate/)).toHaveClass('min-w-0', 'truncate')
+    const heading = screen.getByRole('heading', { name: 'Dev' })
+    expect(heading.closest('.flex-1')).toHaveClass('min-w-24', 'flex-1')
+    expect(within(heading).getByRole('button')).toHaveClass('truncate')
+    expect(screen.getByText('Working')).toHaveClass('shrink-0')
   })
 
   it('keeps header and composer outside the scrolling transcript', async () => {

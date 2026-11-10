@@ -9,6 +9,7 @@ import { ChatHeader } from './ChatHeader'
 import { Composer } from './Composer'
 import { composerDisabledReason, DEFAULT_MAX_WORKING_BOTS } from './disabled-reason'
 import { draftKey } from './draft-store'
+import { EmptyThread } from './EmptyThread'
 import { MessageList } from './MessageList'
 
 interface ChatViewProps {
@@ -46,8 +47,15 @@ export function ChatView({ bot, state, crewConnected, panel = null, onPanel }: C
   return (
     <>
       <ChatHeader bot={bot} stale={stale} panel={panel} onPanel={onPanel} />
-      {!loaded && items.length === 0 && !stale ? <ChatSkeleton /> : <MessageList items={items} onRetry={id => void session?.retry(id).catch(() => undefined)} />}
-      {notice && <p role="status" className="px-6 text-center text-xs text-muted-foreground">{notice}</p>}
+      {!loaded && items.length === 0 && !stale ? <ChatSkeleton /> : (
+        <MessageList
+          items={items}
+          onRetry={id => void session?.retry(id).catch(() => undefined)}
+          // Only once the chat has loaded: before that, "no messages" is not known yet.
+          empty={loaded && onPanel ? <EmptyThread bot={bot} onProfile={() => onPanel('profile')} /> : undefined}
+        />
+      )}
+      {notice && <p role="status" className="px-6 text-center text-xs font-medium text-faint">{notice}</p>}
       {requests.length > 0 && (
         <div className="max-h-[40vh] flex-none overflow-y-auto px-6 pt-2">
           <div className="mx-auto flex max-w-[720px] flex-col gap-2">

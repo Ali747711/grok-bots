@@ -1,17 +1,33 @@
+import { CalendarClock, Monitor, UserRound } from 'lucide-react'
+import type { ReactNode } from 'react'
+
 import type { BotPanel } from '@/app/panel-params'
-import { Button } from '@/components/ui/button'
+import { IconButton } from '@/components/console/icon-button'
+import { StatusChip } from '@/components/console/status'
 import { CrewAvatar } from '@/features/avatars/CrewAvatar'
 import { SandboxBadge } from '@/features/bots/SandboxBadge'
 import { ScreenThumbnail } from '@/features/computer/ScreenThumbnail'
-import { cn } from '@/lib/utils'
-import type { BotStatus, BotView } from '@/state/types'
+import { modShortcut } from '@/hooks/use-window-keydown'
+import type { BotView } from '@/state/types'
 
+import { headerMeta } from './model-name'
 import { useSessionCost } from './use-session-cost'
 
-const TAB_LABEL: Record<BotPanel, string> = { computer: 'Computer', routines: 'Routines', profile: 'Profile' }
-const STATUS_TEXT: Record<BotStatus, string> = { idle: 'Idle', working: 'Working', needs_you: 'Needs you' }
+interface PanelButton {
+  tab: BotPanel
+  label: string
+  icon: ReactNode
+  shortcut?: string
+}
 
-/** Bot avatar, name and live status. `stale` hides the status (it may be out of date). */
+// Icon buttons, not text: beside a side panel the conversation is about 460 px wide and the title needs the room.
+const PANEL_BUTTONS: readonly PanelButton[] = [
+  { tab: 'computer', label: 'Computer', icon: <Monitor />, shortcut: modShortcut('\\') },
+  { tab: 'routines', label: 'Routines', icon: <CalendarClock /> },
+  { tab: 'profile', label: 'Profile', icon: <UserRound /> }
+]
+
+/** Bot avatar, name, meta line and live status. `stale` hides the status (it may be out of date). */
 interface ChatHeaderProps {
   bot: BotView
   stale: boolean
@@ -23,36 +39,43 @@ interface ChatHeaderProps {
 
 export function ChatHeader({ bot, stale, panel, onPanel }: ChatHeaderProps) {
   const cost = useSessionCost(bot.sessionId, bot.name, bot.status)
+  const meta = headerMeta(bot, cost)
+  const sideOpen = panel === 'computer' || panel === 'routines'
   return (
-    <header className="flex items-center gap-3 border-b border-border px-5 py-3">
-      <CrewAvatar bot={stale ? { ...bot, status: 'idle' } : bot} size={40} decorative />
-      <div className="min-w-24 flex-1">
+    <header className="flex min-h-14 shrink-0 items-center gap-2 py-2 pr-3 pl-4">
+      <CrewAvatar bot={stale ? { ...bot, status: 'idle' } : bot} size={32} decorative />
+      <div className="min-w-24 flex-1 pl-1">
         <div className="flex items-center gap-1.5">
-          <h2 className="truncate text-sm font-semibold">{bot.title}</h2>
+          <h2 className="min-w-0 text-[15px] leading-5 font-semibold tracking-tight">
+            {onPanel ? (
+              // The bot's identity is the way into its profile.
+              <button
+                type="button"
+                title={`Open ${bot.title}'s profile`}
+                onClick={() => onPanel('profile')}
+                className="block max-w-full truncate rounded-md text-left outline-none hover:underline hover:underline-offset-4 focus-visible:ring-3 focus-visible:ring-ring"
+              >
+                {bot.title}
+              </button>
+            ) : (
+              <span className="block truncate">{bot.title}</span>
+            )}
+          </h2>
           {bot.sandbox === 'on' && <SandboxBadge />}
         </div>
-        {!stale && (
-          <p className={cn('text-xs font-medium text-muted-foreground mt-0.5', bot.status === 'working' && 'text-foreground')}>
-            <span aria-hidden="true">● </span>
-            {STATUS_TEXT[bot.status]}
-          </p>
-        )}
+        {meta !== '' && <p className="truncate text-xs leading-4 font-medium text-faint">{meta}</p>}
       </div>
-      {cost !== null && <span className="min-w-0 truncate text-xs text-muted-foreground">≈ ${cost.toFixed(2)} (estimate)</span>}
-      {onPanel && <ScreenThumbnail bot={bot} hidden={panel === 'computer'} onOpen={() => onPanel('computer')} />}
-      {onPanel && (['computer', 'routines', 'profile'] as const).map(tab => (
-        <Button
-          key={tab}
-          type="button"
-          size="sm"
-          variant={panel === tab ? 'default' : 'outline'}
-          aria-pressed={panel === tab}
-          onClick={() => onPanel(panel === tab ? null : tab)}
-          className={cn('rounded-full', panel === tab && 'border-foreground bg-foreground text-background hover:bg-foreground/90 hover:text-background')}
-        >
-          {TAB_LABEL[tab]}
-        </Button>
-      ))}
+      {!stale && <StatusChip status={bot.status} />}
+      {onPanel && <ScreenThumbnail bot={bot} hidden={sideOpen} onOpen={() => onPanel('computer')} />}
+      {onPanel && (
+        <div className="flex shrink-0 items-center gap-0.5">
+          {PANEL_BUTTONS.map(({ tab, label, icon, shortcut }) => (
+            <IconButton key={tab} label={label} shortcut={shortcut} side="bottom" pressed={panel === tab} onClick={() => onPanel(panel === tab ? null : tab)}>
+              {icon}
+            </IconButton>
+          ))}
+        </div>
+      )}
     </header>
   )
 }

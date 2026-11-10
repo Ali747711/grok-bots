@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import { applyFrame, initialTurnState, type TurnFrame, type TurnState } from '@/chat/turn-reducer'
+import { markInterrupted } from '@/chat/turn-steps'
+import type { ChatItem } from '@/chat/types'
 
 import captured from './fixtures/turn-frames.json'
 
@@ -86,6 +88,29 @@ describe('turn reducer (captured fixture turn)', () => {
     expect(state.items.at(-1)).toMatchObject({ kind: 'notice', text: 'Stopped' })
     const work = state.items.find(i => i.kind === 'work')
     expect(work).toMatchObject({ steps: [{ running: false }] })
+  })
+
+  it('marks the work block interrupted when the turn ends interrupted', () => {
+    const complete = withPayload(find('message.complete'), { interrupted: true, status: 'interrupted', outcome: 'interrupted' })
+    const stopped = play(initialTurnState, [find('message.start'), find('tool.start'), complete])
+    expect(stopped.items.find(i => i.kind === 'work')).toMatchObject({ interrupted: true, steps: [{ running: false }] })
+    // A turn that finishes, or fails, is not "stopped".
+    const done = play(initialTurnState, frames)
+    expect(done.items.find(i => i.kind === 'work')).not.toHaveProperty('interrupted')
+    const failed = play(initialTurnState, [find('message.start'), find('tool.start'), withPayload(find('message.complete'), { status: 'error', error: 'boom' })])
+    expect(failed.items.find(i => i.kind === 'work')).not.toHaveProperty('interrupted')
+  })
+
+  it('markInterrupted changes only the named work block and never mutates', () => {
+    const items: ChatItem[] = [
+      { kind: 'work', id: 'work-1', steps: [] },
+      { kind: 'assistant', id: 'a', text: 'hi' },
+      { kind: 'work', id: 'work-2', steps: [] }
+    ]
+    const next = markInterrupted(items, 'work-2')
+    expect(next).toEqual([items[0], items[1], { kind: 'work', id: 'work-2', steps: [], interrupted: true }])
+    expect(items[2]).not.toHaveProperty('interrupted')
+    expect(markInterrupted(items, 'work-9')).toEqual(items)
   })
 
   it('upserts tool steps by tool_id and keeps them in order', () => {
