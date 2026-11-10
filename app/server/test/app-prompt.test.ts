@@ -10,6 +10,11 @@ describe('appPromptOf', () => {
     expect(appPromptOf({ surface: 'mcp-trust/crew_apps', command: 'x' })).toEqual({ tool: null, argsTruncated: false })
   })
 
+  it("recognises a reworded prompt that still names server 'crew_apps'", () => {
+    expect(appPromptOf({ command: "Run a tool on server 'crew_apps' now" })).toEqual({ tool: null, argsTruncated: false })
+    expect(appPromptOf({ description: "Allow UNTRUSTED server 'crew_apps' to act?" })).toEqual({ tool: null, argsTruncated: false })
+  })
+
   it('flags arguments Hermes cut at 1,200 characters', () => {
     const command = `MCP tool 'T' on UNTRUSTED server 'crew_apps' wants to run.\n\nArguments:\n${'a'.repeat(1_200)}${ARGS_TRUNCATED}`
     expect(appPromptOf({ command })).toEqual({ tool: 'T', argsTruncated: true })

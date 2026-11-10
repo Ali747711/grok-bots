@@ -8,6 +8,7 @@ export interface AppPrompt {
 
 const HEAD = /^MCP tool '([^']+)' on UNTRUSTED server 'crew_apps' wants to run\./
 const DESCRIPTION_HEAD = `Server '${APP_SERVER}' is configured 'trust: untrusted'.`
+const MENTION = `server '${APP_SERVER}'`
 const SURFACE = `mcp-trust/${APP_SERVER}`
 
 /**
@@ -18,7 +19,9 @@ export function appPromptOf(params: Readonly<Record<string, unknown>>): AppPromp
   const command = typeof params.command === 'string' ? params.command : ''
   const description = typeof params.description === 'string' ? params.description.trimStart() : ''
   const head = HEAD.exec(command.trimStart())
-  if (!head && params.surface !== SURFACE && !description.startsWith(DESCRIPTION_HEAD)) return null
+  // Fail closed if Hermes rewords its prompt: any mention of the server counts.
+  const mentions = command.includes(MENTION) || description.includes(MENTION)
+  if (!head && !mentions && params.surface !== SURFACE && !description.startsWith(DESCRIPTION_HEAD)) return null
   return { tool: head?.[1] ?? null, argsTruncated: command.trimEnd().endsWith(ARGS_TRUNCATED.trim()) }
 }
 
