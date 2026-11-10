@@ -29,7 +29,7 @@ export interface LiveViewOptions {
 }
 
 /**
- * The viewer of one bot's screen. Call it in the OWNER (the Computer panel), not in the canvas
+ * The viewer of one bot's screen. Call it in the OWNER (the side panel's ComputerProvider), not in the canvas
  * component: `<LiveView>` only attaches and detaches the host, so moving it between the panel and
  * Expand reconnects without handing control back (§11 C1). When the owner itself unmounts, the lease
  * is released if we hold it and the socket closes 1000.

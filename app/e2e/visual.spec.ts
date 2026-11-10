@@ -1,6 +1,7 @@
 import { type Page, expect, test } from '@playwright/test'
 
 import { CREW, crewApi } from './helpers.js'
+import { withRpc } from './hermes-rpc.js'
 import { type Ctx, THEMES, prepare, shoot, shotName, sizeLabel, sizes, watch } from './visual.js'
 
 // Run one task's screens with `npx playwright test visual.spec.ts --grep @task<N>` on the deployed service.
@@ -266,6 +267,74 @@ async function openNeedsYou(page: Page): Promise<void> {
   await expect(page.getByTestId('request-card')).toHaveCount(0)
 }
 
+const sidePanel = (page: Page) => page.getByRole('region', { name: 'Panel' })
+const linkChipText = (page: Page) => sidePanel(page).locator('[data-slot="side-chip"]').getByRole('status')
+
+interface ScreenStatus { running: boolean; lease: { holder: string } }
+const screenStatus = (name: string): Promise<ScreenStatus> => withRpc(rpc => rpc.call<ScreenStatus>('display.status', { profile: name }))
+
+/** Start the test bot's screen the way the Start screen button does. Only ever the `e2e<digits>` bot. */
+async function startScreen(page: Page, name: string): Promise<void> {
+  if (!E2E_BOT.test(name)) throw new Error(`refusing to start ${name}'s screen: not a test bot`)
+  if ((await screenStatus(name)).running) return
+  const started = await crewApi(page, 'POST', `/crew/bots/${name}/screen/start`)
+  expect(started.status, JSON.stringify(started.body)).toBeLessThan(300)
+}
+
+/** Stop the test bot's screen (and so end any control held on it). Only ever the `e2e<digits>` bot. */
+async function stopScreen(name: string): Promise<void> {
+  if (!E2E_BOT.test(name)) throw new Error(`refusing to stop ${name}'s screen: not a test bot`)
+  await withRpc(rpc => rpc.call('display.stop', { profile: name, force: true })).catch(() => undefined)
+}
+
+/** The Screen tab with the screen off: the off copy, the start action, an idle Now strip and an empty log. */
+async function openScreenOff(page: Page, name: string, title: string): Promise<void> {
+  await openSide(page, name)
+  const side = sidePanel(page)
+  await expect(side.getByText(`${title}'s screen is off.`, { exact: true })).toBeVisible()
+  await expect(side.getByText(/Files and open apps are saved/)).toHaveCount(0)
+  await expect(linkChipText(page)).toHaveText('Off')
+  await expect(side.locator('[data-slot="now-strip"] .sr-only')).toHaveText('Idle')
+  await expect(side.getByRole('heading', { name: 'Recent actions', exact: true })).toBeVisible()
+  await expect(side.getByText('No actions yet.', { exact: true })).toBeVisible()
+}
+
+/** The Screen tab on a running screen, connected and only watching: the chip says Live and Take control is on. */
+async function openScreenLive(page: Page, name: string): Promise<void> {
+  await page.goto(`${CREW}/bots/${name}?panel=computer`)
+  const side = sidePanel(page)
+  await expect(side.getByTestId('live-view')).toBeVisible({ timeout: 30_000 })
+  await expect(side.getByRole('button', { name: 'Take control', exact: true })).toBeEnabled({ timeout: 30_000 })
+  await expect(linkChipText(page)).toHaveText('Live')
+  await expect(page.getByText("You're in control", { exact: true })).toHaveCount(0)
+  // The picture has drawn: noVNC's canvas has a size.
+  await expect.poll(() => side.getByTestId('live-view').locator('canvas').evaluate((c: HTMLCanvasElement) => c.width)).toBeGreaterThan(0)
+}
+
+/** The same screen with control taken through the UI: one "You're in control", in the header chip. */
+async function openScreenControl(page: Page, name: string): Promise<void> {
+  await openScreenLive(page, name)
+  const side = sidePanel(page)
+  await side.getByRole('button', { name: 'Take control', exact: true }).click()
+  await expect(linkChipText(page)).toHaveText("You're in control")
+  await expect(page.getByText("You're in control", { exact: true })).toHaveCount(1)
+  await expect.poll(async () => (await screenStatus(name)).lease.holder).toBe('human')
+  await expect(side.getByRole('button', { name: 'Stop screen', exact: true })).toBeDisabled()
+  await expect(side.getByTestId('live-view')).toHaveClass(/ring-watermelon/)
+  // Keep the pointer and the keyboard off the remote desktop for the shot.
+  await page.mouse.move(0, 0)
+}
+
+/** Hand control back through the UI (when held), then stop the test bot's screen. */
+async function leaveScreen(page: Page, name: string): Promise<void> {
+  const handBack = sidePanel(page).getByRole('button', { name: 'Hand back', exact: true })
+  if (await handBack.isVisible().catch(() => false)) {
+    await handBack.click()
+    await expect.poll(async () => (await screenStatus(name)).lease.holder).toBe('agent')
+  }
+  await stopScreen(name)
+}
+
 const SCREENS: Screen[] = [
   { id: 'workspace', task: 4, open: page => openBot(page, BOT) },
   { id: 'workspace-side', task: 6, open: page => openSide(page, BOT) },
@@ -278,7 +347,10 @@ const SCREENS: Screen[] = [
   { id: 'conversation', task: 9, open: page => openConversation(page, BOT, BOT_TITLE) },
   { id: 'empty-thread', task: 9, open: page => openEmptyThread(page, BOT, BOT_TITLE) },
   { id: 'composer', task: 10, open: page => openComposer(page, BOT) },
-  { id: 'needs-you', task: 10, open: page => openNeedsYou(page) }
+  { id: 'needs-you', task: 10, open: page => openNeedsYou(page) },
+  { id: 'screen-off', task: 11, setup: () => stopScreen(BOT), open: page => openScreenOff(page, BOT, BOT_TITLE) },
+  { id: 'screen-live', task: 11, setup: ({ page }) => startScreen(page, BOT), open: page => openScreenLive(page, BOT), teardown: ({ page }) => leaveScreen(page, BOT) },
+  { id: 'screen-control', task: 11, setup: ({ page }) => startScreen(page, BOT), open: page => openScreenControl(page, BOT), teardown: ({ page }) => leaveScreen(page, BOT) }
 ]
 
 test.describe.configure({ mode: 'serial' })
@@ -295,6 +367,7 @@ test.beforeAll(async ({ browser }) => {
 
 test.afterAll(async ({ browser }) => {
   if (!E2E_BOT.test(BOT)) throw new Error(`refusing to delete ${BOT}: not a test bot`)
+  await stopScreen(BOT)
   const context = await browser.newContext()
   try {
     const gone = await crewApi(await context.newPage(), 'DELETE', `/crew/bots/${BOT}`)

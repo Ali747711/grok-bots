@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { useEffect } from 'react'
+import { type ReactNode, useEffect } from 'react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -14,17 +14,19 @@ const client = new FakeClient()
 vi.mock('@/chat/gateway', () => ({ connectGateway: () => client }))
 const hook = vi.hoisted(() => ({ value: { state: null as CrewState | null, connected: true } }))
 vi.mock('@/state/use-crew-state', () => ({ useCrewState: () => hook.value }))
-// The real screen needs a display; this one only records that it mounted and unmounted.
 const screenLog = vi.hoisted(() => ({ events: [] as string[] }))
-vi.mock('@/features/computer/ComputerPanel', () => ({
-  ComputerPanel: ({ bot: b }: { bot: { name: string } }) => {
+// The provider owns the viewer (and so the control lease): what matters is when it mounts and unmounts.
+vi.mock('@/features/side-panel/ComputerProvider', () => ({
+  ComputerProvider: ({ bot: b, children }: { bot: { name: string }; children: ReactNode }) => {
     useEffect(() => {
       screenLog.events.push(`mount:${b.name}`)
       return () => { screenLog.events.push(`unmount:${b.name}`) }
     }, [b.name])
-    return <div data-testid="screen-body" />
-  }
+    return <>{children}</>
+  },
+  useComputerContext: () => ({ screen: { view: { kind: 'off', control: 'bot' } }, live: { link: 'idle' } })
 }))
+vi.mock('@/features/side-panel/ScreenTab', () => ({ ScreenTab: () => <div data-testid="screen-body" /> }))
 
 const { default: App } = await import('@/App')
 

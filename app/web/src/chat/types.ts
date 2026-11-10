@@ -5,6 +5,8 @@ export interface WorkStep {
   detail?: string
   isError?: boolean
   running: boolean
+  /** When the step happened, in epoch ms: the client clock for a live step, the stored row's time for history. */
+  at?: number
 }
 
 export type ChatItem =

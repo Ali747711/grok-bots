@@ -13,7 +13,7 @@ interface ExpandDialogProps {
 
 /**
  * The enlarged view. Its LiveView is the only one attached while it is open (the panel renders none),
- * and the viewer lives in ComputerPanel, so opening and closing this reconnects without handing back.
+ * and the viewer lives in the side panel's ComputerProvider, so opening and closing this reconnects without handing back.
  */
 export function ExpandDialog({ open, title, live, inControl, onClose }: ExpandDialogProps) {
   return (

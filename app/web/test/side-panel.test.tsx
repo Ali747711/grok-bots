@@ -1,10 +1,21 @@
+import type { ReactNode } from 'react'
+
 import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
 import { bot } from './fixtures'
 
-vi.mock('@/features/computer/ComputerPanel', () => ({ ComputerPanel: ({ bot: b }: { bot: { name: string } }) => <div data-testid="screen-body">{b.name}</div> }))
+// The real screen needs a display: here the provider only records which bot it was mounted for.
+const computer = vi.hoisted(() => ({ mounted: [] as string[], value: { screen: { view: { kind: 'live', control: 'bot' } }, live: { link: 'live' } } }))
+vi.mock('@/features/side-panel/ComputerProvider', () => ({
+  ComputerProvider: ({ bot: b, children }: { bot: { name: string }; children: ReactNode }) => {
+    computer.mounted.push(b.name)
+    return <>{children}</>
+  },
+  useComputerContext: () => computer.value
+}))
+vi.mock('@/features/side-panel/ScreenTab', () => ({ ScreenTab: ({ bot: b }: { bot: { name: string } }) => <div data-testid="screen-body">{b.name}</div> }))
 vi.mock('@/features/routines/RoutinesPanel', () => ({ RoutinesPanel: ({ bot: b }: { bot: { name: string } }) => <div data-testid="routines-body">{b.name}</div> }))
 
 const { SidePanel } = await import('@/features/side-panel/SidePanel')
@@ -47,10 +58,25 @@ describe('SidePanel', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
-  it('keeps an empty slot for the link chip between the tabs and Close', () => {
-    show('computer')
-    const slot = document.querySelector('[data-slot="side-chip"]')
-    expect(slot).not.toBeNull()
+  it('shows the link chip between the tabs and Close on Screen, and nothing there on Routines', () => {
+    const { rerender, onTab, onClose } = show('computer')
+    const slot = document.querySelector('[data-slot="side-chip"]')!
+    expect(slot).toHaveTextContent('Live')
+    expect(slot.compareDocumentPosition(screen.getByRole('tablist')) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy()
+    expect(slot.compareDocumentPosition(screen.getByRole('button', { name: 'Close panel' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    rerender(<MemoryRouter><SidePanel bot={dev} tab="routines" onTab={onTab} onClose={onClose} /></MemoryRouter>)
+    expect(document.querySelector('[data-slot="side-chip"]')).toBe(slot)
     expect(slot).toBeEmptyDOMElement()
+  })
+
+  it('mounts the computer only for the Screen tab and keeps the tab buttons mounted across a switch', () => {
+    computer.mounted = []
+    const { rerender, onTab, onClose } = show('routines')
+    expect(computer.mounted).toEqual([])
+    const routines = screen.getByRole('tab', { name: 'Routines' })
+    rerender(<MemoryRouter><SidePanel bot={dev} tab="computer" onTab={onTab} onClose={onClose} /></MemoryRouter>)
+    expect(new Set(computer.mounted)).toEqual(new Set(['dev']))
+    // The same button, so a tab picked with the keyboard keeps focus.
+    expect(screen.getByRole('tab', { name: 'Routines' })).toBe(routines)
   })
 })

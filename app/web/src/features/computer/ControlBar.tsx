@@ -1,6 +1,6 @@
-import { Badge } from '@/components/ui/badge'
+import { Hand } from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
 
 import type { ScreenControl } from './screen-state'
 
@@ -14,20 +14,26 @@ interface ControlBarProps {
   readonly onForce: () => void
 }
 
-const CHIP: Record<ScreenControl, string> = {
-  bot: 'Bot is in control',
-  you: "You're in control",
-  someone: 'Someone is in control'
-}
-
-/** Who holds the screen, and the one or two actions that change it. */
+/**
+ * The one or two actions that change who holds the screen. Who holds it now is said by the side
+ * panel's link chip, not here (ruling R11).
+ */
 export function ControlBar({ control, connected, botTitle, onTake, onHandBack, onForce }: ControlBarProps) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <Badge role="status" aria-live="polite" variant="outline" className={cn(control === 'you' && 'border-destructive text-destructive', control === 'bot' && 'border-border text-foreground')}>{CHIP[control]}</Badge>
-      {control !== 'you' && <Button size="sm" onClick={onTake} disabled={!connected}>Take control</Button>}
-      {control === 'you' && <Button size="sm" variant="outline" onClick={onHandBack}>Hand back</Button>}
-      {control === 'someone' && <Button size="sm" variant="outline" onClick={onForce}>Give control back to {botTitle}</Button>}
+    <div className="flex flex-wrap items-center justify-center gap-1.5">
+      {control !== 'you' && (
+        <Button onClick={onTake} disabled={!connected}>
+          <Hand data-icon="inline-start" aria-hidden="true" />
+          Take control
+        </Button>
+      )}
+      {control === 'you' && (
+        <Button variant="outline" onClick={onHandBack}>
+          <span aria-hidden="true" className="size-1.5 rounded-full bg-watermelon" />
+          Hand back
+        </Button>
+      )}
+      {control === 'someone' && <Button variant="outline" onClick={onForce}>Give control back to {botTitle}</Button>}
     </div>
   )
 }

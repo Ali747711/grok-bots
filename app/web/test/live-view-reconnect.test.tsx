@@ -81,6 +81,9 @@ function script() {
 
 let budget = createDialBudget({ max: 50, windowMs: 10_000, mountDelayMs: 0 })
 
+// `view.control`, spelled out. The app says it in the side panel's link chip (R11); here it is only a probe.
+const WHO = { bot: 'Bot is in control', you: "You're in control", someone: 'Someone is in control' } as const
+
 function Owner({ where = 'panel', ask = true }: { where?: 'panel' | 'expand'; ask?: boolean }) {
   const { screen: s, live } = useComputer('scout', { budget })
   return (
@@ -88,6 +91,7 @@ function Owner({ where = 'panel', ask = true }: { where?: 'panel' | 'expand'; as
       <span data-testid="link">{live.link}</span>
       <span data-testid="error">{live.error ?? ''}</span>
       <span data-testid="notice">{live.notice ?? ''}</span>
+      <span data-testid="control">{WHO[s.view.control]}</span>
       <div data-testid="panel">{ask && where === 'panel' && <LiveView live={live} />}</div>
       <div data-testid="expand">{ask && where === 'expand' && <LiveView live={live} />}</div>
       <ControlBar connected={live.link === 'live'} control={s.view.control} botTitle="Scout" onTake={() => void live.takeControl()} onHandBack={() => void live.handBack()} onForce={() => void live.forceHandBack()} />

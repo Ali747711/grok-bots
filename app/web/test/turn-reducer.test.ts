@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { applyFrame, initialTurnState, type TurnFrame, type TurnState } from '@/chat/turn-reducer'
-import { markInterrupted } from '@/chat/turn-steps'
+import { applyToolFrame, markInterrupted, type ToolPayload } from '@/chat/turn-steps'
 import type { ChatItem } from '@/chat/types'
 
 import captured from './fixtures/turn-frames.json'
@@ -199,5 +199,30 @@ describe('turn reducer (captured fixture turn)', () => {
     expect(assistantText(state)).toEqual(['One', 'Two'])
     const ids = state.items.map(i => i.id)
     expect(new Set(ids).size).toBe(ids.length)
+  })
+})
+
+describe('step times', () => {
+  const start = find('tool.start')
+  const complete = find('tool.complete')
+  const stepsOf = (items: readonly ChatItem[]) => items.flatMap(i => (i.kind === 'work' ? i.steps : []))
+
+  it('stamps a live step with the client clock at its first frame', () => {
+    const first = applyToolFrame([], 'work-1', 'tool.start', start.payload as ToolPayload, 5000)
+    expect(stepsOf(first)).toMatchObject([{ running: true, at: 5000 }])
+    // Later frames of the same step keep the first time.
+    const progressed = applyToolFrame(first, 'work-1', 'tool.progress', start.payload as ToolPayload, 6000)
+    const done = applyToolFrame(progressed, 'work-1', 'tool.complete', complete.payload as ToolPayload, 9000)
+    expect(stepsOf(done)).toMatchObject([{ running: false, at: 5000 }])
+    // A step first seen at its completion (a resumed turn) takes that time.
+    expect(stepsOf(applyToolFrame([], 'work-1', 'tool.complete', complete.payload as ToolPayload, 9000))).toMatchObject([{ at: 9000 }])
+  })
+
+  it('uses the real clock when the reducer plays a frame', () => {
+    const before = Date.now()
+    const state = play(initialTurnState, [find('message.start'), start])
+    const at = stepsOf(state.items)[0]?.at
+    expect(at).toBeGreaterThanOrEqual(before)
+    expect(at).toBeLessThanOrEqual(Date.now())
   })
 })
