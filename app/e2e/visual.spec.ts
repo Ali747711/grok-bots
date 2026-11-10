@@ -230,6 +230,42 @@ async function openEmptyThread(page: Page, name: string, title: string): Promise
   await expect(tip).toHaveCount(0)
 }
 
+/**
+ * The composer with an unsent two-line draft: `/` focuses it, the box grows, and Send turns on. Nothing is
+ * sent (no Enter, no click on Send), so no model is called.
+ */
+async function openComposer(page: Page, name: string): Promise<void> {
+  await openBot(page, name)
+  const box = page.getByRole('textbox', { name: 'Message' })
+  const send = page.getByRole('button', { name: 'Send', exact: true })
+  await expect(send).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Stop', exact: true })).toHaveCount(0)
+  const oneLine = (await box.boundingBox())?.height ?? 0
+  await page.keyboard.press('/')
+  await expect(box).toBeFocused()
+  await expect(box).toHaveValue('')
+  await box.fill('Draft a short plan for the launch\nand list what is still open')
+  await expect(send).toBeEnabled()
+  expect((await box.boundingBox())?.height ?? 0, 'the box grows with a second line').toBeGreaterThan(oneLine)
+  // The draft is kept for this bot while the profile is open.
+  await chatHeader(page).getByRole('button', { name: 'Profile', exact: true }).click()
+  await page.getByRole('button', { name: 'Back to chat' }).click()
+  await expect(box).toHaveValue(/and list what is still open$/)
+  await box.focus()
+}
+
+/**
+ * The Needs-you page with nothing waiting. A request card needs a real request from a model turn, which this
+ * spec never makes; if the user has one open right now the screen fails here, before anything is shot.
+ */
+async function openNeedsYou(page: Page): Promise<void> {
+  await page.goto(`${CREW}/needs-you`)
+  const main = page.getByRole('main')
+  await expect(main.getByRole('heading', { name: 'Needs you', exact: true })).toBeVisible()
+  await expect(main.getByText('Nothing needs you right now.', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('request-card')).toHaveCount(0)
+}
+
 const SCREENS: Screen[] = [
   { id: 'workspace', task: 4, open: page => openBot(page, BOT) },
   { id: 'workspace-side', task: 6, open: page => openSide(page, BOT) },
@@ -240,7 +276,9 @@ const SCREENS: Screen[] = [
   { id: 'rail-theme', task: 7, open: (page, { theme }) => openRailTheme(page, BOT, theme) },
   { id: 'new-bot', task: 8, open: page => openNewBot(page, BOT) },
   { id: 'conversation', task: 9, open: page => openConversation(page, BOT, BOT_TITLE) },
-  { id: 'empty-thread', task: 9, open: page => openEmptyThread(page, BOT, BOT_TITLE) }
+  { id: 'empty-thread', task: 9, open: page => openEmptyThread(page, BOT, BOT_TITLE) },
+  { id: 'composer', task: 10, open: page => openComposer(page, BOT) },
+  { id: 'needs-you', task: 10, open: page => openNeedsYou(page) }
 ]
 
 test.describe.configure({ mode: 'serial' })

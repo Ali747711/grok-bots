@@ -1,5 +1,8 @@
-import { useState, type KeyboardEvent } from 'react'
+import { type FocusEvent, type KeyboardEvent, type ReactNode, useLayoutEffect, useRef, useState } from 'react'
 
+import { KeyRound, MessageCircleQuestion, ShieldAlert } from 'lucide-react'
+
+import { IndeterminateBar } from '@/components/console/motion-bits'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import type { PendingView } from '@/state/types'
@@ -14,6 +17,11 @@ interface RequestCardProps {
   onAnswer: (entry: PendingView, body: AnswerBody) => Promise<string | null>
   /** Shown in the approval title; falls back to the profile handle. */
   botTitle?: string
+  /**
+   * Replaces the card's own heading (label, approval title, bare summary), for a page whose header already
+   * names the bot and holds the summary. The full command, warnings and controls always stay.
+   */
+  header?: ReactNode
 }
 
 const FAILURES: Record<string, string> = {
@@ -21,6 +29,9 @@ const FAILURES: Record<string, string> = {
   stale_generation: 'This request is no longer current'
 }
 const SECONDARY = 'text-muted-foreground'
+const WARNING = 'text-xs font-medium text-destructive'
+const SUMMARY = 'mb-2 text-[13px] font-semibold break-words'
+const KIND_ICON = { approval: ShieldAlert, clarify: MessageCircleQuestion, secret: KeyRound, sudo: KeyRound }
 const INPUT = 'border-border bg-control text-foreground placeholder:text-muted-foreground dark:bg-control'
 const SCOPED = new Set(['session', 'always'])
 /** Same limit the server enforces on answers. */
@@ -31,19 +42,19 @@ const COUNT_FROM = 3800
 const isSubmitKey = (e: KeyboardEvent<HTMLInputElement>) => e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229
 
 /** The exact operation being approved, in full. Falls back to the short summary for an older server. */
-function ApprovalDetail({ entry }: { entry: PendingView }) {
-  if (entry.command === undefined && entry.description === undefined) return <p className="mb-2 font-medium break-words">{entry.summary}</p>
+function ApprovalDetail({ entry, bare }: { entry: PendingView; bare: boolean }) {
+  if (entry.command === undefined && entry.description === undefined) return bare ? null : <p className={SUMMARY}>{entry.summary}</p>
   return (
     <div className="mb-2 space-y-2">
-      {(hasHidden(entry.command) || hasHidden(entry.description)) && <p className="text-xs font-medium text-destructive">This command contains hidden characters.</p>}
-      {entry.description && <p className="font-medium break-words whitespace-pre-wrap"><RevealHidden text={entry.description} /></p>}
+      {(hasHidden(entry.command) || hasHidden(entry.description)) && <p className={WARNING}>This command contains hidden characters.</p>}
+      {entry.description && <p className="text-[13px] font-medium break-words whitespace-pre-wrap text-muted-foreground"><RevealHidden text={entry.description} /></p>}
       {entry.command && (
         <pre data-testid="approval-command" className="max-h-[40vh] overflow-auto rounded-lg bg-control p-2.5 font-mono text-xs break-all whitespace-pre-wrap">
           <RevealHidden text={entry.command} />
         </pre>
       )}
-      {entry.app?.argsTruncated && <p className="text-xs font-medium text-destructive">Hermes shows only the start of this request.</p>}
-      {entry.detailTruncated && <p className="text-xs font-medium text-destructive">This command is too long to show in full. Review it in the Hermes app.</p>}
+      {entry.app?.argsTruncated && <p className={WARNING}>Hermes shows only the start of this request.</p>}
+      {entry.detailTruncated && <p className={WARNING}>This command is too long to show in full. Review it in the Hermes app.</p>}
     </div>
   )
 }
@@ -146,13 +157,60 @@ function SecretControls({ entry, disabled, retry, send }: { entry: PendingView; 
   )
 }
 
+/** The card's own heading: what kind of request it is and, for an approval, whose. */
+function CardHeading({ entry, botTitle }: { entry: PendingView; botTitle?: string }) {
+  const Icon = KIND_ICON[entry.kind]
+  return (
+    <div className="mb-2 flex items-center gap-2.5">
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-control text-foreground">
+        <Icon className="size-4" aria-hidden="true" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className={`flex items-center gap-1.5 text-xs font-medium ${SECONDARY}`}>
+          <span aria-hidden="true" className="size-2 shrink-0 rounded-full bg-status-waiting" />
+          Needs you
+        </p>
+        {entry.kind === 'approval' && <h3 className="text-[13px] leading-[18px] font-semibold break-words">{botTitle ?? entry.profile} needs your approval</h3>}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Keeps keyboard focus on the card when the control that held it unmounts (the request changed under the
+ * user), so focus is not dropped to the top of the page. Focus the user moved elsewhere is left alone.
+ */
+function useFocusPark() {
+  const card = useRef<HTMLDivElement>(null)
+  const held = useRef<Element | null>(null)
+  useLayoutEffect(() => {
+    const control = held.current
+    if (control === null || control.isConnected) return
+    held.current = null
+    const active = document.activeElement
+    if (active === null || active === document.body) card.current?.focus()
+  })
+  return {
+    ref: card,
+    onFocus: (event: FocusEvent<HTMLDivElement>) => {
+      held.current = event.target === card.current ? null : event.target
+    },
+    // A removed control fires no blur while connected, so this only clears focus that really moved away.
+    onBlur: (event: FocusEvent<HTMLDivElement>) => {
+      if (event.target.isConnected) held.current = null
+    }
+  }
+}
+
 /** One request waiting for the user: approval, question, or secret/sudo prompt. Shows only what Hermes sent. */
-export function RequestCard({ entry, onAnswer, botTitle }: RequestCardProps) {
+export function RequestCard({ entry, onAnswer, botTitle, header }: RequestCardProps) {
   const [sending, setSending] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const park = useFocusPark()
   const disabled = sending || entry.state === 'answering'
   const retry = entry.state === 'failed'
   const secret = entry.kind === 'secret' || entry.kind === 'sudo'
+  const bare = header !== undefined
 
   /** Resolves null when Crew accepted the answer, otherwise the message shown on the card. */
   const send = async (body: AnswerBody): Promise<string | null> => {
@@ -168,14 +226,15 @@ export function RequestCard({ entry, onAnswer, botTitle }: RequestCardProps) {
   }
 
   return (
-    <div data-testid="request-card" className="rounded-2xl border border-border bg-raised p-4 text-sm text-foreground">
-      <p className="mb-2 text-xs font-medium text-primary">
-        <span aria-hidden="true">● </span>
-        Needs you
-      </p>
-      {entry.kind === 'approval' && <h3 className="mb-1.5 text-base font-semibold break-words">{botTitle ?? entry.profile} needs your approval</h3>}
-      {entry.kind === 'approval' && <ApprovalDetail entry={entry} />}
-      {(entry.kind === 'clarify' || (secret && !entry.answerable)) && <p className="mb-2 font-medium break-words">{entry.summary}</p>}
+    <div
+      {...park}
+      data-testid="request-card"
+      tabIndex={-1}
+      className="rounded-2xl border border-border bg-raised p-3 text-sm text-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring"
+    >
+      {header ?? <CardHeading entry={entry} botTitle={botTitle} />}
+      {entry.kind === 'approval' && <ApprovalDetail entry={entry} bare={bare} />}
+      {!bare && (entry.kind === 'clarify' || (secret && !entry.answerable)) && <p className={SUMMARY}>{entry.summary}</p>}
       {!entry.answerable ? (
         <p className={`text-xs ${SECONDARY}`}>Answer this in the app that asked</p>
       ) : (
@@ -185,8 +244,13 @@ export function RequestCard({ entry, onAnswer, botTitle }: RequestCardProps) {
           {secret && <SecretControls entry={entry} disabled={disabled} retry={retry} send={send} />}
         </>
       )}
-      {disabled && <p role="status" className={`mt-2 text-xs ${SECONDARY}`}>Sending…</p>}
-      {retry && entry.answerable && <p className="mt-2 text-xs font-medium text-destructive">Couldn’t send: {FAILURES[entry.error ?? ''] ?? entry.error ?? 'unknown error'}. Try again.</p>}
+      {disabled && (
+        <p role="status" className={`mt-2 flex items-center gap-2 text-xs ${SECONDARY}`}>
+          <IndeterminateBar label="Sending" className="w-10" />
+          Sending…
+        </p>
+      )}
+      {retry && entry.answerable && <p className={`mt-2 ${WARNING}`}>Couldn’t send: {FAILURES[entry.error ?? ''] ?? entry.error ?? 'unknown error'}. Try again.</p>}
       {message && <p className={`mt-2 text-xs ${SECONDARY}`}>{message}</p>}
     </div>
   )

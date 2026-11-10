@@ -241,6 +241,30 @@ describe('ChatView', () => {
     expect(screen.getByText('next thing')).toBeInTheDocument()
   })
 
+  it('tells the composer drawer about a queued message, an open request, and a disabled reason, in that order', async () => {
+    const request = { id: 'p1', kind: 'approval' as const, profile: 'dev', sessionId: 's', summary: 'cmd', choices: ['once', 'deny'], receivedAt: 1, source: 'event' as const, state: 'open' as const, answerable: true }
+    const { rerender } = render(chat(<ChatView bot={dev} state={crewState()} crewConnected />))
+    await flush()
+    const drawer = () => screen.queryByText(/Queued\. It goes in|Waiting for you above|Hermes is offline/)
+    expect(drawer()).toBeNull()
+    client.handlers['prompt.submit'] = () => ({ status: 'queued' })
+    act(() => { client.emit({ type: 'message.start', session_id: 'live-1', payload: {}, execution_generation: 2 }) })
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'next thing' } })
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' })
+    await flush()
+    expect(drawer()).toHaveTextContent('Queued. It goes in after the current turn.')
+    expect(drawer()).toHaveAttribute('role', 'status')
+    // The turn is running in this session, so Stop is offered by name.
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeEnabled()
+    rerender(chat(<ChatView bot={dev} state={crewState({ pending: [request] })} crewConnected />))
+    expect(drawer()).toHaveTextContent('Waiting for you above')
+    // A request for another bot is not above this composer.
+    rerender(chat(<ChatView bot={dev} state={crewState({ pending: [{ ...request, profile: 'researcher' }] })} crewConnected />))
+    expect(drawer()).toHaveTextContent('Queued. It goes in after the current turn.')
+    rerender(chat(<ChatView bot={dev} state={crewState({ hermes: 'offline', pending: [request] })} crewConnected />))
+    expect(drawer()).toHaveTextContent('Hermes is offline')
+  })
+
   it.each([
     ['Hermes offline', { hermes: 'offline' as const }, true],
     ['Crew stream down', {}, false]

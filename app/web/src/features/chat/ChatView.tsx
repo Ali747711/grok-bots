@@ -57,7 +57,7 @@ export function ChatView({ bot, state, crewConnected, panel = null, onPanel }: C
       )}
       {notice && <p role="status" className="px-6 text-center text-xs font-medium text-faint">{notice}</p>}
       {requests.length > 0 && (
-        <div className="max-h-[40vh] flex-none overflow-y-auto px-6 pt-2">
+        <div className="max-h-[40vh] flex-none scroll-thin overflow-y-auto px-4 pt-2 pb-3">
           <div className="mx-auto flex max-w-[720px] flex-col gap-2">
             {requests.map(entry => <RequestCard key={entry.id} entry={entry} botTitle={bot.title} onAnswer={(e, body) => submitAnswer(e.id, body)} />)}
           </div>
@@ -66,6 +66,9 @@ export function ChatView({ bot, state, crewConnected, panel = null, onPanel }: C
       <Composer
         draftKey={draftKey.bot(bot.name)}
         disabledReason={reason}
+        waitingAbove={requests.length > 0}
+        // A message Hermes holds behind the running turn; a failed delivery has its own caption on the bubble.
+        queued={items.some(item => item.kind === 'user' && item.queued === true && !item.delivery)}
         running={running}
         stopDisabled={!connected}
         // A rejected send already shows a "Not sent" notice in the transcript.

@@ -160,50 +160,75 @@ describe('RequestCard: hidden characters in the approval text', () => {
   })
 })
 
-describe('RequestCard: raised card', () => {
+describe('RequestCard: the card', () => {
   it('breaks a long unbroken bot name in the approval title', () => {
     render(<RequestCard entry={entry({ command: 'ls' })} botTitle={'y'.repeat(80)} onAnswer={noop} />)
     expect(screen.getByRole('heading', { level: 3 })).toHaveClass('break-words')
   })
 
-  it('keeps a long command scrollable and hidden characters visible on the raised card', () => {
-    const command = `echo \u202E${'x'.repeat(5000)}`
+  it('keeps a long command whole and hidden characters visible on the card', () => {
+    const command = `echo ‮${'x'.repeat(5000)}`
     render(<RequestCard entry={entry({ command })} botTitle="Dev" onAnswer={noop} />)
     const card = screen.getByTestId('request-card')
-    expect(card).toHaveClass('bg-raised', 'text-foreground', 'border-border')
-    expect(within(card).getByText('Needs you')).toHaveClass('text-xs', 'text-primary')
-    expect(screen.getByText('Dev needs your approval')).toBeInTheDocument()
+    expect(within(card).getByText('Needs you')).toBeInTheDocument()
+    expect(within(card).getByRole('heading', { level: 3, name: 'Dev needs your approval' })).toBeInTheDocument()
     const block = screen.getByTestId('approval-command')
-    expect(block).toHaveClass('overflow-auto', 'bg-control', 'whitespace-pre-wrap', 'break-all')
-    expect(block.textContent).toBe(command.replace('\u202E', '⟨U+202E⟩'))
-    expect(screen.getByText('⟨U+202E⟩')).toHaveClass('bg-destructive', 'text-background')
-    expect(screen.getByText('This command contains hidden characters.')).toHaveClass('text-destructive')
+    expect(block).toHaveClass('overflow-auto', 'whitespace-pre-wrap', 'break-all')
+    expect(block.textContent).toBe(command.replace('‮', '⟨U+202E⟩'))
+    // PF31: an outlined chip. Never destructive text on a destructive fill.
+    const marker = screen.getByText('⟨U+202E⟩')
+    expect(marker).toHaveClass('border-destructive', 'text-destructive')
+    expect(marker.className).not.toMatch(/bg-destructive|text-background/)
+    expect(screen.getByText('This command contains hidden characters.')).toBeInTheDocument()
     expect(screen.getAllByRole('button').map(b => b.textContent)).toEqual(['Allow once', 'Deny'])
   })
 
-  it('makes only Allow once primary and keeps deny-only when detail is truncated', () => {
+  it('keeps deny-only when detail is truncated and offers unknown choices as sent', () => {
     const { rerender } = render(<RequestCard entry={entry({ choices: ['session', 'once', 'deny'] })} onAnswer={noop} />)
-    expect(screen.getByRole('button', { name: 'Allow once' })).toHaveClass('bg-primary')
-    for (const name of ['Allow for this chat', 'Deny']) {
-      const b = screen.getByRole('button', { name })
-      expect(b).toHaveClass('border-border')
-      expect(b.className).not.toMatch(/bg-primary/)
-    }
+    expect(screen.getAllByRole('button').map(b => b.textContent)).toEqual(['Allow for this chat', 'Allow once', 'Deny'])
     rerender(<RequestCard entry={entry({ command: 'x', detailTruncated: true, choices: ['once', 'deny'] })} onAnswer={noop} />)
     expect(screen.getAllByRole('button').map(b => b.textContent)).toEqual(['Deny'])
-    expect(screen.getByText(/too long to show in full/)).toHaveClass('text-destructive')
+    expect(screen.getByText(/too long to show in full/)).toBeInTheDocument()
     rerender(<RequestCard entry={entry({ choices: ['mystery', 'once', 'deny'] })} onAnswer={noop} />)
-    expect(screen.getByRole('button', { name: 'mystery' })).not.toHaveClass('bg-primary')
-    expect(screen.getByRole('button', { name: 'Allow once' })).toHaveClass('bg-primary')
+    expect(screen.getAllByRole('button').map(b => b.textContent)).toEqual(['mystery', 'Allow once', 'Deny'])
     rerender(<RequestCard entry={entry({ state: 'failed', error: 'not_connected' })} onAnswer={noop} />)
-    expect(screen.getByText(/Couldn’t send/)).toHaveClass('text-destructive')
+    expect(screen.getByText(/Couldn’t send/)).toBeInTheDocument()
   })
 
-  it('puts clarify and secret inputs on the control fill', () => {
+  it('labels the clarify and secret inputs', () => {
     const { rerender } = render(<RequestCard entry={entry({ kind: 'clarify', summary: 'Which?', choices: undefined })} onAnswer={noop} />)
-    expect(screen.getByLabelText('Your answer')).toHaveClass('bg-control', 'dark:bg-control', 'border-border')
+    expect(screen.getByRole('textbox', { name: 'Your answer' })).toBeEnabled()
     rerender(<RequestCard entry={entry({ kind: 'secret', summary: 'Key', choices: undefined })} onAnswer={noop} />)
-    expect(screen.getByLabelText('Key')).toHaveClass('bg-control')
+    expect(screen.getByLabelText('Key')).toHaveAttribute('type', 'password')
+  })
+
+  it('parks focus on the card when its buttons unmount', () => {
+    const { rerender } = render(<RequestCard entry={entry({ command: 'ls' })} onAnswer={noop} />)
+    const card = screen.getByTestId('request-card')
+    expect(card).toHaveAttribute('tabindex', '-1')
+    screen.getByRole('button', { name: 'Allow once' }).focus()
+    // Hermes took the request back to the app that asked: the buttons go, the card stays.
+    rerender(<RequestCard entry={entry({ command: 'ls', answerable: false })} onAnswer={noop} />)
+    expect(screen.queryAllByRole('button')).toHaveLength(0)
+    expect(card).toHaveFocus()
+  })
+
+  it('leaves focus alone when the buttons unmount while focus is elsewhere', () => {
+    const { rerender } = render(<><button type="button">Elsewhere</button><RequestCard entry={entry({ command: 'ls' })} onAnswer={noop} /></>)
+    screen.getByRole('button', { name: 'Allow once' }).focus()
+    screen.getByRole('button', { name: 'Elsewhere' }).focus()
+    rerender(<><button type="button">Elsewhere</button><RequestCard entry={entry({ command: 'ls', answerable: false })} onAnswer={noop} /></>)
+    expect(screen.getByRole('button', { name: 'Elsewhere' })).toHaveFocus()
+  })
+
+  it('shows a header in place of its own title and summary, and still shows the full command', () => {
+    render(<RequestCard entry={entry({ command: 'rm -r /tmp/x', description: 'Delete files' })} botTitle="Dev" header={<a href="/bots/dev">Open chat</a>} onAnswer={noop} />)
+    expect(screen.getByRole('link', { name: 'Open chat' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { level: 3 })).toBeNull()
+    expect(screen.queryByText('Needs you')).toBeNull()
+    expect(screen.getByTestId('approval-command').textContent).toBe('rm -r /tmp/x')
+    expect(screen.getByText('Delete files')).toBeInTheDocument()
+    expect(screen.getAllByRole('button').map(b => b.textContent)).toEqual(['Allow once', 'Deny'])
   })
 })
 
