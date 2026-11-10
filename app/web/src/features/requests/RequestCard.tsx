@@ -42,6 +42,7 @@ function ApprovalDetail({ entry }: { entry: PendingView }) {
           <RevealHidden text={entry.command} />
         </pre>
       )}
+      {entry.app?.argsTruncated && <p className="text-xs font-medium text-contrast-danger">Hermes shows only the start of this request.</p>}
       {entry.detailTruncated && <p className="text-xs font-medium text-contrast-danger">This command is too long to show in full. Review it in the Hermes app.</p>}
     </div>
   )
@@ -49,7 +50,10 @@ function ApprovalDetail({ entry }: { entry: PendingView }) {
 
 function ApprovalControls({ entry, disabled, send }: { entry: PendingView; disabled: boolean; send: (b: AnswerBody) => Promise<string | null> }) {
   // Never offer an allow choice for text the user cannot see in full.
-  const choices = (entry.choices ?? []).filter(c => !entry.detailTruncated || c === 'deny')
+  // An app prompt keeps once/deny only: "session" and "always" would allow later app actions silently.
+  const choices = (entry.choices ?? [])
+    .filter(c => !entry.app || c === 'once' || c === 'deny')
+    .filter(c => !entry.detailTruncated || c === 'deny')
   return (
     <>
       <div className="flex flex-wrap gap-2">

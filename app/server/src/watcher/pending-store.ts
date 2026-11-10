@@ -1,3 +1,5 @@
+import { appChoices, type AppPrompt } from './app-prompt.js'
+
 export type PendingKind = 'approval' | 'clarify' | 'sudo' | 'secret'
 /** Where the watcher saw the request — recorded so the Phase 0 experiment shows which channel Hermes uses. */
 export type PendingSource = 'server_request' | 'open_request' | 'snapshot_prompt' | 'event' | 'group'
@@ -16,6 +18,8 @@ export interface PendingRequest {
   readonly command?: string
   readonly description?: string
   readonly detailTruncated?: true
+  /** A Crew app tool prompt: choices are clamped to once/deny on add. */
+  readonly app?: AppPrompt
   readonly receivedAt: number
   readonly source: PendingSource
   readonly promptId?: string
@@ -59,7 +63,7 @@ export class PendingStore {
 
   add(request: PendingRequest): void {
     if (this.entries.has(request.id)) return
-    this.entries.set(request.id, request)
+    this.entries.set(request.id, request.app ? { ...request, choices: appChoices(request.choices) } : request)
     this.notify()
   }
 

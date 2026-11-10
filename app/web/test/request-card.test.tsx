@@ -21,6 +21,21 @@ describe('choiceCopy', () => {
   })
 })
 
+describe('RequestCard: app approval', () => {
+  const app = { tool: 'GITHUB_CREATE_AN_ISSUE', argsTruncated: false }
+
+  it('offers only Allow once and Deny for an app approval even if the entry lists more', () => {
+    render(<RequestCard entry={entry({ app, choices: ['once', 'deny', 'session', 'always'] })} onAnswer={noop} />)
+    expect(screen.getAllByRole('button').map(b => b.textContent)).toEqual(['Allow once', 'Deny'])
+  })
+
+  it('says Hermes shows only the start of this request when the arguments were cut, and keeps Allow once', () => {
+    render(<RequestCard entry={entry({ app: { ...app, argsTruncated: true }, command: 'MCP tool', description: 'd' })} onAnswer={noop} />)
+    expect(screen.getByText('Hermes shows only the start of this request.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Allow once' })).toBeInTheDocument()
+  })
+})
+
 describe('RequestCard: approval', () => {
   it('renders only the choices hermes offered', () => {
     render(<RequestCard entry={entry()} onAnswer={noop} />)

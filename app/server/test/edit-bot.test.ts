@@ -178,6 +178,24 @@ describe('deleteBot', () => {
     expect(refreshes).toBe(1)
   })
 
+  it("forgets the bot's apps after Hermes deleted it, and a forget failure never fails the delete", async () => {
+    const order: string[] = []
+    const inner = rest.request
+    rest.request = (async (method: string, path: string, opts?: never) => { order.push(`${method} ${path}`); return inner(method, path, opts) }) as typeof rest.request
+    const withApps = { ...deps, rest: { request: rest.request } as BotDeps['rest'], apps: { forget: async (bot: string) => { order.push(`forget ${bot}`) } } }
+    await deleteBot(withApps, 'scout')
+    expect(order).toEqual(['DELETE /api/profiles/scout', 'forget scout'])
+    const failing = { ...withApps, apps: { forget: async () => { throw new Error('boom') } } }
+    await expect(deleteBot(failing, 'scout')).resolves.toBeUndefined()
+  })
+
+  it('does not forget apps when the Hermes delete fails', async () => {
+    let forgot = false
+    const failing = { ...deps, rest: { request: async () => { throw new HermesRestError(500, 'x') } } as unknown as BotDeps['rest'], apps: { forget: async () => { forgot = true } } }
+    await expect(deleteBot(failing, 'scout')).rejects.toBeInstanceOf(HermesRestError)
+    expect(forgot).toBe(false)
+  })
+
   it('lets a rest failure through', async () => {
     rest.request = async () => { throw new HermesRestError(404, 'Profile scout does not exist') }
     await expect(deleteBot({ ...deps, rest: { request: rest.request } as BotDeps['rest'] }, 'scout')).rejects.toBeInstanceOf(HermesRestError)
@@ -197,7 +215,7 @@ describe('per-bot write serialization', () => {
     await Promise.all([created, deleted])
     expect(rpc.methods().at(-1)).toBe('session.create')
     // create now reads the new bot's config (sandbox step); only the delete is a write.
-    expect(rest.requests.filter(r => r.path !== '/api/config').map(r => r.method)).toEqual(['DELETE'])
+    expect(rest.requests.filter(r => r.path !== '/api/config' && r.path.startsWith('/api/profiles')).map(r => r.method)).toEqual(['DELETE'])
   })
 
   it('runs a description save and an avatar change on the same bot one after the other', async () => {

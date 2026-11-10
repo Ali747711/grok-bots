@@ -529,4 +529,13 @@ describe('ProfilePanel', () => {
     save()
     expect(await screen.findByRole('alert')).toHaveTextContent('Hermes refused it: No such model')
   })
+
+  it('shows the Apps section below the Sandbox section', async () => {
+    stub()
+    open()
+    await loaded()
+    const sandbox = screen.getByRole('heading', { name: 'Sandbox' })
+    const apps = screen.getByRole('heading', { name: 'Apps' })
+    expect(sandbox.compareDocumentPosition(apps) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
 })

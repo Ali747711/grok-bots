@@ -12,6 +12,8 @@ export interface CrewConfig {
   readonly stateDir: string
   /** Hermes dotenv file; only the OpenRouter key is read from it (credit pill). */
   readonly hermesEnvFile: string
+  /** Composio API key file (0600); the key is never kept anywhere else. */
+  readonly composioKeyFile: string
   /** Hermes home folder (`~/.hermes`); a bot's sandbox files live under `profiles/<bot>/sandboxes`. */
   readonly hermesHome: string
   /** Directory with the built web app (`index.html`, `assets/`). */
@@ -31,6 +33,7 @@ const envSchema = z.object({
   CREW_STATE_DIR: z.string().min(1).optional(),
   CREW_HERMES_TOKEN_FILE: z.string().min(1).optional(),
   CREW_HERMES_ENV_FILE: z.string().min(1).optional(),
+  CREW_COMPOSIO_KEY_FILE: z.string().min(1).optional(),
   CREW_HERMES_HOME: z.string().min(1).optional(),
   CREW_WEB_DIST: z.string().min(1).optional()
 })
@@ -60,6 +63,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): CrewConfig {
     hermesUrl: parsed.CREW_HERMES_URL ?? DEFAULT_HERMES_URL,
     hermesTokenFile: expandHome(parsed.CREW_HERMES_TOKEN_FILE ?? '~/.hermes/webapp/session-token', home),
     hermesEnvFile: expandHome(parsed.CREW_HERMES_ENV_FILE ?? '~/.hermes/.env', home),
+    composioKeyFile: expandHome(parsed.CREW_COMPOSIO_KEY_FILE ?? '~/.config/crew/composio-key', home),
     hermesHome: hermesHomeSchema.parse(expandHome(parsed.CREW_HERMES_HOME ?? '~/.hermes', home)),
     stateDir: expandHome(parsed.CREW_STATE_DIR ?? '~/.config/crew', home),
     webDist: expandHome(parsed.CREW_WEB_DIST ?? DEFAULT_WEB_DIST, home),

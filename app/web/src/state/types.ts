@@ -44,6 +44,8 @@ export interface PendingView {
   readonly description?: string
   /** True when command/description were cut by the server; never offer an allow choice then. */
   readonly detailTruncated?: true
+  /** A Crew app tool prompt: only Allow once and Deny are offered. */
+  readonly app?: { readonly tool: string | null; readonly argsTruncated: boolean }
   readonly choices?: readonly string[]
   readonly receivedAt: number
   readonly source: 'server_request' | 'open_request' | 'snapshot_prompt' | 'event' | 'group'

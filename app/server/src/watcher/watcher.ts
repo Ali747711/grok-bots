@@ -26,6 +26,8 @@ export interface WatcherDeps {
   /** Observe WebSocket close codes (4401 = Hermes says our token is no longer valid). */
   /** Sandbox state per bot name for the roster; must not reject (the roster cache never does). */
   readonly sandboxStates?: (names: readonly string[]) => Promise<ReadonlyMap<string, SandboxState>>
+  /** The bot names after each roster sync (the orphan sweep); a throw is caught. */
+  readonly onRoster?: (names: readonly string[]) => void
   readonly onSocketClose?: (handler: (code: number) => void) => () => void
 }
 
@@ -155,6 +157,11 @@ export function startWatcher(deps: WatcherDeps): Watcher {
   async function syncOnce(): Promise<boolean> {
     const { profiles } = await client.request<{ profiles: ProfileRow[] }>('profiles.list', { include_sessions: true })
     tracker.applyProfiles(profiles)
+    try {
+      deps.onRoster?.(profiles.map(row => row.name))
+    } catch (error) {
+      logger.warn('roster observer failed', { error: error instanceof Error ? error.name : 'unknown' })
+    }
     changed()
     // Not awaited: a stalled config read must not delay the roster, status or approval updates.
     if (deps.sandboxStates) {

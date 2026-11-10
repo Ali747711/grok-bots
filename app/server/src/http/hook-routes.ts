@@ -9,7 +9,7 @@ import type { CrewEnv } from './session-guard.js'
  * The raw request bytes (the signature is over exactly these), or null when over `max`. A declared
  * length above the cap answers at once; otherwise the stream is cancelled the moment the count passes it.
  */
-export async function readLimited(req: Request, max: number): Promise<Buffer | null> {
+export async function readLimited(req: Pick<Request, 'headers' | 'body'>, max: number): Promise<Buffer | null> {
   const declared = Number(req.headers.get('content-length'))
   if (Number.isFinite(declared) && declared > max) return null
   if (!req.body) return Buffer.alloc(0)

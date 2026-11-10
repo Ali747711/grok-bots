@@ -6,7 +6,7 @@ import { join } from 'node:path'
 
 import { type Page, expect } from '@playwright/test'
 
-import { hermesRest, testBotNames } from './hermes-rpc.js'
+import { hermesRest, testBotNames, withRpc } from './hermes-rpc.js'
 
 export const VM = 'ali@192.168.64.16'
 export const CREW = 'http://127.0.0.1:7070'
@@ -210,4 +210,35 @@ export function genericHeaders(body: string, secret: string, ts: string | null, 
     'x-crew-signature': `sha256=${hmacHex(secret, `${ts ?? ''}.${body}`)}`,
     ...(event ? { 'x-crew-event': event } : {})
   }
+}
+
+// ---- Connectors (Phase 7). These go only through Crew or Hermes; nothing reads the Composio key or a .env value. ----
+
+/** Turn a bot's apps off (soft: the status is not checked, so cleanup never throws). */
+export async function appsOff(page: Page, bot: string): Promise<void> {
+  await crewApi(page, 'PUT', `/crew/bots/${encodeURIComponent(bot)}/apps`, {})
+}
+
+/** The raw `mcp_servers.crew_apps` entry of a bot's Hermes config, or undefined. */
+export async function rawAppsServer(bot: string): Promise<Record<string, unknown> | undefined> {
+  const res = await hermesRest('GET', `/api/config?profile=${encodeURIComponent(bot)}&include_defaults=false`)
+  const servers = (res.body as { mcp_servers?: Record<string, Record<string, unknown>> } | null)?.mcp_servers
+  return servers?.crew_apps
+}
+
+/** The names of a bot's env keys. Names only; Hermes redacts the values and this never returns them. */
+export async function envKeyNames(bot: string): Promise<string[]> {
+  const res = await hermesRest('GET', `/api/env?profile=${encodeURIComponent(bot)}`)
+  const body = res.body
+  // An unanswered read must fail the test: an empty list would let a "not contains" check pass.
+  if (res.status !== 200 || body === null || typeof body !== 'object') throw new Error(`Hermes env read answered ${res.status}`)
+  return Object.keys(body as Record<string, unknown>)
+}
+
+/** The runtime state of a bot's `crew_apps` server, as Hermes caches it. */
+export async function appsStatus(bot: string): Promise<{ connected: boolean; tools: number } | undefined> {
+  const res = await withRpc(rpc =>
+    rpc.call<{ servers: { name: string; connected: boolean; tools: number }[] }>('mcp.servers.status', { profile: bot }))
+  const row = res.servers.find(s => s.name === 'crew_apps')
+  return row ? { connected: row.connected, tools: row.tools } : undefined
 }

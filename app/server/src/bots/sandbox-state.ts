@@ -45,7 +45,11 @@ function parseListString(text: string): unknown[] | null {
  * string is a list; any other non-empty string is one name; anything else is empty.
  */
 export function rawToolsetList(raw: unknown): readonly unknown[] {
-  const value = section(section(raw).agent).disabled_toolsets
+  return rawList(section(section(raw).agent).disabled_toolsets)
+}
+
+/** A config value read as a list the same way (an array, a `[...]` string, a single name, or empty). */
+export function rawList(value: unknown): readonly unknown[] {
   if (Array.isArray(value)) return value
   if (typeof value !== 'string') return []
   const text = value.trim()

@@ -12,7 +12,7 @@ import type { CrewEnv } from './session-guard.js'
 const putBody = z.object({ on: z.boolean() }).strict()
 
 /** Roster check with Hermes's own profile-name rule, so `default` is allowed. */
-async function requireBot(deps: BotDeps, name: string): Promise<void> {
+export async function requireBot(deps: Pick<BotDeps, 'rpc'>, name: string): Promise<void> {
   const list = await deps.rpc<{ profiles: readonly { name: string }[] }>('profiles.list', { include_sessions: false })
   if (!list.profiles.some(p => p.name === name)) throw new BotNotFoundError(name)
 }

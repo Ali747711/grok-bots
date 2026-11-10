@@ -83,8 +83,10 @@ export class FakeRpc {
 export class FakeRest {
   souls = new Map<string, string>()
   models = new Map<string, { provider: string; model: string }>()
-  readonly requests: { method: string; path: string; body?: unknown; timeoutMs?: number }[] = []
+  readonly requests: { method: string; path: string; body?: unknown; query?: Record<string, string>; timeoutMs?: number }[] = []
   deleteReply: unknown = { ok: true }
+  /** Scripted replies by `METHOD /path` (query excluded); a function result may throw. Checked first. */
+  readonly routes = new Map<string, (req: { body?: unknown; query?: Record<string, string> }) => unknown>()
 
   soul(name: string, content: string): void {
     this.souls.set(name, content)
@@ -92,8 +94,10 @@ export class FakeRest {
   writes(): { method: string; path: string; body?: unknown }[] {
     return this.requests.filter(r => r.method !== 'GET')
   }
-  request = async <T>(method: string, path: string, opts: { body?: unknown; timeoutMs?: number } = {}): Promise<T> => {
-    this.requests.push({ method, path, ...(opts.body === undefined ? {} : { body: opts.body }), ...(opts.timeoutMs === undefined ? {} : { timeoutMs: opts.timeoutMs }) })
+  request = async <T>(method: string, path: string, opts: { body?: unknown; query?: Record<string, string>; timeoutMs?: number } = {}): Promise<T> => {
+    this.requests.push({ method, path, ...(opts.body === undefined ? {} : { body: opts.body }), ...(opts.query === undefined ? {} : { query: opts.query }), ...(opts.timeoutMs === undefined ? {} : { timeoutMs: opts.timeoutMs }) })
+    const route = this.routes.get(`${method} ${path}`)
+    if (route) return route({ ...(opts.body === undefined ? {} : { body: opts.body }), ...(opts.query === undefined ? {} : { query: opts.query }) }) as T
     const soul = /^\/api\/profiles\/([^/]+)\/soul$/.exec(path)
     if (soul && method === 'GET') {
       const name = decodeURIComponent(soul[1]!)

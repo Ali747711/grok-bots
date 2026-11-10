@@ -1,0 +1,13 @@
+{
+ "command": "MCP tool 'GITHUB_CREATE_AN_ISSUE' on UNTRUSTED server 'crew_apps' wants to run. This tool is write-capable (no readOnlyHint=true annotation) and may modify external state.\n\nArguments:\n{\n  \"owner\": \"octocat\",\n  \"repo\": \"crew-e2e-does-not-exist\",\n  \"title\": \"crew e2e please ignore\"\n}",
+ "description": "Server 'crew_apps' is configured 'trust: untrusted'. Approve to run 'GITHUB_CREATE_AN_ISSUE' once, for this session, or always, or deny to block it.",
+ "summary": "Server 'crew_apps' is configured 'trust: untrusted'. Approve to run 'GITHUB_CREATE_AN_ISSUE' once, for this session, or always, or deny to block it. \u2014 MCP tool 'GITHUB_CREATE_AN_ISSUE' on UNTRUSTED server 'crew_apps' wants to run. This tool is write-capable (no readOnlyHint=true annotation) and may ",
+ "choices": [
+  "once",
+  "deny",
+  "session",
+  "always"
+ ],
+ "sessionId": "run-fixture",
+ "id": "p-app-1"
+}

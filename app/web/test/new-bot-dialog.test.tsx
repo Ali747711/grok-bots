@@ -13,7 +13,7 @@ vi.mock('bot-avatars', async () => {
 })
 
 const json = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status }))
-const complete: CreateResult = { name: 'research-bot', complete: true, steps: { profile: 'ok', look: 'ok', avatar: 'skipped', chat: 'ok', sandbox: 'skipped' }, needsModel: false }
+const complete: CreateResult = { name: 'research-bot', complete: true, steps: { profile: 'ok', apps: 'ok', look: 'ok', avatar: 'skipped', chat: 'ok', sandbox: 'skipped' }, needsModel: false }
 const incomplete: CreateResult = {
   ...complete, complete: false, steps: { ...complete.steps, look: 'failed' }, error: { step: 'look', message: 'boom' }
 }
