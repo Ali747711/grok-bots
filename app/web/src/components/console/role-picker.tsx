@@ -2,6 +2,7 @@ import { useId } from 'react'
 import { BarChart3, Compass, Minus, Search, Terminal, Wrench, type LucideIcon } from 'lucide-react'
 
 import { BOT_ROLES, ROLE_LABELS, type BotRole } from '@/features/bots/roles'
+import { cn } from '@/lib/utils'
 
 interface RolePickerProps {
   value: BotRole | null
@@ -37,9 +38,14 @@ export function RolePicker({ value, onChange, disabled = false }: RolePickerProp
       <legend className="sr-only">Role</legend>
       <div className="grid grid-cols-4 gap-1">
         {CHOICES.map(({ role, label, icon: Icon }) => (
-          <label key={role ?? 'none'} className="cursor-pointer">
+          <label key={role ?? 'none'} className={disabled ? 'cursor-not-allowed' : 'cursor-pointer'}>
             <input type="radio" name={name} value={role ?? ''} checked={value === role} onChange={() => onChange(role)} className="peer sr-only" />
-            <span className="flex flex-col items-center gap-1.5 rounded-2xl px-1 py-3 text-muted-foreground transition-colors peer-checked:bg-raised peer-checked:text-foreground peer-focus-visible:ring-3 peer-focus-visible:ring-ring hover:text-foreground">
+            <span
+              className={cn(
+                'flex flex-col items-center gap-1.5 rounded-2xl px-1 py-3 text-muted-foreground transition-colors peer-checked:bg-raised peer-checked:text-foreground peer-focus-visible:ring-3 peer-focus-visible:ring-ring',
+                !disabled && 'hover:text-foreground'
+              )}
+            >
               <Icon className="size-[18px]" aria-hidden="true" />
               <span className="text-[11px] font-medium">{label}</span>
             </span>

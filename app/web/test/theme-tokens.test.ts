@@ -143,4 +143,12 @@ describe('theme tokens', () => {
     const hits = files(SRC).flatMap(file => (readFileSync(file, 'utf8').match(RETIRED) ?? []).map(hit => `${relative(SRC, file)}: ${hit}`))
     expect(hits).toEqual([])
   })
+
+  it('keeps destructive text opaque and off translucent destructive fills in the ui primitives (PF31)', () => {
+    const dir = join(SRC, 'components', 'ui')
+    const hits = readdirSync(dir).flatMap(name =>
+      (readFileSync(join(dir, name), 'utf8').match(/(?:bg|text)-destructive\/\d+/g) ?? []).map(hit => `${name}: ${hit}`)
+    )
+    expect(hits).toEqual([])
+  })
 })

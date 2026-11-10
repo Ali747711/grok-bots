@@ -78,7 +78,10 @@ export function OptionList<T extends string>({ legend, value, options, onChange,
       {options.map(option => (
         <label
           key={option.value}
-          className="group flex cursor-pointer items-center gap-3 rounded-2xl px-3 py-2.5 transition-colors group-disabled:cursor-not-allowed hover:bg-shell has-checked:bg-shell has-focus-visible:ring-3 has-focus-visible:ring-ring"
+          className={cn(
+            'group flex items-center gap-3 rounded-2xl px-3 py-2.5 transition-colors has-checked:bg-shell has-focus-visible:ring-3 has-focus-visible:ring-ring',
+            disabled ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-shell'
+          )}
         >
           <input type="radio" name={name} value={option.value} checked={value === option.value} onChange={() => onChange(option.value)} className="sr-only" />
           <span aria-hidden="true" className="flex size-4 shrink-0 items-center justify-center rounded-full border-[1.5px] border-control transition-colors group-has-checked:border-foreground">
@@ -103,13 +106,14 @@ export function ChoiceChips<T extends string>({ legend, value, options, onChange
       {options.map(option => {
         const active = value === option.value
         return (
-          <label key={option.value} className="relative cursor-pointer">
+          <label key={option.value} className={cn('relative', disabled ? 'cursor-not-allowed' : 'cursor-pointer')}>
             <input type="radio" name={name} value={option.value} checked={active} onChange={() => onChange(option.value)} className="peer sr-only" />
             {active && <motion.span layoutId={`${name}-pill`} transition={slide} className="absolute inset-0 rounded-full bg-raised" />}
             <span
               className={cn(
                 'relative flex h-8 items-center rounded-full px-3 text-[13px] font-medium whitespace-nowrap transition-colors peer-focus-visible:ring-3 peer-focus-visible:ring-ring',
-                active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+                active ? 'text-foreground' : 'text-muted-foreground',
+                !active && !disabled && 'hover:text-foreground'
               )}
             >
               {option.label}

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { ChoiceChips, OptionList, Section, Switch } from '@/components/console/fields'
@@ -55,6 +55,43 @@ describe('console fields', () => {
     expect(screen.getByRole('radio', { name: 'Ops' })).toBeChecked()
     fireEvent.click(screen.getByRole('radio', { name: 'None' }))
     expect(onChange).toHaveBeenCalledWith(null)
+  })
+
+  it('disabled OptionList, ChoiceChips and RolePicker cannot be chosen and drop the pointer and hover styles', () => {
+    const onChange = vi.fn()
+    render(
+      <>
+        <OptionList legend="Mode" value="one" options={OPTIONS} onChange={onChange} disabled />
+        <ChoiceChips legend="Size" value="one" options={OPTIONS} onChange={onChange} disabled />
+        <RolePicker value="ops" onChange={onChange} disabled />
+      </>
+    )
+    for (const name of ['Mode', 'Size', 'Role']) {
+      const group = screen.getByRole('radiogroup', { name })
+      expect(group).toHaveClass('disabled:opacity-60')
+      const radios = within(group).getAllByRole('radio')
+      for (const radio of radios) {
+        expect(radio).toBeDisabled()
+        // Native clicks, as a user's would be: jsdom toggles a disabled radio on a synthetic dispatched click.
+        const label = radio.closest('label') as HTMLElement
+        act(() => {
+          radio.click()
+          label.click()
+        })
+        expect(label).toHaveClass('cursor-not-allowed')
+        expect(label.outerHTML).not.toMatch(/cursor-pointer|hover:/)
+      }
+    }
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it('enabled choices keep the pointer cursor and are chosen by the same native click', () => {
+    const onChange = vi.fn()
+    render(<RolePicker value={null} onChange={onChange} />)
+    const label = screen.getByRole('radio', { name: 'Ops' }).closest('label') as HTMLElement
+    expect(label).toHaveClass('cursor-pointer')
+    act(() => label.click())
+    expect(onChange).toHaveBeenCalledWith('ops')
   })
 
   it('StatusDot pulses only for working and says the status to screen readers', () => {

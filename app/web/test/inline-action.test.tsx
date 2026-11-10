@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { InlineAction } from '@/components/console/inline-action'
@@ -21,9 +21,40 @@ describe('InlineAction', () => {
     await press('Reset sandbox')
     expect(screen.getByRole('progressbar')).toBeInTheDocument()
     await act(async () => { resolve() })
-    expect(screen.getByText('Done')).toBeInTheDocument()
-    await act(async () => { await vi.advanceTimersByTimeAsync(2100) })
+    expect(screen.getByRole('status')).toHaveTextContent('Done')
+    await act(async () => { await vi.advanceTimersByTimeAsync(1900) })
+    expect(screen.getByRole('status')).toHaveTextContent('Done')
+    await act(async () => { await vi.advanceTimersByTimeAsync(200) })
+    expect(screen.queryByText('Done')).toBeNull()
     expect(screen.getByRole('button', { name: 'Reset sandbox' })).toBeInTheDocument()
+  })
+
+  it('keeps focus on the action while loading and on Try again after a failure', async () => {
+    let reject!: (error: Error) => void
+    setup(() => new Promise<void>((_, r) => { reject = r }))
+    const button = screen.getByRole('button', { name: 'Reset sandbox' })
+    button.focus()
+    await press('Reset sandbox')
+    expect(screen.getByRole('progressbar')).toBeInTheDocument()
+    expect(document.activeElement).toBe(button)
+    expect(button).toHaveAttribute('aria-busy', 'true')
+    expect(button).toHaveAttribute('aria-disabled', 'true')
+    await act(async () => { reject(new Error('No room')) })
+    expect(screen.getByRole('alert')).toHaveTextContent('No room')
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Try again' }))
+    expect(screen.getByRole('button', { name: 'Try again' })).not.toHaveAttribute('aria-busy')
+  })
+
+  it('ignores a second activation while loading', async () => {
+    const action = vi.fn(() => new Promise<void>(() => {}))
+    setup(action)
+    const button = screen.getByRole('button', { name: 'Reset sandbox' })
+    await act(async () => {
+      fireEvent.click(button)
+      fireEvent.click(button)
+    })
+    await act(async () => { fireEvent.click(button) })
+    expect(action).toHaveBeenCalledTimes(1)
   })
 
   it('shows the refusal text and Try again when the action rejects, and never returns to idle on its own', async () => {
@@ -57,6 +88,6 @@ describe('InlineAction', () => {
 })
 
 function cleanupAndRender(error: Error) {
-  document.body.innerHTML = ''
+  cleanup()
   setup(() => Promise.reject(error))
 }

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { AnimatePresence, motion } from 'motion/react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 
 import { blurSwap, snappy } from '@/lib/motion'
 import { cn } from '@/lib/utils'
@@ -43,16 +43,25 @@ interface IndeterminateBarProps {
   className?: string
 }
 
-/** Looping progress track. The loop is a tween because a spring never repeats. */
+/**
+ * Looping progress track. The loop is a tween because a spring never repeats. It animates `left`, which
+ * `MotionConfig reducedMotion` does not stop, so under reduced motion the fill is drawn still instead.
+ */
 export function IndeterminateBar({ label = 'In progress', className }: IndeterminateBarProps) {
+  const still = useReducedMotion()
   return (
     <span role="progressbar" aria-label={label} className={cn('relative block h-1.5 shrink-0 overflow-hidden rounded-full bg-control', className)}>
-      <motion.span
-        className="absolute inset-y-0 w-[30%] rounded-full bg-foreground/80"
-        initial={{ left: '0%' }}
-        animate={{ left: '70%' }}
-        transition={{ duration: 0.8, repeat: Infinity, repeatType: 'reverse', ease: 'easeInOut' }}
-      />
+      {still ? (
+        <span data-motion="static" className="absolute inset-y-0 left-[35%] w-[30%] rounded-full bg-foreground/80" />
+      ) : (
+        <motion.span
+          data-motion="loop"
+          className="absolute inset-y-0 w-[30%] rounded-full bg-foreground/80"
+          initial={{ left: '0%' }}
+          animate={{ left: '70%' }}
+          transition={{ duration: 0.8, repeat: Infinity, repeatType: 'reverse', ease: 'easeInOut' }}
+        />
+      )}
     </span>
   )
 }
