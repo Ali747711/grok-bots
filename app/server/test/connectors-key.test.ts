@@ -55,4 +55,17 @@ describe('KeyStore', () => {
     expect(JSON.parse(lines[0])).toMatchObject({ level: 'error', msg: 'composio key unreadable', code: 'EISDIR' })
     expect(lines[0]).not.toContain(dir)
   })
+
+  it('leaves no .tmp when the rename fails, and remove deletes a stray .tmp', async () => {
+    const file = join(dir, 'composio-key')
+    const store = await KeyStore.load(file)
+    await mkdir(join(file, 'inner'), { recursive: true })
+    await expect(store.save('ak_test_key_123')).rejects.toThrow()
+    expect(store.get()).toBeNull()
+    expect(await readdir(dir)).toEqual(['composio-key'])
+    await rm(file, { recursive: true })
+    await writeFile(`${file}.tmp`, 'ak_test_key_123\n')
+    await store.remove()
+    expect(await readdir(dir)).toEqual([])
+  })
 })

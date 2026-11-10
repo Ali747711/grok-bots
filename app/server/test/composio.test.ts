@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   COMPOSIO_API, ComposioError, accountStatusOf, createComposio, hintsOf, sessionBody
@@ -39,13 +39,46 @@ afterEach(() => restoreLog())
 
 describe('composio client', () => {
   it('sends x-api-key, accept, a 15 s timeout and redirect error on every call', async () => {
-    const { calls, composio } = harness([{ body: { items: [] } }])
-    await composio.searchToolkits('')
-    const { init } = calls[0]
-    expect(init.headers).toMatchObject({ 'x-api-key': KEY, accept: 'application/json' })
-    expect(init.redirect).toBe('error')
-    expect(init.signal).toBeInstanceOf(AbortSignal)
-    expect(calls[0].url).toBe(`${COMPOSIO_API}/toolkits?limit=20`)
+    const spy = vi.spyOn(AbortSignal, 'timeout')
+    try {
+      const acct = { id: 'c1', status: 'ACTIVE', user_id: 'u', toolkit: { slug: 'github' } }
+      const { calls, composio } = harness([
+        { body: { items: [] } }, // checkKey
+        { body: { items: [] } }, // searchToolkits
+        { body: { slug: 'github', name: 'GitHub' } }, // toolkit
+        { body: { items: [] } }, // toolsOf
+        { body: { items: [{ id: 'a', is_composio_managed: true, status: 'ENABLED' }] } }, // managedAuthConfig, found
+        { body: { items: [] } }, { body: { auth_config: { id: 'n' } } }, // managedAuthConfig, created
+        { body: { redirect_url: 'https://composio.dev/x', connected_account_id: 'c' } }, // link
+        { body: { items: [acct] } }, // accounts
+        { body: acct }, // account
+        { status: 200 }, { status: 200 }, // deleteAccount, deleteSession
+        { body: { session_id: 's', mcp: { url: 'https://backend.composio.dev/m' } } } // createSession
+      ])
+      await composio.checkKey(KEY)
+      await composio.searchToolkits('')
+      await composio.toolkit('github')
+      await composio.toolsOf('github')
+      await composio.managedAuthConfig('github')
+      await composio.managedAuthConfig('github')
+      await composio.link('a', 'u')
+      await composio.accounts('u')
+      await composio.account('c1')
+      await composio.deleteAccount('c1')
+      await composio.deleteSession('s')
+      await composio.createSession('u', { tools: {} })
+      expect(calls).toHaveLength(13)
+      expect(spy).toHaveBeenCalledTimes(13)
+      expect(spy.mock.calls.every(c => c[0] === 15_000)).toBe(true)
+      for (const { init } of calls) {
+        expect(init.headers).toMatchObject({ 'x-api-key': KEY, accept: 'application/json' })
+        expect(init.redirect).toBe('error')
+        expect(init.signal).toBeInstanceOf(AbortSignal)
+      }
+      expect(calls[1].url).toBe(`${COMPOSIO_API}/toolkits?limit=20`)
+    } finally {
+      spy.mockRestore()
+    }
   })
 
   it('throws no_key before any fetch when no key is saved', async () => {

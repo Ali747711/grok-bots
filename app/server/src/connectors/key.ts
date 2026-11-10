@@ -32,13 +32,20 @@ export class KeyStore {
   async save(key: string): Promise<void> {
     await mkdir(dirname(this.file), { recursive: true, mode: 0o700 })
     const tmp = `${this.file}.tmp`
-    await writeFile(tmp, `${key}\n`, { mode: 0o600 })
-    await chmod(tmp, 0o600)
-    await rename(tmp, this.file)
+    try {
+      await writeFile(tmp, `${key}\n`, { mode: 0o600 })
+      await chmod(tmp, 0o600)
+      await rename(tmp, this.file)
+    } catch (err) {
+      // A failed save must not leave a key copy behind.
+      await rm(tmp, { force: true }).catch(() => undefined)
+      throw err
+    }
     this.key = key
   }
 
   async remove(): Promise<void> {
+    await rm(`${this.file}.tmp`, { force: true })
     await rm(this.file, { force: true })
     this.key = null
   }
