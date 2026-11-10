@@ -9,6 +9,7 @@ import { CSRF_COOKIE } from '../src/auth/routes.js'
 import { signSession } from '../src/auth/session-cookie.js'
 import type { BotDeps } from '../src/bots/create.js'
 import type { SandboxDeps } from '../src/bots/sandbox.js'
+import { setLogSink } from '../src/log.js'
 import { HermesRestError, HermesRpcError, HermesUnavailableError } from '../src/hermes/errors.js'
 import type { Docker } from '../src/sandbox/docker.js'
 import { FakeRest, FakeRpc } from './fake-rpc.js'
@@ -205,6 +206,8 @@ describe('DELETE /crew/bots/:name', () => {
 
   it('answers 409 sandbox_cleanup_failed with no path in the body and leaves the bot in place', async () => {
     const home = await mkdtemp(join(tmpdir(), 'crew-route-'))
+    const lines: string[] = []
+    const restoreLog = setLogSink(l => lines.push(l))
     try {
       await mkdir(join(home, 'profiles', 'scout', 'sandboxes', 'docker'), { recursive: true })
       const docker = { status: async () => 'down' } as unknown as Docker
@@ -217,7 +220,11 @@ describe('DELETE /crew/bots/:name', () => {
       expect(text).not.toContain(home)
       expect(rest.writes()).toEqual([])
       expect(refreshes).toBe(0)
+      const logged = lines.map(l => JSON.parse(l) as Record<string, unknown>).find(l => l.msg === 'sandbox cleanup failed')
+      expect(logged).toMatchObject({ level: 'warn', bot: 'scout', reason: 'docker_unavailable' })
+      expect(lines.join('\n')).not.toContain(home)
     } finally {
+      restoreLog()
       await rm(home, { recursive: true, force: true })
     }
   })

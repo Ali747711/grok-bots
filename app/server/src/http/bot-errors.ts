@@ -30,7 +30,10 @@ export function failure(error: unknown, name: string): Failure {
   if (error instanceof HermesRestError && error.status === 400) return { status: 400, body: { error: 'rejected', message: error.detail } }
   if (error instanceof ScheduleError) return { status: 400, body: { error: error.code, message: error.message } }
   if (error instanceof PrimaryBotError) return { status: 400, body: { error: 'cannot_delete_primary' } }
-  if (error instanceof SandboxCleanupError) return { status: 409, body: { error: 'sandbox_cleanup_failed' } }
+  if (error instanceof SandboxCleanupError) {
+    log.warn('sandbox cleanup failed', { bot: name, reason: error.reason })
+    return { status: 409, body: { error: 'sandbox_cleanup_failed' } }
+  }
   if (error instanceof SandboxRefusedError) return { status: 409, body: { error: error.code } }
   if (error instanceof InvalidImageError) return { status: 502, body: { error: 'bad_image_name' } }
   if (error instanceof DockerError) return { status: 503, body: { error: 'docker_unavailable' } }
