@@ -23,7 +23,7 @@ Where `docs/phase7/live-proof.md` already observed something relevant, it is cit
    - Earlier observation, live proof §2: "`PUT /crew/bots/<B>/apps {github: 'read'}` → 200 in 3 s, with 488 read-only tools", and the session's MCP `tools/list` "equals `record.allowed`, and all 488 tools carry `readOnlyHint: true`".
 4. **The relay. Pending.**
    - Evidence: pending.
-   - Proof to run: `connectors.spec.ts` test 6 (POST, GET and DELETE `/mcp/<A>` with no token and with a wrong one give 401 `bad_token`; `POST /mcp/<A>/x` gives 401 `login_required`).
+   - Proof to run: `connectors.spec.ts` test 6 (POST, GET and DELETE `/mcp/<A>` with no token and with a wrong one give 401 `bad_token`; `POST /mcp/<A>/x` gives 403 `bad_origin`, because that path is not exempt).
    - The 405 for GET, the 204 for DELETE, the 413 for a body over 1 MiB, and the JSON-RPC error with no upstream call for a disallowed `tools/call` are **unit tests** (`relay-routes` and `relay` suites in `app/server/test`), not e2e.
 5. **[model] A read tool names the login; a write tool asks and is denied. Pending.**
    - Evidence: pending.
