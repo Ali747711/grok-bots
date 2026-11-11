@@ -47,6 +47,24 @@ describe('NewGroupDialog', () => {
     expect(screen.queryByText('Pick 2 to 6 bots that will talk together.')).toBeNull()
   })
 
+  it('shows each bot with its handle and counts the picks', () => {
+    setup(() => json({}))
+    const row = screen.getByRole('checkbox', { name: 'E2E One' }).closest('label')!
+    expect(row).toHaveTextContent('E2E One')
+    expect(row).toHaveTextContent('@e2e1')
+    expect(screen.getByRole('status')).toHaveTextContent('0 of 6 picked')
+    pick('a'); pick('E2E One')
+    expect(screen.getByRole('status')).toHaveTextContent('2 of 6 picked')
+  })
+
+  it('shows the primary bot under the handle groups give it', () => {
+    vi.stubGlobal('fetch', vi.fn())
+    render(<NewGroupDialog open onOpenChange={vi.fn()} bots={[bot({ name: 'default', title: 'Hermes', isPrimary: true }), bot({ name: 'a', title: 'A' })]} onCreated={vi.fn()} />)
+    const row = screen.getByRole('checkbox', { name: 'Hermes' }).closest('label')!
+    expect(row).toHaveTextContent('@hermes')
+    expect(row).not.toHaveTextContent('@default')
+  })
+
   it('sends a typed name and toasts the routing warning', async () => {
     const { fn, onCreated } = setup(() => json({ roomId: 'r1', routing: 'everyone', warning: 'routing_not_set' }, 201))
     pick('a'); pick('b')

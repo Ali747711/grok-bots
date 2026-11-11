@@ -40,12 +40,12 @@ function DeleteForm({ roomId, name, onOpenChange, onDeleted }: Omit<DeleteGroupD
   return (
     <>
       <AlertDialogHeader>
-        <AlertDialogTitle>{`Delete “${name}”?`}</AlertDialogTitle>
-        <AlertDialogDescription>The group and its chat are removed from Crew and Hermes. The bots stay.</AlertDialogDescription>
+        <AlertDialogTitle className="text-[15px] font-semibold tracking-tight">{`Delete “${name}”?`}</AlertDialogTitle>
+        <AlertDialogDescription className="text-[13px] font-medium">The group and its chat are removed from Crew and Hermes. The bots stay.</AlertDialogDescription>
       </AlertDialogHeader>
-      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      {error && <p role="alert" className="text-[13px] font-medium text-destructive">{error}</p>}
       <AlertDialogFooter>
-        <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+        <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
         <Button type="button" variant="destructive" disabled={busy} onClick={() => void remove()}>Delete group</Button>
       </AlertDialogFooter>
     </>

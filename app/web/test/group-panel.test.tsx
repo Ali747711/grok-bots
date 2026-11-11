@@ -71,6 +71,33 @@ describe('GroupPanel', () => {
     expect(screen.getByText('@mentions always go straight to the bots you name.')).toBeInTheDocument()
   })
 
+  it('offers the three rules as one named radio group', () => {
+    setup()
+    const rules = screen.getByRole('radiogroup', { name: 'Reply rule' })
+    expect(within(rules).getAllByRole('radio')).toHaveLength(3)
+    // groups.spec clicks the radios themselves: each one covers its row instead of hiding off-screen.
+    for (const radio of within(rules).getAllByRole('radio')) expect(radio).not.toHaveClass('sr-only')
+    expect(within(rules).getByRole('radio', { name: /Auto/ })).toBeChecked()
+    fireEvent.click(within(rules).getByRole('radio', { name: /Lead/ }))
+    expect(within(rules).getByRole('radio', { name: /Lead/ })).toBeChecked()
+    expect(within(rules).getByRole('radio', { name: /Auto/ })).not.toBeChecked()
+  })
+
+  it('titles the panel and closes it with Close panel', () => {
+    const onClose = vi.fn()
+    render(<MemoryRouter><GroupPanel view={view()} bots={bots} stale={false} onDeleted={vi.fn()} onClose={onClose} /></MemoryRouter>)
+    expect(screen.getByRole('heading', { name: 'Group details', level: 2 })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Close panel' }))
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('says what deleting removes beside the Delete group button', () => {
+    setup()
+    const zone = screen.getByRole('heading', { name: 'Danger zone' }).closest('section')!
+    expect(within(zone).getByText('Removes the group and its chat. The bots stay.')).toBeInTheDocument()
+    expect(within(zone).getByRole('button', { name: 'Delete group' })).toBeInTheDocument()
+  })
+
   it('requires a lead for Lead and sends it', async () => {
     setup()
     fireEvent.click(screen.getByRole('radio', { name: /Lead/ }))

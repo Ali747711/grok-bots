@@ -29,8 +29,11 @@ interface ComposerProps {
 /** Safari reports the Enter that commits an IME composition with this code. */
 const IME_KEY_CODE = 229
 const ROUND = 'size-9 rounded-full'
+/** The well that holds the message field and its action row. Shared with the group composer. */
+export const COMPOSER_WELL = 'relative z-10 rounded-[26px] border border-border bg-background p-1.5 transition-colors focus-within:border-ring'
+export const COMPOSER_FIELD = 'block field-sizing-content max-h-40 min-h-10 w-full resize-none bg-transparent px-2.5 py-2 text-sm leading-relaxed outline-none placeholder:text-faint disabled:cursor-not-allowed disabled:opacity-50'
 /** The drawer tucked under the well: it starts behind the well's rounded bottom edge. */
-const CAPTION = '-mt-[26px] rounded-b-[26px] border border-t-0 border-border bg-raised/50 px-4 pt-[34px] pb-2 text-center text-xs font-medium text-muted-foreground'
+export const COMPOSER_CAPTION = '-mt-[26px] rounded-b-[26px] border border-t-0 border-border bg-raised/50 px-4 pt-[34px] pb-2 text-center text-xs font-medium text-muted-foreground'
 const HINTS = (
   <p aria-hidden="true" className="flex items-center gap-1.5 text-xs font-medium text-faint">
     <Kbd>↵</Kbd> send
@@ -39,7 +42,7 @@ const HINTS = (
 )
 
 /** `/` anywhere outside a field, a popup and the bot's screen puts the caret in the message box. */
-function useSlashFocus(field: RefObject<HTMLTextAreaElement | null>): void {
+export function useSlashFocus(field: RefObject<HTMLTextAreaElement | null>): void {
   useWindowKeydown(event => {
     if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return
     if (shouldIgnoreShortcut(event) || field.current === null || field.current.disabled) return
@@ -56,7 +59,7 @@ interface ActionProps {
 }
 
 /** The round button at the end of the well: Stop while the turn runs, Send (the form's submit) otherwise. */
-function ComposerAction({ running, canSend, stopDisabled, onStop }: ActionProps) {
+export function ComposerAction({ running, canSend, stopDisabled, onStop }: ActionProps) {
   if (running) {
     return (
       <IconButton label="Stop" disabled={stopDisabled} onClick={onStop} className={cn(ROUND, 'bg-raised text-foreground hover:bg-control')}>
@@ -115,7 +118,7 @@ export function Composer({ draftKey, onSend, onStop, running, disabledReason, wa
   return (
     <div className="shrink-0 px-4 pb-4">
       <div className="mx-auto max-w-[720px]">
-        <form onSubmit={onSubmit} className="relative z-10 rounded-[26px] border border-border bg-background p-1.5 transition-colors focus-within:border-ring">
+        <form onSubmit={onSubmit} className={COMPOSER_WELL}>
           <textarea
             ref={field}
             rows={1}
@@ -125,14 +128,14 @@ export function Composer({ draftKey, onSend, onStop, running, disabledReason, wa
             onKeyDown={onKeyDown}
             placeholder="Message"
             aria-label="Message"
-            className="block field-sizing-content max-h-40 min-h-10 w-full resize-none bg-transparent px-2.5 py-2 text-sm leading-relaxed outline-none placeholder:text-faint disabled:cursor-not-allowed disabled:opacity-50"
+            className={COMPOSER_FIELD}
           />
           <div className="flex items-center justify-between pl-2.5">
             {HINTS}
             <ComposerAction running={running} canSend={canSend} stopDisabled={stopDisabled} onStop={stop} />
           </div>
         </form>
-        {caption && <p role="status" className={CAPTION}>{caption}</p>}
+        {caption && <p role="status" className={COMPOSER_CAPTION}>{caption}</p>}
       </div>
     </div>
   )

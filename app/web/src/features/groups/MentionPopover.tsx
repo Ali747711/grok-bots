@@ -22,7 +22,12 @@ export const optionId = (id: string, index: number): string => `${id}-opt-${inde
 /** Listbox of members to mention, shown above the message box. The textarea keeps focus. */
 export function MentionPopover({ id, options, active, onPick }: MentionPopoverProps) {
   return (
-    <ul id={id} role="listbox" aria-label="Mention a bot" className="absolute bottom-full left-0 z-10 mb-2 max-h-56 w-72 list-none overflow-y-auto rounded-2xl border border-border bg-popover p-1 text-popover-foreground shadow-md">
+    <ul
+      id={id}
+      role="listbox"
+      aria-label="Mention a bot"
+      className="absolute bottom-full left-0 z-20 mb-2 flex max-h-60 w-72 max-w-full list-none scroll-thin flex-col gap-0.5 overflow-y-auto rounded-[22px] bg-popover p-1.5 text-popover-foreground shadow-lg ring-1 ring-foreground/5 dark:ring-foreground/10"
+    >
       {options.map((o, i) => (
         <li
           key={o.handle}
@@ -32,11 +37,11 @@ export function MentionPopover({ id, options, active, onPick }: MentionPopoverPr
           // mousedown would blur the textarea before the click lands.
           onMouseDown={e => e.preventDefault()}
           onClick={() => onPick(o)}
-          className={cn('flex cursor-pointer items-center gap-2 rounded-xl px-2 py-1.5 text-sm', i === active && 'bg-muted')}
+          className={cn('flex h-10 cursor-pointer items-center gap-2.5 rounded-full pr-3 pl-1.5 transition-colors', i === active ? 'bg-raised' : 'hover:bg-hover')}
         >
-          {o.bot ? <CrewAvatar bot={{ ...o.bot, status: 'idle' }} size={24} decorative /> : <span aria-hidden="true" className="size-6 rounded-lg bg-muted" />}
-          <span className="min-w-0 flex-1 truncate font-medium">{o.title}</span>
-          <span className="text-xs text-muted-foreground">{`@${o.handle}`}</span>
+          {o.bot ? <CrewAvatar bot={{ ...o.bot, status: 'idle' }} size={26} decorative /> : <span aria-hidden="true" className="size-[26px] flex-none rounded-[30%] bg-control" />}
+          <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{o.title}</span>
+          <span className="text-xs font-medium text-muted-foreground">{`@${o.handle}`}</span>
         </li>
       ))}
     </ul>

@@ -1,5 +1,7 @@
 import type { GroupEvent, GroupView } from '@/state/types'
 
+import { joinAnd } from './group-titles'
+
 export type GroupItem =
   | {
       kind: 'user'
@@ -88,8 +90,6 @@ export async function hashEventId(eventId: string): Promise<string> {
 
 const handlesOf = (view: GroupView, ids: readonly string[] | undefined): string[] =>
   (ids ?? []).map(id => `@${view.members.find(m => m.memberId === id)?.handle ?? id}`)
-
-const joinAnd = (tags: readonly string[]): string => (tags.length < 2 ? (tags[0] ?? '') : `${tags.slice(0, -1).join(', ')} and ${tags[tags.length - 1]!}`)
 
 const ROUTING_LABEL: Readonly<Record<string, string>> = { auto: 'Auto', everyone: 'Everyone', lead: 'Lead' }
 

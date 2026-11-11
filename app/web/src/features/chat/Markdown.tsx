@@ -16,7 +16,7 @@ const HEADING = 'mt-4 mb-1.5 font-semibold tracking-tight first:mt-0'
 const components: Components = {
   a: ({ node: _node, href, children, ...props }) =>
     href?.startsWith(MENTION_SCHEME) ? (
-      <span className="rounded-md bg-raised px-1 py-0.5 font-medium text-foreground">{children}</span>
+      <mark className="rounded-md bg-raised px-1 py-0.5 font-medium text-foreground">{children}</mark>
     ) : (
       <a {...props} href={href} target="_blank" rel="noopener noreferrer" className={LINK}>{children}</a>
     ),

@@ -42,7 +42,8 @@ export function GroupRow({ group, bots, active, stale, onSelect }: GroupRowProps
       onClick={() => onSelect(group.id)}
       className={cn(
         'relative flex h-12 w-full items-center gap-2.5 rounded-full py-1.5 pr-3 pl-2 text-left transition-[background-color,opacity] outline-none focus-visible:ring-3 focus-visible:ring-ring',
-        !active && 'hover:bg-hover',
+        // The avatars' cut-out follows the surface behind the row.
+        active ? '[--stack-ring:var(--raised)]' : 'hover:bg-hover hover:[--stack-ring:var(--hover)]',
         stale && 'opacity-50'
       )}
     >

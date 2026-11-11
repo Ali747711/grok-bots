@@ -1,5 +1,7 @@
-import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { PanelRight, Square } from 'lucide-react'
+
+import { IconButton } from '@/components/console/icon-button'
+import { StatusChip } from '@/components/console/status'
 import type { BotView, GroupView } from '@/state/types'
 
 import { StackedAvatars } from './StackedAvatars'
@@ -15,30 +17,34 @@ interface GroupHeaderProps {
   onStop: () => void
 }
 
-/** Stacked avatars, name, "<n> bots · <rule> replies", Details and Stop (while the group works). */
+/**
+ * The conversation header for a group, in the bot header's layout: stacked avatars, name,
+ * "<n> bots · <rule> replies", then the Working chip and Stop while the group works, and Details.
+ */
 export function GroupHeader({ group, bots, stale, panelOpen, onPanel, onStop }: GroupHeaderProps) {
   const members = group.members.map(m => {
     const bot = bots.find(b => b.name === m.profile) ?? null
     return bot && stale ? { ...bot, status: 'idle' as const } : bot
   })
+  const working = group.working && !stale
   return (
-    <header className="flex items-center gap-3 border-b border-border px-5 py-3">
-      <StackedAvatars bots={members} size={34} />
-      <div className="min-w-24 flex-1">
-        <h2 className="truncate text-sm font-semibold">{group.name}</h2>
-        <p className="text-xs font-medium text-muted-foreground mt-0.5">{`${group.members.length} bots · ${ROUTING_LABEL[group.routing]} replies`}</p>
+    <header className="flex min-h-14 shrink-0 items-center gap-2 py-2 pr-3 pl-4">
+      <StackedAvatars bots={members} size={32} />
+      <div className="min-w-24 flex-1 pl-1">
+        <h2 className="truncate text-[15px] leading-5 font-semibold tracking-tight">{group.name}</h2>
+        <p className="truncate text-xs leading-4 font-medium text-faint">{`${group.members.length} bots · ${ROUTING_LABEL[group.routing]} replies`}</p>
       </div>
-      {group.working && !stale && <Button type="button" size="sm" variant="outline" className="rounded-full" onClick={onStop}>Stop</Button>}
-      <Button
-        type="button"
-        size="sm"
-        variant={panelOpen ? 'default' : 'outline'}
-        aria-pressed={panelOpen}
-        onClick={onPanel}
-        className={cn('rounded-full', panelOpen && 'border-foreground bg-foreground text-background hover:bg-foreground/90 hover:text-background')}
-      >
-        Details
-      </Button>
+      {working && <StatusChip status="working" />}
+      <div className="flex shrink-0 items-center gap-0.5">
+        {working && (
+          <IconButton label="Stop" side="bottom" onClick={onStop}>
+            <Square className="size-3" fill="currentColor" aria-hidden="true" />
+          </IconButton>
+        )}
+        <IconButton label="Details" side="bottom" pressed={panelOpen} onClick={onPanel}>
+          <PanelRight aria-hidden="true" />
+        </IconButton>
+      </div>
     </header>
   )
 }
