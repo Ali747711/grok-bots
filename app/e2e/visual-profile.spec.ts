@@ -225,6 +225,22 @@ check('approvals apply at once, and Never ask asks first', async page => {
   await expect(tabPanel(page).getByText('App actions ask through their own prompt. Never ask turns that off too.', { exact: true })).toBeVisible()
 })
 
+check('arrow keys never write Never ask: they only open the confirm', async page => {
+  await openAdvanced(page)
+  await expect(mode(page, 'Let a checker model decide first')).toBeChecked()
+  // A real browser moves a radio group's choice with the arrow keys and fires a change on the way.
+  await mode(page, 'Let a checker model decide first').focus()
+  await page.keyboard.press('ArrowDown')
+  const confirm = tabPanel(page).getByRole('group', { name: 'Turn off approvals?' })
+  await expect(confirm).toContainText(CONFIRM_COPY)
+  expect(await approvalsOf(page)).toBe('smart')
+  await expect(mode(page, 'Let a checker model decide first')).toBeChecked()
+  await expect(mode(page, 'Never ask')).not.toBeChecked()
+  await confirm.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(confirm).toHaveCount(0)
+  expect(await approvalsOf(page)).toBe('smart')
+})
+
 check('the sleep chips and the use-screen switch write the screen config', async page => {
   await openAdvanced(page)
   await expect(sleep(page, '15 min')).toBeChecked()
