@@ -162,4 +162,41 @@ describe('AddTriggerDialog', () => {
     expect(screen.queryByText(SECRET)).toBeNull()
     expect(screen.getByLabelText('Name')).toHaveValue('')
   })
+
+  it('keeps the real source radios over their rows, so the e2e check() on a radio lands on it', () => {
+    renderDialog()
+    for (const radio of screen.getAllByRole('radio')) {
+      expect(radio).not.toHaveClass('sr-only')
+      expect(radio).toHaveClass('absolute', 'inset-0')
+    }
+    expect(screen.getByRole('radio', { name: 'GitHub' })).toBeChecked()
+  })
+
+  it('shows a failure as red text on a well, never on a red tint', async () => {
+    stub(() => json({ error: 'routine_not_found' }, 404))
+    renderDialog()
+    name('Hooks')
+    create()
+    const alert = (await screen.findByText('That routine no longer exists.')).closest('[role="alert"]')
+    expect(alert).toHaveClass('bg-background')
+    expect(alert!.className).not.toMatch(/bg-destructive|bg-card/)
+  })
+
+  it('titles the form and the secret view in the panel-title size', async () => {
+    stub(() => json(created(), 201))
+    renderDialog()
+    expect(screen.getByRole('heading', { name: 'Add trigger' })).toHaveClass('text-[15px]', 'font-semibold')
+    name('Hooks')
+    create()
+    expect(await screen.findByRole('heading', { name: 'Trigger ready' })).toHaveClass('text-[15px]', 'font-semibold')
+  })
+
+  it('shows the URL and the secret as raised code chips, like the new-secret panel', async () => {
+    stub(() => json(created(), 201))
+    renderDialog()
+    name('Hooks')
+    create()
+    expect(await screen.findByText(SECRET)).toHaveClass('rounded-xl', 'bg-raised', 'font-mono')
+    expect(screen.getByText(URL_)).toHaveClass('rounded-xl', 'bg-raised', 'font-mono')
+  })
 })

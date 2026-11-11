@@ -98,13 +98,17 @@ const MASK_COLOR = '#808080'
 
 /**
  * What every shot covers, because the screenshots are committed: anything named after a bot that is not a
- * test bot (rail rows and their previews), every group row, and the credit balance.
+ * test bot (rail rows and their previews), every group row, the credit balance, every connected-app row
+ * (the Apps dialog lists the user's own apps) and anything marked `data-private` (the Composio key row and
+ * the credit line in Settings).
  */
 export function privateParts(page: Page): Locator[] {
   return [
     page.locator(`xpath=//*[@data-bot and not(${IS_E2E_HANDLE})]`),
     page.locator('[data-group]'),
-    page.getByTestId('credit-pill')
+    page.getByTestId('credit-pill'),
+    page.locator('[data-app]'),
+    page.locator('[data-private]')
   ]
 }
 
@@ -127,8 +131,27 @@ export async function shoot({ page, theme, size }: Ctx, name: string): Promise<s
   await page.evaluate(async () => {
     await document.fonts.ready
   })
+  return save({ page, theme, size }, name)
+}
+
+async function save({ page, theme, size }: Ctx, name: string): Promise<string> {
   mkdirSync(SHOTS, { recursive: true })
   const path = join(SHOTS, `${name}-${theme}-${sizeLabel(size)}.png`)
   await page.screenshot({ path, animations: 'disabled', mask: privateParts(page), maskColor: MASK_COLOR })
   return path
+}
+
+const LOGIN_PATH = '/login'
+
+/**
+ * The same shot for the server-rendered login page, which has no `data-theme`: it follows `prefers-color-scheme`
+ * alone. Refuses any other page, a signed-in context and a link that carries a ticket.
+ */
+export async function shootLogin({ page, theme, size }: Ctx, name: string): Promise<string> {
+  const url = new URL(page.url())
+  if (url.pathname !== LOGIN_PATH || url.hash !== '' || url.search !== '') throw new Error(`refusing to shoot ${url.pathname}: only a bare ${LOGIN_PATH} is shot here`)
+  if ((await page.context().cookies()).length > 0) throw new Error('refusing to shoot the login page from a context that holds cookies')
+  await page.setViewportSize(size)
+  expect(await page.evaluate(scheme => window.matchMedia(`(prefers-color-scheme: ${scheme})`).matches, theme), `prefers-color-scheme is ${theme}`).toBe(true)
+  return save({ page, theme, size }, name)
 }

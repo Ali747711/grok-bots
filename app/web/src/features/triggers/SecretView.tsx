@@ -1,5 +1,6 @@
 import { toast } from 'sonner'
 
+import { DIALOG_TITLE } from '@/components/console/dialog-styles'
 import { Button } from '@/components/ui/button'
 import { DialogTitle } from '@/components/ui/dialog'
 
@@ -38,8 +39,8 @@ function CopyRow({ label, value, button }: { label: string; value: string; butto
 export function SecretView({ source, url, secret, events }: SecretViewProps) {
   const example = curlExample(url, secret, events[0] ?? 'test')
   return (
-    <div className="flex flex-col gap-3">
-      <DialogTitle>Trigger ready</DialogTitle>
+    <div className="flex flex-col gap-4">
+      <DialogTitle className={DIALOG_TITLE}>Trigger ready</DialogTitle>
       <CopyRow label="URL" value={url} button="Copy URL" />
       <CopyRow label="Secret" value={secret} button="Copy secret" />
       <p className="text-[13px] font-semibold">The secret is shown once.</p>

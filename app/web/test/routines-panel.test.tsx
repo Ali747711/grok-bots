@@ -369,4 +369,41 @@ describe('RoutinesPanel event-only routines', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
     expect(screen.queryByText(/This routine has/)).toBeNull()
   })
+
+})
+
+describe('RoutinesPanel form look', () => {
+  const newForm = async () => {
+    stub({ [LIST]: () => json([]) })
+    open()
+    fireEvent.click(await screen.findByRole('button', { name: 'New routine' }))
+  }
+
+  it('keeps the real Runs radios over their rows, so the e2e check() on a radio lands on it', async () => {
+    await newForm()
+    const runs = screen.getByRole('radiogroup', { name: 'Runs' })
+    expect(screen.getByRole('group', { name: 'Runs' })).toContainElement(runs)
+    for (const radio of screen.getAllByRole('radio')) {
+      expect(radio).not.toHaveClass('sr-only')
+      expect(radio).toHaveClass('absolute', 'inset-0')
+    }
+  })
+
+  it('labels the fields in the row-label type and sets the next runs on a well', async () => {
+    await newForm()
+    for (const label of ['Title', 'What should it do?', 'When', 'Timezone']) expect(screen.getByText(label)).toHaveClass('text-[13px]', 'font-semibold')
+    expect((await screen.findByText('Next runs')).parentElement).toHaveClass('rounded-2xl', 'bg-background')
+  })
+
+  it("shows the server's rejection as red text on a well, never on a red tint", async () => {
+    stub({ [LIST]: () => json([]), 'POST /crew/routines?bot=dev': () => json({ error: 'rejected', message: 'Blocked: prompt injection' }, 400) })
+    open()
+    fireEvent.click(await screen.findByRole('button', { name: 'New routine' }))
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Morning brief' } })
+    fireEvent.change(screen.getByLabelText('What should it do?'), { target: { value: 'Say hello' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    const alert = (await screen.findByText('Blocked: prompt injection')).closest('[role="alert"]')
+    expect(alert).toHaveClass('bg-background')
+    expect(alert!.className).not.toMatch(/bg-destructive|bg-card/)
+  })
 })

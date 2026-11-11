@@ -99,4 +99,22 @@ describe('TriggerEventsDialog', () => {
     await act(async () => {})
     expect(count(fn)).toBe(0)
   })
+
+  it('PF31: an outcome is a neutral pill with a dot on an outlined row, never on a muted or red fill', async () => {
+    stub({
+      [EVENTS]: () => json({ events: [ev({ id: 'a', outcome: 'bad_signature' }), ev({ id: 'b', at: T0 - 1000, outcome: 'ignored' })] })
+    })
+    show()
+    const failed = await screen.findByText('Bad signature')
+    for (const row of screen.getAllByRole('listitem')) {
+      // The pill is `bg-raised`: on a `bg-muted` row it disappeared in the light theme.
+      expect(row.className).not.toMatch(/bg-muted|bg-raised|bg-destructive/)
+      expect(row).toHaveClass('border', 'border-border', 'rounded-2xl')
+    }
+    expect(failed).toHaveClass('rounded-full', 'bg-raised', 'text-foreground')
+    expect(failed.className).not.toMatch(/destructive/)
+    expect(failed.querySelector('[aria-hidden="true"]')).toHaveClass('bg-status-error')
+    expect(screen.getByText('Ignored by the filter').querySelector('[aria-hidden="true"]')).toHaveClass('bg-status-idle')
+    expect(screen.getByRole('heading', { name: 'Events · Issues' })).toHaveClass('text-[15px]', 'font-semibold')
+  })
 })

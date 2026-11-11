@@ -1,5 +1,6 @@
 import { useState } from 'react'
 
+import { DIALOG_DESCRIPTION, DIALOG_TITLE, ERROR_TEXT, FIELD, FIELD_LABEL } from '@/components/console/dialog-styles'
 import { Button } from '@/components/ui/button'
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Input } from '@/components/ui/input'
@@ -45,14 +46,16 @@ function DeleteForm({ name, title, onOpenChange, onDeleted }: Omit<DeleteBotDial
   return (
     <>
       <AlertDialogHeader>
-        <AlertDialogTitle>{`Delete ${title}?`}</AlertDialogTitle>
-        <AlertDialogDescription>{`This permanently removes @${name}'s chats, routines, memory and files.`}</AlertDialogDescription>
+        <AlertDialogTitle className={DIALOG_TITLE}>{`Delete ${title}?`}</AlertDialogTitle>
+        <AlertDialogDescription className={DIALOG_DESCRIPTION}>{`This permanently removes @${name}'s chats, routines, memory and files.`}</AlertDialogDescription>
       </AlertDialogHeader>
-      <label htmlFor="delete-confirm" className="text-sm font-medium">{`Type ${name} to confirm`}</label>
-      <Input id="delete-confirm" value={typed} onChange={e => setTyped(e.target.value)} autoComplete="off" />
-      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      <div className={FIELD}>
+        <label htmlFor="delete-confirm" className={FIELD_LABEL}>{`Type ${name} to confirm`}</label>
+        <Input id="delete-confirm" value={typed} onChange={e => setTyped(e.target.value)} autoComplete="off" />
+        {error && <p role="alert" className={ERROR_TEXT}>{error}</p>}
+      </div>
       <AlertDialogFooter>
-        <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+        <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
         <Button type="button" variant="destructive" disabled={busy || typed !== name} onClick={() => void remove()}>Delete</Button>
       </AlertDialogFooter>
     </>
@@ -63,7 +66,7 @@ function DeleteForm({ name, title, onOpenChange, onDeleted }: Omit<DeleteBotDial
 export function DeleteBotDialog({ open, ...rest }: DeleteBotDialogProps) {
   return (
     <AlertDialog open={open} onOpenChange={rest.onOpenChange}>
-      <AlertDialogContent>
+      <AlertDialogContent className="gap-5">
         <DeleteForm {...rest} />
       </AlertDialogContent>
     </AlertDialog>

@@ -149,7 +149,7 @@ export function SchedulePicker({ value, onChange }: PickerProps) {
   const id = useId()
   return (
     <div className="flex flex-col gap-2">
-      <span id={id} className="text-sm font-medium">When</span>
+      <span id={id} className="px-1 text-[13px] font-semibold">When</span>
       <OptionSelect labelledBy={id} value={value.kind} options={KIND_OPTIONS} onChange={kind => onChange(defaultFor(kind as ScheduleKind, value))} />
       <Details value={value} onChange={onChange} />
     </div>

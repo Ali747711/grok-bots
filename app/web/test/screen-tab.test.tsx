@@ -289,6 +289,9 @@ describe('ScreenTab', () => {
     await waitFor(() => expect(rfbs.list).toHaveLength(2))
     expect(within(dialog).queryByRole('button', { name: 'Close' })).toBeNull() // the view has its own collapse button
     expect(within(dialog).getByTestId('live-view')).toBeInTheDocument()
+    // The shell hugs the screen: 12 px of padding keeps the 12 px screen corners concentric with the 24 px shell.
+    expect(dialog).toHaveClass('rounded-3xl', 'bg-shell', 'p-3')
+    expect(dialog).not.toHaveClass('p-6')
     expect(rfbs.list[0]!.disconnects).toBe(1)
     fireEvent.click(within(dialog).getByRole('button', { name: 'Close expanded view' }))
     await waitFor(() => expect(rfbs.list).toHaveLength(3))
