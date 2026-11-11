@@ -1,3 +1,4 @@
+import { appsReason } from '@/features/apps/apps-api'
 import { type IdleStopMinutes, ScreenApiError } from '@/lib/crew-api'
 import { CrewApiError, crewJson } from '@/lib/crew-json'
 
@@ -17,6 +18,28 @@ const approvalsPath = (name: string) => `/crew/bots/${encodeURIComponent(name)}/
 
 export const getApprovals = (name: string) => crewJson<ApprovalsView>(approvalsPath(name), 'GET')
 export const setApprovals = (name: string, mode: ApprovalMode) => crewJson<ApprovalsView>(approvalsPath(name), 'PUT', { mode })
+
+// Copy of the server's `ToolsetView` (bots/toolsets.ts): one Hermes toolset as a skill switch.
+export interface ToolsetView {
+  readonly name: string
+  readonly label: string
+  readonly description: string
+  readonly enabled: boolean
+  /** The provider keys the toolset needs are missing in Hermes. */
+  readonly needsSetup: boolean
+  /** Forced off, and why. Only `browser` while the bot runs in a sandbox. */
+  readonly locked?: 'sandbox'
+}
+
+const toolsetsPath = (name: string) => `/crew/bots/${encodeURIComponent(name)}/toolsets`
+
+export const getToolsets = (name: string) => crewJson<readonly ToolsetView[]>(toolsetsPath(name), 'GET')
+/** Turns one toolset on or off; answers with every row as Hermes now has it. */
+export const setToolset = (name: string, toolset: string, enabled: boolean) =>
+  crewJson<readonly ToolsetView[]>(toolsetsPath(name), 'PUT', { name: toolset, enabled })
+
+/** PF22: the one wording for a toolset the sandbox holds off. */
+export const sandboxLockText = (title: string): string => `Off while ${title} runs in a sandbox`
 
 const GENERIC = "Couldn't save. Try again."
 /** The codes whose `message` is Hermes's own words. A Crew validation message (`bad_body`) is never shown. */
@@ -42,9 +65,12 @@ function refusalOf(e: unknown): Refusal | null {
 export function profileErrorText(e: unknown, title?: string): string {
   const refusal = refusalOf(e)
   if (!refusal) return GENERIC
+  // The apps routes' own refusals (the Apps tab's rows), said as everywhere else in Crew.
+  const apps = appsReason(refusal.code)
+  if (apps) return apps
   if (refusal.status === 503) return 'Hermes is offline'
   if (refusal.code === 'primary_not_supported') return 'Change this in Hermes for the primary bot'
-  if (refusal.code === 'toolset_locked') return `Off while ${title ?? 'the bot'} runs in a sandbox`
+  if (refusal.code === 'toolset_locked') return sandboxLockText(title ?? 'the bot')
   if (refusal.code !== null && HERMES_WORDS.includes(refusal.code) && refusal.message) return refusal.message
   return GENERIC
 }

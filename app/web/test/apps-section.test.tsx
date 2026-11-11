@@ -1,10 +1,8 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { AppsList, BotAppsView } from '@/features/apps/apps-types'
 import { AppsSection } from '@/features/bots/AppsSection'
-
-import { pickOption } from './select-helpers'
 
 const toast = vi.hoisted(() => ({ success: vi.fn() }))
 vi.mock('sonner', () => ({ toast }))
@@ -34,6 +32,11 @@ const puts = (fn: ReturnType<typeof stub>) =>
   fn.mock.calls.filter(([, i]) => (i as RequestInit | undefined)?.method === 'PUT').map(([, i]) => JSON.parse(String((i as RequestInit).body)))
 const open = (sandboxed = true) => render(<AppsSection bot="dev" title="Scout" sandboxed={sandboxed} />)
 const sw = () => screen.findByRole('switch', { name: 'Let Scout use GitHub' })
+/** The level chips of one app: a radio group named "<App> access". */
+const access = (app = 'GitHub') => screen.findByRole('radiogroup', { name: `${app} access` })
+const noAccess = (app = 'GitHub') => screen.queryByRole('radiogroup', { name: `${app} access` })
+const levels = (group: HTMLElement) => within(group).getAllByRole('radio').map(r => r.parentElement?.textContent)
+const level = (group: HTMLElement, name: string) => within(group).getByRole('radio', { name })
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -42,42 +45,43 @@ afterEach(() => {
 
 describe('AppsSection', () => {
   it('lists connected apps with a switch and turns one on at Read only', async () => {
-    const fn = stub({ put: () => reply(view({ apps: [entry()] })) })
+    // The row is read again after the write, so the stub answers as Hermes would: with what was saved.
+    let saved = view()
+    const fn = stub({ get: () => reply(saved), put: () => reply(saved = view({ apps: [entry()] })) })
     open()
     expect(screen.getByRole('heading', { name: 'Apps' })).toBeTruthy()
     const s = await sw()
     expect(s.getAttribute('aria-checked')).toBe('false')
-    expect(screen.queryByRole('combobox')).toBeNull()
+    expect(screen.queryByRole('radiogroup')).toBeNull()
     fireEvent.click(s)
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Apps updated'))
     expect(puts(fn)).toEqual([{ github: 'read' }])
     expect((await sw()).getAttribute('aria-checked')).toBe('true')
-    expect(screen.getByRole('combobox', { name: 'GitHub access' })).toBeTruthy()
+    const group = await access()
+    expect(level(group, 'Read only')).toBeChecked()
+    // The levels are chips, not a menu.
+    expect(screen.queryByRole('combobox')).toBeNull()
   })
 
   it('changes the level and offers only the levels the server allows', async () => {
-    const fn = stub({
-      get: () => reply(view({ apps: [entry()] })),
-      put: () => reply(view({ apps: [entry({ level: 'change' })] }))
-    })
+    let saved = view({ apps: [entry()] })
+    const fn = stub({ get: () => reply(saved), put: () => reply(saved = view({ apps: [entry({ level: 'change' })] })) })
     open()
     await sw()
-    await screen.findByRole('combobox', { name: 'GitHub access' })
-    fireEvent.click(screen.getByRole('combobox', { name: 'GitHub access' }))
-    expect(screen.getByRole('option', { name: 'Read and change' })).toBeTruthy()
-    expect(screen.getByRole('option', { name: 'Everything' })).toBeTruthy()
-    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
-    pickOption('GitHub access', 'Read and change')
+    const group = await access()
+    expect(levels(group)).toEqual(['Read only', 'Read and change', 'Everything'])
+    expect(level(group, 'Read only')).toBeChecked()
+    // The level already chosen writes nothing.
+    fireEvent.click(level(group, 'Read only'))
+    fireEvent.click(level(group, 'Read and change'))
     await waitFor(() => expect(puts(fn)).toEqual([{ github: 'change' }]))
+    await waitFor(() => expect(level(group, 'Read and change')).toBeChecked())
   })
 
   it('offers no Everything when the bot does not ask', async () => {
     stub({ get: () => reply(view({ apps: [entry()], offered: ['read'], asks: false })) })
     open()
-    fireEvent.click(await screen.findByRole('combobox', { name: 'GitHub access' }))
-    expect(screen.getByRole('option', { name: 'Read only' })).toBeTruthy()
-    expect(screen.queryByRole('option', { name: 'Everything' })).toBeNull()
-    expect(screen.queryByRole('option', { name: 'Read and change' })).toBeNull()
+    expect(levels(await access())).toEqual(['Read only'])
   })
 
   it('turns an app off with the whole map minus it', async () => {
@@ -98,7 +102,7 @@ describe('AppsSection', () => {
     expect(await screen.findByText('Not connected')).toBeTruthy()
     expect(screen.getByText('GitHub')).toBeTruthy()
     expect((await sw()).getAttribute('aria-checked')).toBe('true')
-    expect(screen.queryByRole('combobox', { name: 'GitHub access' })).toBeNull()
+    expect(noAccess()).toBeNull()
   })
 
   it('shows the three notes always, and the sandbox, approvals and group lines when they apply', async () => {
@@ -134,10 +138,14 @@ describe('AppsSection', () => {
     const get = vi.fn(() => reply(view({ apps: [entry()] })))
     stub({ get, put: () => reply({ error: 'level_unavailable' }, 409) })
     open()
-    await screen.findByRole('combobox', { name: 'GitHub access' })
-    pickOption('GitHub access', 'Everything')
-    expect(await screen.findByText("This bot doesn't ask before actions, so it can only read in apps.")).toBeTruthy()
+    const group = await access()
+    fireEvent.click(level(group, 'Everything'))
+    // The reason is said on the row that was changed.
+    const row = group.closest('li')!
+    expect(await within(row).findByRole('alert')).toHaveTextContent("This bot doesn't ask before actions, so it can only read in apps.")
     await waitFor(() => expect(get).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(level(group, 'Read only')).toBeEnabled())
+    expect(level(group, 'Read only')).toBeChecked()
     expect(toast.success).not.toHaveBeenCalled()
   })
 
@@ -150,11 +158,21 @@ describe('AppsSection', () => {
 
   it('disables the controls while a change runs', async () => {
     let release: (r: Response) => void = () => undefined
-    stub({ put: () => new Promise<Response>(r => { release = r }) })
+    const slack = { id: 'c2', toolkit: 'slack', name: 'Slack', status: 'connected' as const }
+    const fn = stub({
+      list: () => reply(list([github, slack])),
+      get: () => reply(view({ apps: [entry({ toolkit: 'slack', name: 'Slack' })] })),
+      put: () => new Promise<Response>(r => { release = r })
+    })
     open()
     const s = await sw()
+    const group = await access('Slack')
     fireEvent.click(s)
-    await waitFor(() => expect(s.hasAttribute('disabled') || s.getAttribute('aria-disabled') === 'true').toBe(true))
+    await waitFor(() => expect(s).toBeDisabled())
+    // One write carries every app's level, so the other rows wait too.
+    for (const radio of within(group).getAllByRole('radio')) expect(radio).toBeDisabled()
+    fireEvent.click(level(group, 'Everything'))
+    expect(puts(fn)).toHaveLength(1)
     release(new Response(JSON.stringify(view({ apps: [entry()] })), { status: 200 }))
     await waitFor(() => expect(toast.success).toHaveBeenCalled())
   })
@@ -183,14 +201,14 @@ describe('AppsSection', () => {
     expect(screen.queryByText('No apps connected yet.')).toBeNull()
   })
 
-  it('shows no access select until the apps list is known', async () => {
+  it('shows no access chips until the apps list is known', async () => {
     let release: (r: Response) => void = () => undefined
     stub({ list: () => new Promise<Response>(r => { release = r }), get: () => reply(view({ apps: [entry()] })) })
     open()
     expect((await sw()).getAttribute('aria-checked')).toBe('true')
-    expect(screen.queryByRole('combobox', { name: 'GitHub access' })).toBeNull()
+    expect(noAccess()).toBeNull()
     release(new Response(JSON.stringify(list())))
-    expect(await screen.findByRole('combobox', { name: 'GitHub access' })).toBeTruthy()
+    expect(await access()).toBeTruthy()
   })
 
   it('re-reads after a key is saved elsewhere', async () => {

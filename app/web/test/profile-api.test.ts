@@ -48,6 +48,15 @@ describe('profile-api', () => {
     expect(profileErrorText(new Error('boom'))).toBe("Couldn't save. Try again.")
   })
 
+  it('says why an apps change was refused, in the apps words', () => {
+    const crew = (status: number, error: string) => new CrewApiError(status, { error })
+    expect(profileErrorText(crew(409, 'level_unavailable'))).toBe("This bot doesn't ask before actions, so it can only read in apps.")
+    expect(profileErrorText(crew(409, 'no_key'))).toBe('Set the key in Settings')
+    expect(profileErrorText(crew(409, 'key_rejected'))).toBe('Key not accepted')
+    expect(profileErrorText(crew(502, 'composio_unavailable'))).toBe("Couldn't reach Composio")
+    expect(profileErrorText(crew(502, 'apps_failed'))).toBe("Couldn't save. Try again.")
+  })
+
   it('reads the same sentences from a screen route failure', () => {
     expect(profileErrorText(new ScreenApiError(503, 'hermes_offline', 'Hermes is offline'))).toBe('Hermes is offline')
     expect(profileErrorText(new ScreenApiError(400, 'primary_not_supported', 'Not available for the primary bot'))).toBe('Change this in Hermes for the primary bot')

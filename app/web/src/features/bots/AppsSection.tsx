@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
+import { ChoiceChips, type Option, Section, Switch } from '@/components/console/fields'
 import { Button } from '@/components/ui/button'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
-import { appsErrorText, getBotApps, setBotApps } from '@/features/apps/apps-api'
+import { getBotApps, setBotApps } from '@/features/apps/apps-api'
 import type { AppEntry, AppLevel, BotAppsView } from '@/features/apps/apps-types'
 import { AppTile } from '@/features/apps/AppTile'
 import { openDialog, useKeyChanged } from '@/features/apps/open-dialog'
 import { useApps } from '@/features/apps/use-apps'
+import { Note, RowError } from '@/features/profile/RowNotes'
+import { useProfileRowAction } from '@/features/profile/use-profile-row-action'
 
 import { AppsNotes } from './AppsNotes'
 
@@ -21,42 +22,48 @@ function levelsMap(view: BotAppsView | null): Record<string, AppLevel> {
   return Object.fromEntries((view?.apps ?? []).map(a => [a.toolkit, a.level]))
 }
 
-function AppRow({ row, bot, title, offered, busy, onChange }: {
-  row: Row; bot: string; title: string; offered: readonly AppLevel[]; busy: boolean
+interface AppRowProps {
+  row: Row
+  bot: string
+  title: string
+  offered: readonly AppLevel[]
+  busy: boolean
+  /** Why the last change to this app failed. */
+  error: string | null
   onChange: (toolkit: string, level: AppLevel | null) => void
-}) {
+}
+
+/** One app: its switch, its level as chips once it is on and connected, and what failed or was capped. */
+function AppRow({ row, bot, title, offered, busy, error, onChange }: AppRowProps) {
   const { entry } = row
   const on = entry !== undefined
-  // The current level always has an item, so the trigger never shows a blank.
-  const levels = LEVEL_ORDER.filter(l => offered.includes(l) || l === entry?.level)
-  const items = levels.map(l => ({ value: l, label: LEVEL_LABEL[l] }))
+  // The current level always has a chip, so the group never shows nothing chosen.
+  const levels: Option<AppLevel>[] = LEVEL_ORDER.filter(l => offered.includes(l) || l === entry?.level).map(l => ({ value: l, label: LEVEL_LABEL[l] }))
   return (
-    <li className="flex flex-col gap-2" data-bot={bot}>
-      <div className="flex items-center gap-2 text-sm">
+    <li className="flex flex-col gap-1.5" data-bot={bot}>
+      <div className="flex items-center gap-3 rounded-2xl bg-shell py-2 pr-3 pl-2">
         <AppTile name={row.name} />
         <div className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate">{row.name}</span>
-          {row.known && !row.connected && <span className="text-xs text-muted-foreground">Not connected</span>}
+          <span className="truncate text-[13px] font-semibold">{row.name}</span>
+          {row.known && !row.connected && <span className="text-xs font-medium text-muted-foreground">Not connected</span>}
         </div>
         <Switch
           checked={on}
           disabled={busy || (!on && !row.connected)}
-          onCheckedChange={next => onChange(row.toolkit, next ? 'read' : null)}
-          aria-label={`Let ${title} use ${row.name}`}
-          className="data-checked:bg-foreground data-unchecked:border-muted-foreground"
+          onChange={next => onChange(row.toolkit, next ? 'read' : null)}
+          label={`Let ${title} use ${row.name}`}
         />
       </div>
       {entry && row.known && row.connected && (
-        <Select value={entry.level} items={items} disabled={busy} onValueChange={v => v !== null && v !== entry.level && onChange(row.toolkit, v as AppLevel)}>
-          <SelectTrigger aria-label={`${row.name} access`} className="w-full"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {items.map(i => <SelectItem key={i.value} value={i.value}>{i.label}</SelectItem>)}
-          </SelectContent>
-        </Select>
+        <ChoiceChips
+          legend={`${row.name} access`} value={entry.level} options={levels} disabled={busy}
+          onChange={level => {
+            if (level !== entry.level) onChange(row.toolkit, level)
+          }}
+        />
       )}
-      {entry?.capped && (
-        <p className="text-xs text-muted-foreground">{`${row.name} has more tools than a bot can hold, so only ${entry.tools} are on.`}</p>
-      )}
+      {error && <RowError>{error}</RowError>}
+      {entry?.capped && <Note>{`${row.name} has more tools than a bot can hold, so only ${entry.tools} are on.`}</Note>}
     </li>
   )
 }
@@ -81,11 +88,16 @@ function useBotApps(bot: string) {
   return { view, setView, reload }
 }
 
+/**
+ * The apps a bot may use and how far: one switch per app and its level as chips. A change applies at
+ * once. One write carries every app's level, so every row waits while it runs; a failure is said on
+ * the row that was changed.
+ */
 export function AppsSection({ bot, title, sandboxed }: { bot: string; title: string; sandboxed: boolean }) {
   const { list, error: listError } = useApps()
   const { view, setView, reload } = useBotApps(bot)
-  const [busy, setBusy] = useState(false)
-  const [failure, setFailure] = useState<string | null>(null)
+  const { pending, error, run } = useProfileRowAction({ title, reload })
+  const [changed, setChanged] = useState<string | null>(null)
 
   const rows = useMemo<Row[]>(() => {
     const connected = new Map((list?.apps ?? []).filter(a => a.status === 'connected').map(a => [a.toolkit, a.name]))
@@ -101,43 +113,39 @@ export function AppsSection({ bot, title, sandboxed }: { bot: string; title: str
   }, [list, view])
 
   const change = async (toolkit: string, level: AppLevel | null) => {
-    const next = levelsMap(view)
-    if (level === null) delete next[toolkit]
-    else next[toolkit] = level
-    setBusy(true)
-    setFailure(null)
-    try {
-      setView(await setBotApps(bot, next))
-      toast.success('Apps updated')
-    } catch (e) {
-      setFailure(appsErrorText(e))
-      await reload()
-    }
-    setBusy(false)
+    if (pending) return
+    const { [toolkit]: _dropped, ...rest } = levelsMap(view)
+    const next = level === null ? rest : { ...rest, [toolkit]: level }
+    setChanged(toolkit)
+    if (await run(async () => setView(await setBotApps(bot, next)))) toast.success('Apps updated')
   }
 
   const noKey = (view !== null && !view.keyConfigured) || listError === 'no_key' || listError === 'key_rejected'
   const empty = !noKey && list !== null && rows.length === 0
+  // A failure whose row is gone is still said, under the list.
+  const orphanError = error !== null && !rows.some(r => r.toolkit === changed)
   return (
-    <section className="flex flex-col gap-2">
-      <h3 className="text-sm font-medium">Apps</h3>
-      {noKey && <Button type="button" variant="outline" onClick={() => openDialog('settings')}>Set the key in Settings</Button>}
+    <Section title="Apps">
+      {noKey && <Button type="button" variant="outline" className="self-start" onClick={() => openDialog('settings')}>Set the key in Settings</Button>}
       {empty && (
-        <div className="flex flex-col items-start gap-2 text-sm">
+        <div className="flex flex-col items-start gap-2 px-1 text-[13px] font-medium">
           <span>No apps connected yet.</span>
           <Button type="button" variant="outline" onClick={() => openDialog('apps')}>Open Apps</Button>
         </div>
       )}
-      {listError !== null && !noKey && <p role="alert" className="text-sm text-destructive">{listError}</p>}
+      {listError !== null && !noKey && <RowError>{listError}</RowError>}
       {rows.length > 0 && (
-        <ul className="flex flex-col gap-3">
+        <ul className="flex flex-col gap-2.5">
           {rows.map(r => (
-            <AppRow key={r.toolkit} row={r} bot={bot} title={title} offered={view?.offered ?? ['read']} busy={busy || view === null} onChange={(t, l) => void change(t, l)} />
+            <AppRow
+              key={r.toolkit} row={r} bot={bot} title={title} offered={view?.offered ?? ['read']} busy={pending || view === null}
+              error={r.toolkit === changed ? error : null} onChange={(t, l) => void change(t, l)}
+            />
           ))}
         </ul>
       )}
-      {failure && <p role="alert" className="text-sm text-destructive">{failure}</p>}
+      {orphanError && <RowError>{error}</RowError>}
       <AppsNotes view={view} sandboxed={sandboxed} />
-    </section>
+    </Section>
   )
 }

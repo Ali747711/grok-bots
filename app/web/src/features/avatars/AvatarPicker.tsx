@@ -5,10 +5,11 @@ import { Button } from '@/components/ui/button'
 import { PhotoError, toAvatarPng } from '@/features/bots/image'
 import { cn } from '@/lib/utils'
 
-import { AVATAR_SWATCHES, AVATAR_TYPES, type AvatarType } from './avatar-model'
+import { AVATAR_SWATCHES, AVATAR_TYPES, type AvatarType, type AvatarWear, avatarWear } from './avatar-model'
 import { CrewAvatar } from './CrewAvatar'
 
-export interface AvatarValue {
+/** A type, a colour and a photo; what a shape avatar wears rides along and is shown in the preview. */
+export interface AvatarValue extends AvatarWear {
   readonly type: AvatarType
   /** `#rrggbb`; undefined means the type's own colour. */
   readonly color?: string
@@ -25,6 +26,8 @@ interface AvatarPickerProps {
   onTypePick?: (type: AvatarType) => void
   /** Holds every control while a save is in flight, so a second pick cannot be built from stale state. */
   disabled?: boolean
+  /** The live preview's size in px; 72 by default. */
+  previewSize?: number
 }
 
 const PREVIEW_SIZE = 72
@@ -127,25 +130,25 @@ function PhotoControls({ value, onChange, onBusyChange, disabled }: AvatarPicker
 }
 
 /** The photo's preview, or the fur avatar as it will look. Decorative: the controls around it name the choices. */
-function Preview({ value }: { value: AvatarValue }) {
-  const look = { name: 'preview', title: 'Preview', avatar: { type: value.type, ...(value.color ? { color: value.color } : {}) }, imageKind: null, hasAvatar: false, status: 'idle' as const, hidden: false, lastActive: null }
+function Preview({ value, size }: { value: AvatarValue; size: number }) {
+  const look = { name: 'preview', title: 'Preview', avatar: { type: value.type, ...(value.color ? { color: value.color } : {}), ...avatarWear(value) }, imageKind: null, hasAvatar: false, status: 'idle' as const, hidden: false, lastActive: null }
   return (
-    <div data-testid="avatar-preview" className="flex-none" style={{ width: PREVIEW_SIZE, height: PREVIEW_SIZE }}>
+    <div data-testid="avatar-preview" className="flex-none" style={{ width: size, height: size }}>
       {value.photo ? (
         <img src={value.photo} alt="Photo preview" className="size-full rounded-[30%] object-cover" />
       ) : (
-        <CrewAvatar bot={look} size={PREVIEW_SIZE} interactive={false} decorative />
+        <CrewAvatar bot={look} size={size} interactive={false} decorative />
       )}
     </div>
   )
 }
 
 /** Choose a bot's avatar: one of 18 plush types, a colour, or an uploaded photo, with a live preview. */
-export function AvatarPicker({ value, onChange, onBusyChange, onTypePick, disabled }: AvatarPickerProps) {
+export function AvatarPicker({ value, onChange, onBusyChange, onTypePick, disabled, previewSize = PREVIEW_SIZE }: AvatarPickerProps) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-start gap-3">
-        <Preview value={value} />
+        <Preview value={value} size={previewSize} />
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <Swatches value={value} onChange={onChange} disabled={disabled} />
           <PhotoControls value={value} onChange={onChange} onBusyChange={onBusyChange} disabled={disabled} />

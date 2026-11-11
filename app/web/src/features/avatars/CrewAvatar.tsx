@@ -5,7 +5,7 @@ import { StatusDot } from '@/components/console/status'
 import { cn } from '@/lib/utils'
 import type { BotView } from '@/state/types'
 
-import { avatarSeed, avatarState, resolvedAvatar } from './avatar-model'
+import { avatarSeed, avatarState, avatarWear, resolvedAvatar } from './avatar-model'
 import { useNow } from './use-now'
 
 interface CrewAvatarProps {
@@ -19,7 +19,7 @@ interface CrewAvatarProps {
   showStatus?: boolean
 }
 
-/** A bot's face: a plush-fur avatar (or its uploaded photo) with its status shown as motion, a ring and, when asked, a corner dot. */
+/** A bot's face: a plush-fur avatar with what it wears (or its uploaded photo), with its status shown as motion, a ring and, when asked, a corner dot. */
 export function CrewAvatar({ bot, size, interactive = true, decorative = false, showStatus = false }: CrewAvatarProps) {
   const now = useNow()
   const state = avatarState(bot, now)
@@ -43,6 +43,7 @@ export function CrewAvatar({ bot, size, interactive = true, decorative = false, 
             aria-label={decorative ? undefined : bot.title}
             type={look.type}
             {...(look.color ? { color: look.color } : {})}
+            {...avatarWear(bot.avatar)}
             state={state}
             seed={avatarSeed(bot.name)}
             size={size}

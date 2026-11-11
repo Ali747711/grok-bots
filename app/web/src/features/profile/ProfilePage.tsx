@@ -16,7 +16,7 @@ interface ProfilePageProps {
   onBack: () => void
 }
 
-/** The tab `?tab=` names; one that is not built yet (Skills) shows Identity, like an unknown value (R6). */
+/** The tab `?tab=` names; an unknown value shows Identity (R6). */
 function useProfileTab(name: string): readonly [ShownTab, (tab: ShownTab) => void] {
   const [params] = useSearchParams()
   const navigate = useNavigate()

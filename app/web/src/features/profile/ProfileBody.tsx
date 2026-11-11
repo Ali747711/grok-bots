@@ -1,4 +1,4 @@
-import { IdCard, type LucideIcon, Plug, SlidersHorizontal, Smile, Sparkles } from 'lucide-react'
+import { IdCard, type LucideIcon, Plug, SlidersHorizontal, Smile, Sparkles, Wrench } from 'lucide-react'
 import type { KeyboardEvent } from 'react'
 import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -15,18 +15,19 @@ import { FinishSetupBanner } from './FinishSetupBanner'
 import { IdentityTab } from './IdentityTab'
 import { dropProfileDraft } from './profile-drafts'
 import { SaveBar } from './SaveBar'
+import { SkillsTab } from './SkillsTab'
 import { SoulTab } from './SoulTab'
 import { SummaryCard } from './SummaryCard'
 import { useProfileEditor } from './use-profile-editor'
 import { useProfileSettings } from './use-profile-settings'
 
-/** The tabs built so far; Skills joins them in Task 14. */
-export type ShownTab = 'identity' | 'avatar' | 'soul' | 'apps' | 'advanced'
+export type ShownTab = 'identity' | 'avatar' | 'soul' | 'skills' | 'apps' | 'advanced'
 
 export const PROFILE_TABS: { id: ShownTab; label: string; icon: LucideIcon }[] = [
   { id: 'identity', label: 'Identity', icon: IdCard },
   { id: 'avatar', label: 'Avatar', icon: Smile },
   { id: 'soul', label: 'Soul', icon: Sparkles },
+  { id: 'skills', label: 'Skills', icon: Wrench },
   { id: 'apps', label: 'Apps', icon: Plug },
   { id: 'advanced', label: 'Advanced', icon: SlidersHorizontal }
 ]
@@ -36,6 +37,8 @@ const SAVING_NOTE: Record<ShownTab, string> = {
   identity: 'Changes here wait for Save.',
   soul: 'Changes here wait for Save.',
   avatar: 'Changes here apply at once.',
+  // Saved at once, but a skill reaches the bot from its next turn: the tab says when.
+  skills: 'Changes here save at once.',
   apps: 'Changes here apply at once.',
   advanced: 'Changes here apply at once.'
 }
@@ -98,11 +101,12 @@ export function ProfileBody({ bot, detail, setDetail, reload, tab, onTab }: Prof
             {/* Always mounted: a save in flight or a pick held for Finish setup must outlive a tab switch. */}
             <div hidden={tab !== 'avatar'} className="flex flex-col gap-4">
               <ProfileAvatar
-                detail={detail} onDetail={editor.refreshed} onBusyChange={editor.avatar.setBusy} disabled={saver.busy}
+                detail={detail} onDetail={editor.refreshed} onBusyChange={editor.avatar.setBusy} reload={editor.reloadMerged} disabled={saver.busy}
                 held={unfinished} heldChoice={editor.avatar.held} onHeld={editor.avatar.setHeld}
               />
             </div>
             {tab === 'soul' && <SoulTab {...text} />}
+            {tab === 'skills' && <SkillsTab name={bot.name} title={detail.title} isPrimary={bot.isPrimary} />}
             {tab === 'apps' && <AppsSection bot={bot.name} title={detail.title} sandboxed={bot.sandbox === 'on'} />}
             {tab === 'advanced' && <AdvancedTab detail={detail} isPrimary={bot.isPrimary} settings={settings} reloadBot={editor.reloadMerged} onDeleted={onDeleted} />}
           </div>

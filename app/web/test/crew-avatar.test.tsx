@@ -14,7 +14,8 @@ vi.mock('bot-avatars', async () => {
     BotAvatar: (props: Record<string, unknown>) => (
       <div data-testid="stub" data-type={String(props.type)} data-state={String(props.state)} data-shading={String(props.shading)}
         data-seed={String(props.seed)} data-color={props.color === undefined ? '' : String(props.color)} data-size={String(props.size)}
-        data-interactive={String(props.interactive)} data-label={String(props['aria-label'])} />
+        data-interactive={String(props.interactive)} data-label={String(props['aria-label'])}
+        data-wear={JSON.stringify({ face: props.face, hat: props.hat, glasses: props.glasses, headphones: props.headphones, bowTie: props.bowTie })} />
     )
   }
 })
@@ -31,6 +32,19 @@ describe('CrewAvatar', () => {
     expect(stub).toHaveAttribute('data-type', 'cat')
     expect(stub).toHaveAttribute('data-size', '34')
     expect(stub).toHaveAttribute('data-interactive', 'true')
+  })
+
+  it('passes accessories to shape avatars and never to photos', () => {
+    const avatar = { type: 'cat', face: 'mouth', hat: 'crown', glasses: 'shades', headphones: true, bowTie: true } as const
+    const { rerender } = render(<CrewAvatar bot={bot({ name: 'scout', avatar })} size={34} />)
+    expect(JSON.parse(screen.getByTestId('stub').getAttribute('data-wear')!)).toEqual({ face: 'mouth', hat: 'crown', glasses: 'shades', headphones: true, bowTie: true })
+    // Nothing chosen: every accessory is left to the library's default.
+    rerender(<CrewAvatar bot={bot({ name: 'scout', avatar: { type: 'cat' } })} size={34} />)
+    expect(JSON.parse(screen.getByTestId('stub').getAttribute('data-wear')!)).toEqual({})
+    // A photo is drawn as an image: no shape, so nothing to wear.
+    rerender(<CrewAvatar bot={bot({ name: 'scout', avatar, imageKind: 'photo', hasAvatar: true })} size={34} />)
+    expect(screen.queryByTestId('stub')).toBeNull()
+    expect(document.querySelector('img')).toHaveAttribute('src', '/crew/avatars/scout')
   })
 
   it('derives the type and leaves the colour to the library when none was chosen', () => {

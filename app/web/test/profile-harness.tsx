@@ -56,7 +56,7 @@ function Where() {
 }
 export const where = () => screen.getByTestId('where').textContent
 
-export type Tab = 'identity' | 'avatar' | 'soul' | 'apps' | 'advanced'
+export type Tab = 'identity' | 'avatar' | 'soul' | 'skills' | 'apps' | 'advanced'
 export const dev = (over: Partial<BotView> = {}) => bot({ name: 'dev', title: 'Dev', ...over })
 
 /** The profile as the app mounts it: keyed by bot, at `/bots/<name>?panel=profile[&tab=]`. */

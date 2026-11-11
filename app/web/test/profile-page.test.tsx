@@ -32,7 +32,7 @@ describe('ProfilePage', () => {
     expect(screen.getByRole('tab', { name: 'Soul' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByLabelText('Persona (SOUL.md)')).toHaveValue('Be nice')
     expect(screen.queryByLabelText('Name')).toBeNull()
-    expect(screen.getAllByRole('tab').map(t => t.textContent)).toEqual(['Identity', 'Avatar', 'Soul', 'Apps', 'Advanced'])
+    expect(screen.getAllByRole('tab').map(t => t.textContent)).toEqual(['Identity', 'Avatar', 'Soul', 'Skills', 'Apps', 'Advanced'])
 
     goTab('Advanced')
     expect(where()).toBe('/bots/dev?panel=profile&tab=advanced')
@@ -42,14 +42,47 @@ describe('ProfilePage', () => {
     expect(screen.getByLabelText('Name')).toHaveValue('Dev')
     first.unmount()
 
-    // No tab, an unknown tab, and Skills (not built yet) all show Identity.
-    for (const tab of [undefined, 'nope', 'skills']) {
+    // No tab and an unknown tab show Identity.
+    for (const tab of [undefined, 'nope']) {
       const view = open(dev(), tab as Tab | undefined)
       await loaded()
       expect(screen.getByRole('tab', { name: 'Identity' })).toHaveAttribute('aria-selected', 'true')
       expect(screen.getByLabelText('Name')).toBeInTheDocument()
       view.unmount()
     }
+  })
+
+  it('opens Skills from ?tab=skills with the toolsets of that bot, saved at once', async () => {
+    const rows = [{ name: 'web', label: 'Web Search & Scraping', description: 'web_search', enabled: true, needsSetup: false }]
+    const fn = stub({ other: {
+      'GET /crew/bots/dev/toolsets': () => json(rows),
+      'PUT /crew/bots/dev/toolsets': () => json(rows.map(r => ({ ...r, enabled: false })))
+    } })
+    open(dev(), 'skills')
+    await loaded()
+    expect(screen.getByRole('tab', { name: 'Skills' })).toHaveAttribute('aria-selected', 'true')
+    expect(where()).toBe('/bots/dev?panel=profile&tab=skills')
+    expect(screen.getByText('Changes here save at once.')).toBeInTheDocument()
+    expect(screen.getByText("Applies from Dev's next message.")).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('switch', { name: 'Web search' }))
+    await waitFor(() => expect(fn.mock.calls.some(([u, i]) => u === '/crew/bots/dev/toolsets' && i?.method === 'PUT' && i.body === JSON.stringify({ name: 'web', enabled: false }))).toBe(true))
+    // A skill is not a text field: no save bar.
+    expect(saveButton()).toBeNull()
+    goTab('Apps')
+    expect(where()).toBe('/bots/dev?panel=profile&tab=apps')
+    expect(screen.queryByRole('switch', { name: 'Web search' })).toBeNull()
+  })
+
+  it("shows the primary's skills read-only with the reason", async () => {
+    const rows = [{ name: 'web', label: 'Web', description: '', enabled: true, needsSetup: false }]
+    const fn = stub({ get: () => json(detail({ name: 'default', isPrimary: true, title: 'Hermes' })), other: { 'GET /crew/bots/default/toolsets': () => json(rows) } })
+    open(dev({ name: 'default', title: 'Hermes', isPrimary: true }), 'skills')
+    await loaded()
+    const web = await screen.findByRole('switch', { name: 'Web search' })
+    expect(web).toBeDisabled()
+    expect(screen.getByText("New bots copy Hermes's settings, so change these in Hermes")).toBeInTheDocument()
+    fireEvent.click(web)
+    expect(fn.mock.calls.some(([, i]) => i?.method === 'PUT')).toBe(false)
   })
 
   it('shows the name, the read-only handle, the header and the field limits', async () => {
