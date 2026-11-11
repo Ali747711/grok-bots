@@ -44,7 +44,11 @@ test('a 1-hour sleep choice survives a screen start', async ({ page }) => {
   await page.goto(`${CREW}/bots/${sleepHandle}?panel=profile&tab=advanced`)
   const sleep = page.getByRole('main').getByRole('tabpanel').getByRole('radiogroup', { name: 'Stop the screen after' })
   await expect(sleep.getByRole('radio', { checked: true })).toHaveCount(1)
+  // A new bot copies the primary's config, which may already be on 1 hour: choose 15 min first, so the 1-hour write is a real change.
   // The input is visually hidden: the choice is made by clicking its label.
+  await sleep.locator('label').filter({ hasText: '15 min' }).click()
+  await expect(sleep.getByRole('radio', { name: '15 min', exact: true })).toBeChecked()
+  await expect.poll(sleepMinutes, { timeout: 30_000 }).toBe(15)
   await sleep.locator('label').filter({ hasText: '1 hour' }).click()
   await expect(sleep.getByRole('radio', { name: '1 hour', exact: true })).toBeChecked()
   await expect.poll(sleepMinutes, { timeout: 30_000 }).toBe(60)

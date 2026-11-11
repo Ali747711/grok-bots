@@ -61,7 +61,7 @@ test('a pin from the rail reaches Hermes, and unpin stores pinned false', async 
   await expect(pin).toHaveAttribute('aria-pressed', 'false')
   await expect(rail(page).getByRole('group', { name: 'Crew' }).locator(`[data-bot="${handle}"]`)).toBeVisible()
   // The key stays, as false: a missing key would leave the Webapp's copy pinned.
-  await expect.poll(async () => { const meta = await metaOf(handle); return meta !== undefined && 'pinned' in meta && meta.pinned }, { timeout: 30_000 }).toBe(false)
+  await expect.poll(async () => { const meta = await metaOf(handle); return meta && 'pinned' in meta ? meta.pinned : 'missing' }, { timeout: 30_000 }).toBe(false)
 
   await page.reload()
   await expect(rail(page).getByRole('group', { name: 'Crew' }).locator(`[data-bot="${handle}"]`)).toBeVisible()
@@ -114,9 +114,11 @@ test('an approvals choice reaches the bot\'s Hermes config', async ({ page }) =>
   }
 
   await pick(page, 'Approvals', 'Never ask')
-  // Nothing is written before the confirm.
+  // Nothing is written before the confirm. Waiting for the confirm gives a wrong early write time to land.
+  const confirm = tabPanel(page).getByRole('group', { name: 'Turn off approvals?' })
+  await expect(confirm).toBeVisible()
   expect(await approvalsMode()).not.toBe('off')
-  await tabPanel(page).getByRole('group', { name: 'Turn off approvals?' }).getByRole('button', { name: 'Turn off approvals', exact: true }).click()
+  await confirm.getByRole('button', { name: 'Turn off approvals', exact: true }).click()
   await expect.poll(approvalsMode, { timeout: 30_000 }).toBe('off')
   await expect(mode(/^Never ask/)).toBeChecked()
 
