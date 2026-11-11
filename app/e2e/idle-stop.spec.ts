@@ -1,17 +1,20 @@
 import { expect, test } from '@playwright/test'
 
-import { createBotInDialog, deleteTestBots } from './helpers.js'
+import { CREW, createBotInDialog, deleteTestBots, rawConfigOf } from './helpers.js'
 import { hermesRest, withRpc } from './hermes-rpc.js'
 
 // Slow (about 90 s): skip with `--grep-invert "idle stop"` when time-boxed. Test-owned bot only.
 const run = String(Math.floor(100000 + Math.random() * 800000))
 const handle = `e2e${run}`
+// The sleep test's own bot: the idle-stop test leaves its bot on a 1-minute window.
+const sleepHandle = `e2e${Number(run) + 1}`
+const sleepMinutes = async () => (await rawConfigOf(sleepHandle)).bot_desktop?.idle_stop_minutes
 
 test.beforeAll(async () => {
   await deleteTestBots()
 })
 test.afterAll(async () => {
-  await withRpc(rpc => rpc.call('display.stop', { profile: handle, force: true })).catch(() => undefined)
+  for (const profile of [handle, sleepHandle]) await withRpc(rpc => rpc.call('display.stop', { profile, force: true })).catch(() => undefined)
   await deleteTestBots()
 })
 
@@ -34,4 +37,21 @@ test('idle stop: a 1-minute window stops the screen even while thumbnails keep p
   })
   test.info().annotations.push({ type: 'idle stop fired after', description: stoppedAfterMs === null ? 'never (150 s)' : `${Math.round(stoppedAfterMs / 1000)} s` })
   expect(stoppedAfterMs).not.toBeNull()
+})
+
+test('a 1-hour sleep choice survives a screen start', async ({ page }) => {
+  await createBotInDialog(page, `E2E Sleep ${run}`, sleepHandle)
+  await page.goto(`${CREW}/bots/${sleepHandle}?panel=profile&tab=advanced`)
+  const sleep = page.getByRole('main').getByRole('tabpanel').getByRole('radiogroup', { name: 'Stop the screen after' })
+  await expect(sleep.getByRole('radio', { checked: true })).toHaveCount(1)
+  // The input is visually hidden: the choice is made by clicking its label.
+  await sleep.locator('label').filter({ hasText: '1 hour' }).click()
+  await expect(sleep.getByRole('radio', { name: '1 hour', exact: true })).toBeChecked()
+  await expect.poll(sleepMinutes, { timeout: 30_000 }).toBe(60)
+
+  // Crew writes 15 at a start only when no choice is stored; the 1-hour choice must stay.
+  await page.goto(`${CREW}/bots/${sleepHandle}?panel=computer`)
+  await page.getByRole('button', { name: 'Start screen', exact: true }).click()
+  await expect(page.getByTestId('live-view')).toBeVisible({ timeout: 30_000 })
+  expect(await sleepMinutes()).toBe(60)
 })

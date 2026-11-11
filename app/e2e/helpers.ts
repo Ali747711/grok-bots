@@ -6,7 +6,7 @@ import { join } from 'node:path'
 
 import { type Locator, type Page, expect } from '@playwright/test'
 
-import { hermesRest, testBotNames, withRpc } from './hermes-rpc.js'
+import { hermesRest, profileRow, testBotNames, withRpc } from './hermes-rpc.js'
 
 export const VM = 'ali@192.168.64.16'
 export const CREW = 'http://127.0.0.1:7070'
@@ -219,6 +219,17 @@ export function genericHeaders(body: string, secret: string, ts: string | null, 
     ...(event ? { 'x-crew-event': event } : {})
   }
 }
+
+/** A bot's own Hermes config, without the defaults. Callers assert on single fields; the object is never printed. */
+export async function rawConfigOf(bot: string): Promise<Record<string, Record<string, unknown> | undefined>> {
+  const res = await hermesRest('GET', `/api/config?profile=${encodeURIComponent(bot)}&include_defaults=false`)
+  // An unanswered read must fail the test: an empty object would let a "not contains" check pass.
+  if (res.status !== 200 || res.body === null || typeof res.body !== 'object') throw new Error(`Hermes config read answered ${res.status}`)
+  return res.body as Record<string, Record<string, unknown> | undefined>
+}
+
+/** What Crew and the Webapp keep about a bot in Hermes: `ui_meta['hermes-bots']`. */
+export const metaOf = async (bot: string): Promise<Record<string, unknown> | undefined> => (await profileRow(bot))?.ui_meta?.['hermes-bots']
 
 // ---- Connectors (Phase 7). These go only through Crew or Hermes; nothing reads the Composio key or a .env value. ----
 
