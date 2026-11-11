@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ToolsetView } from '@/features/profile/profile-api'
 import { SkillsTab } from '@/features/profile/SkillsTab'
 import { TOOLSET_COPY } from '@/features/profile/toolset-copy'
+import { UNCONFIRMED } from '@/features/profile/use-profile-row-action'
 
 const json = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status }))
 const row = (name: string, over: Partial<ToolsetView> = {}): ToolsetView => ({ name, label: `Hermes ${name}`, description: `${name}_tool`, enabled: true, needsSetup: false, ...over })
@@ -182,5 +183,45 @@ describe('SkillsTab', () => {
     open()
     expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't read this setting: Hermes didn't answer")
     expect(screen.queryByRole('switch')).toBeNull()
+  })
+
+  it('keeps the written switch and says it could not be re-checked when the re-read fails', async () => {
+    const server: Server = { rows: ROWS() }
+    const fn = stub(server)
+    open()
+    const web = await toggle('Web search')
+    server.failRead = () => json({ error: 'hermes_offline' }, 503)
+    fireEvent.click(web)
+    expect(await within(item('Web search')).findByRole('status')).toHaveTextContent(UNCONFIRMED)
+    expect(puts(fn)).toEqual([{ name: 'web', enabled: false }])
+    expect(web).toHaveAttribute('aria-checked', 'false')
+    expect(web).toBeEnabled()
+    // Only the row that wrote says so, and it is not an error of that row.
+    expect(screen.getAllByRole('status')).toHaveLength(1)
+    expect(within(item('Web search')).queryByRole('alert')).toBeNull()
+  })
+
+  it('shows the switch as just sent when the write answers with another shape and the re-read fails', async () => {
+    const server: Server = { rows: ROWS(), refuse: () => json({ ok: true }) }
+    stub(server)
+    open()
+    const web = await toggle('Web search')
+    server.failRead = () => json({ error: 'hermes_offline' }, 503)
+    fireEvent.click(web)
+    expect(await within(item('Web search')).findByRole('status')).toHaveTextContent(UNCONFIRMED)
+    expect(web).toHaveAttribute('aria-checked', 'false')
+  })
+
+  it('shows the error and the old switch when the write fails, even if the re-read fails too', async () => {
+    const server: Server = { rows: ROWS(), refuse: () => json({ error: 'hermes_error', message: 'config.yaml is read-only' }, 502) }
+    stub(server)
+    open()
+    const web = await toggle('Web search')
+    server.failRead = () => json({ error: 'hermes_offline' }, 503)
+    fireEvent.click(web)
+    expect(await within(item('Web search')).findByRole('alert')).toHaveTextContent('config.yaml is read-only')
+    await waitFor(() => expect(web).toBeEnabled())
+    expect(web).toHaveAttribute('aria-checked', 'true')
+    expect(screen.queryByRole('status')).toBeNull()
   })
 })

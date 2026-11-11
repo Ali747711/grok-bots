@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ComputerSection } from '@/features/profile/ComputerSection'
+import { UNCONFIRMED } from '@/features/profile/use-profile-row-action'
 import { useProfileSettings } from '@/features/profile/use-profile-settings'
 
 import { json, puts, reads, settingsState, stubSettings } from './profile-settings-stub'
@@ -10,7 +11,7 @@ const NEVER_NOTE = "Each running screen holds about 350 MB until it's stopped."
 
 function Harness({ name = 'scout', title = 'Scout', isPrimary = false }: { name?: string; title?: string; isPrimary?: boolean }) {
   const settings = useProfileSettings(name)
-  return <ComputerSection name={name} title={title} isPrimary={isPrimary} screen={settings.screen} readError={settings.errors.screen} reload={settings.reload} />
+  return <ComputerSection name={name} title={title} isPrimary={isPrimary} screen={settings.screen} readError={settings.errors.screen} reload={settings.reload} onWritten={screen => settings.apply({ screen })} />
 }
 const chip = (name: string) => screen.getByRole('radio', { name })
 const loaded = () => waitFor(() => expect(screen.getAllByRole('radio').some(r => (r as HTMLInputElement).checked)).toBe(true))
@@ -88,5 +89,50 @@ describe('ComputerSection', () => {
     render(<Harness />)
     expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't read this setting: config unreadable")
     expect(screen.getByRole('switch', { name: 'Let Scout use its screen' })).toBeDisabled()
+  })
+
+  it('keeps the written sleep choice and says it could not be re-checked when the re-read fails', async () => {
+    const state = settingsState()
+    stubSettings(state)
+    render(<Harness />)
+    await loaded()
+    state.failRead['screen/config'] = () => json({ error: 'hermes_offline' }, 503)
+    fireEvent.click(chip('Never'))
+    expect(await screen.findByRole('status')).toHaveTextContent(UNCONFIRMED)
+    expect(chip('Never')).toBeChecked()
+    expect(screen.getByText(NEVER_NOTE)).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('keeps the written use-screen switch and says it could not be re-checked when the re-read fails', async () => {
+    const state = settingsState()
+    stubSettings(state)
+    render(<Harness />)
+    const toggle = await screen.findByRole('switch', { name: 'Let Scout use its screen' })
+    await waitFor(() => expect(toggle).toBeEnabled())
+    state.failRead['screen/config'] = () => json({ error: 'hermes_offline' }, 503)
+    fireEvent.click(toggle)
+    expect(await screen.findByRole('status')).toHaveTextContent(UNCONFIRMED)
+    expect(toggle).toBeChecked()
+    // Only the row that wrote says so.
+    expect(screen.getAllByRole('status')).toHaveLength(1)
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('shows the error and the old values when a write fails, even if the re-read fails too', async () => {
+    const state = settingsState()
+    stubSettings(state)
+    render(<Harness />)
+    await loaded()
+    state.fail['screen/config'] = () => json({ error: 'hermes_error', message: 'config unwritable' }, 502)
+    state.failRead['screen/config'] = () => json({ error: 'hermes_offline' }, 503)
+    fireEvent.click(chip('1 hour'))
+    expect(await screen.findByRole('alert')).toHaveTextContent('config unwritable')
+    await waitFor(() => expect(chip('15 min')).toBeEnabled())
+    expect(chip('15 min')).toBeChecked()
+    fireEvent.click(screen.getByRole('switch', { name: 'Let Scout use its screen' }))
+    await waitFor(() => expect(screen.getAllByRole('alert')).toHaveLength(2))
+    expect(screen.getByRole('switch', { name: 'Let Scout use its screen' })).not.toBeChecked()
+    expect(screen.queryByRole('status')).toBeNull()
   })
 })

@@ -2,6 +2,7 @@ import { Kbd } from '@/components/console/kbd'
 import { Button } from '@/components/ui/button'
 import { ConflictBanner } from '@/features/bots/ProfileNotices'
 import type { Conflict } from '@/features/bots/use-profile-save'
+import { modShortcut } from '@/hooks/use-window-keydown'
 
 import { RowError } from './RowNotes'
 
@@ -35,7 +36,7 @@ export function SaveBar({ dirty, busy, error, conflict, onSave, onDiscard, onRel
           <Button type="button" size="sm" disabled={busy} onClick={onSave}>
             Save
             {/* Hidden from assistive tech: the button's name stays "Save". */}
-            <span aria-hidden="true" className="ml-1 flex"><Kbd>⌘↵</Kbd></span>
+            <span aria-hidden="true" className="ml-1 flex"><Kbd>{modShortcut('↵')}</Kbd></span>
           </Button>
         </div>
       )}

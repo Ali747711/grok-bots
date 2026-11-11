@@ -42,6 +42,7 @@ export const setToolset = (name: string, toolset: string, enabled: boolean) =>
 export const sandboxLockText = (title: string): string => `Off while ${title} runs in a sandbox`
 
 const GENERIC = "Couldn't save. Try again."
+const NO_ANSWER = "Hermes didn't answer"
 /** The codes whose `message` is Hermes's own words. A Crew validation message (`bad_body`) is never shown. */
 const HERMES_WORDS: readonly string[] = ['hermes_error', 'rejected']
 
@@ -49,22 +50,32 @@ interface Refusal {
   readonly status: number
   readonly code: string | null
   readonly message: string | null
+  /** The message is already a plain sentence (the screen routes), never a raw code. */
+  readonly plain: boolean
 }
 
 function refusalOf(e: unknown): Refusal | null {
-  if (e instanceof ScreenApiError) return { status: e.status, code: e.code, message: e.message }
+  if (e instanceof ScreenApiError) return { status: e.status, code: e.code, message: e.message, plain: true }
   if (!(e instanceof CrewApiError)) return null
   const { error, message } = e.body ?? {}
-  return { status: e.status, code: typeof error === 'string' ? error : null, message: typeof message === 'string' ? message : null }
+  return { status: e.status, code: typeof error === 'string' ? error : null, message: typeof message === 'string' ? message : null, plain: false }
+}
+
+interface ErrorTextOptions {
+  /** The bot's title, for the sentences that name it. */
+  readonly title?: string
+  /** The failure was a read: the sentence follows "Couldn't read this setting:" and never says "save". */
+  readonly read?: boolean
 }
 
 /**
- * The one sentence a failed immediate-apply row shows (PF21): Hermes's own words when it sent them,
+ * The one sentence for a failed profile write or read (PF21): Hermes's own words when it sent them,
  * a plain reason for the codes Crew knows, and never a raw code.
  */
-export function profileErrorText(e: unknown, title?: string): string {
+export function profileErrorText(e: unknown, { title, read = false }: ErrorTextOptions = {}): string {
+  const fallback = read ? NO_ANSWER : GENERIC
   const refusal = refusalOf(e)
-  if (!refusal) return GENERIC
+  if (!refusal) return fallback
   // The apps routes' own refusals (the Apps tab's rows), said as everywhere else in Crew.
   const apps = appsReason(refusal.code)
   if (apps) return apps
@@ -72,17 +83,8 @@ export function profileErrorText(e: unknown, title?: string): string {
   if (refusal.code === 'primary_not_supported') return 'Change this in Hermes for the primary bot'
   if (refusal.code === 'toolset_locked') return sandboxLockText(title ?? 'the bot')
   if (refusal.code !== null && HERMES_WORDS.includes(refusal.code) && refusal.message) return refusal.message
-  return GENERIC
-}
-
-/** Why a setting could not be read, to follow "Couldn't read this setting:". */
-export function profileReadErrorText(e: unknown): string {
-  const refusal = refusalOf(e)
-  if (refusal?.status === 503) return 'Hermes is offline'
-  // A screen route's message is already readable text, never a raw code.
-  if (e instanceof ScreenApiError) return e.message
-  if (refusal && refusal.code !== null && HERMES_WORDS.includes(refusal.code) && refusal.message) return refusal.message
-  return "Hermes didn't answer"
+  if (read && refusal.plain && refusal.message) return refusal.message
+  return fallback
 }
 
 /** The sleep choice shown for a stored value (R3): 60 and 0 as they are, anything else as 15, which Crew writes at the next start. */

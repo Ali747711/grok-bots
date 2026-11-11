@@ -5,6 +5,11 @@ export function RowError({ children }: { children: string }) {
   return <p role="alert" className="px-1 text-xs font-medium text-destructive">{children}</p>
 }
 
+/** A row's plain notice that is not a failure, e.g. a saved change Crew could not read back. */
+export function RowNotice({ children }: { children: string }) {
+  return <p role="status" className="px-1 text-xs font-medium text-muted-foreground">{children}</p>
+}
+
 /** A setting that could not be read: its controls stay off and this says why. */
 export function ReadError({ reason }: { reason: string }) {
   return <RowError>{`Couldn't read this setting: ${reason}`}</RowError>

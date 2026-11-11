@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ApprovalsSection } from '@/features/profile/ApprovalsSection'
+import { UNCONFIRMED } from '@/features/profile/use-profile-row-action'
 import { useProfileSettings } from '@/features/profile/use-profile-settings'
 
 import { json, puts, reads, settingsState, stubSettings } from './profile-settings-stub'
@@ -13,7 +14,7 @@ const Q5 = "Inside the sandbox, Scout runs commands and code without asking you.
 
 function Harness({ name = 'scout', title = 'Scout', isPrimary = false }: { name?: string; title?: string; isPrimary?: boolean }) {
   const settings = useProfileSettings(name)
-  return <ApprovalsSection name={name} title={title} isPrimary={isPrimary} approvals={settings.approvals} readError={settings.errors.approvals} reload={settings.reload} />
+  return <ApprovalsSection name={name} title={title} isPrimary={isPrimary} approvals={settings.approvals} readError={settings.errors.approvals} reload={settings.reload} onWritten={approvals => settings.apply({ approvals })} />
 }
 const radio = (name: string) => screen.getByRole('radio', { name: new RegExp(`^${name}`) })
 const loaded = () => waitFor(() => expect(screen.getAllByRole('radio').some(r => (r as HTMLInputElement).checked)).toBe(true))
@@ -134,5 +135,78 @@ describe('ApprovalsSection', () => {
     render(<Harness />)
     expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't read this setting: Hermes is offline")
     for (const input of screen.getAllByRole('radio')) expect(input).toBeDisabled()
+  })
+
+  it('keeps the written mode and says it could not be re-checked when the re-read fails', async () => {
+    const state = settingsState()
+    const fn = stubSettings(state)
+    render(<Harness />)
+    await loaded()
+    state.failRead.approvals = () => json({ error: 'hermes_offline' }, 503)
+    fireEvent.click(radio(MANUAL))
+    expect(await screen.findByRole('status')).toHaveTextContent(UNCONFIRMED)
+    expect(radio(MANUAL)).toBeChecked()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByText(/Hermes's default/)).toBeNull()
+
+    // The same for Never ask: Hermes holds `off`, so the list must say so.
+    fireEvent.click(radio(OFF))
+    fireEvent.click(within(await screen.findByRole('group', { name: 'Turn off approvals?' })).getByRole('button', { name: 'Turn off approvals' }))
+    await waitFor(() => expect(radio(OFF)).toBeChecked())
+    await waitFor(() => expect(radio(OFF)).toBeEnabled())
+    expect(puts(fn, 'approvals')).toEqual([{ mode: 'manual' }, { mode: 'off' }])
+    expect(screen.getByRole('status')).toHaveTextContent(UNCONFIRMED)
+
+    // A write that is confirmed takes the notice away.
+    delete state.failRead.approvals
+    fireEvent.click(radio(SMART))
+    await waitFor(() => expect(radio(SMART)).toBeChecked())
+    await waitFor(() => expect(screen.queryByRole('status')).toBeNull())
+  })
+
+  it('shows the mode just sent when the write answers without one and the re-read fails', async () => {
+    const state = settingsState()
+    stubSettings(state)
+    render(<Harness />)
+    await loaded()
+    state.fail.approvals = () => json({})
+    state.failRead.approvals = () => json({ error: 'hermes_offline' }, 503)
+    fireEvent.click(radio(MANUAL))
+    expect(await screen.findByRole('status')).toHaveTextContent(UNCONFIRMED)
+    expect(radio(MANUAL)).toBeChecked()
+  })
+
+  it('shows the error and the old mode when the write fails, even if the re-read fails too', async () => {
+    const state = settingsState()
+    stubSettings(state)
+    render(<Harness />)
+    await loaded()
+    state.fail.approvals = () => json({ error: 'hermes_error', message: 'config is read-only' }, 502)
+    state.failRead.approvals = () => json({ error: 'hermes_offline' }, 503)
+    fireEvent.click(radio(MANUAL))
+    expect(await screen.findByRole('alert')).toHaveTextContent('config is read-only')
+    await waitFor(() => expect(radio(SMART)).toBeEnabled())
+    expect(radio(SMART)).toBeChecked()
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+
+  it('never writes off from the arrow keys: arrowing onto Never ask only opens the confirm', async () => {
+    const state = settingsState()
+    const fn = stubSettings(state)
+    render(<Harness />)
+    await loaded()
+    // What a browser does for ArrowDown on the chosen radio: it moves to the next one and clicks it
+    // (jsdom has no arrow-key navigation, so the click is sent by hand).
+    radio(SMART).focus()
+    fireEvent.keyDown(radio(SMART), { key: 'ArrowDown' })
+    fireEvent.click(radio(OFF))
+    expect(await screen.findByRole('group', { name: 'Turn off approvals?' })).toBeInTheDocument()
+    expect(puts(fn, 'approvals')).toEqual([])
+    expect(radio(SMART)).toBeChecked()
+    // Space and Enter on the unconfirmed row write nothing either.
+    fireEvent.keyDown(radio(OFF), { key: ' ' })
+    fireEvent.keyDown(radio(OFF), { key: 'Enter' })
+    expect(puts(fn, 'approvals')).toEqual([])
+    expect(state.approvals.mode).toBe('smart')
   })
 })

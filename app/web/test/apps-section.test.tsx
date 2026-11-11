@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { AppsList, BotAppsView } from '@/features/apps/apps-types'
 import { AppsSection } from '@/features/bots/AppsSection'
+import { UNCONFIRMED } from '@/features/profile/use-profile-row-action'
 
 const toast = vi.hoisted(() => ({ success: vi.fn() }))
 vi.mock('sonner', () => ({ toast }))
@@ -223,5 +224,37 @@ describe('AppsSection', () => {
     act(() => { window.dispatchEvent(new CustomEvent('crew:key-changed')) })
     expect(await sw()).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Set the key in Settings' })).toBeNull()
+  })
+
+  it('keeps the written level and says it could not be re-checked when the re-read fails', async () => {
+    let reads = 0
+    stub({
+      get: () => (reads++ === 0 ? reply(view({ apps: [entry()] })) : reply({ error: 'hermes_offline' }, 503)),
+      put: () => reply(view({ apps: [entry({ level: 'change' })] }))
+    })
+    open()
+    const group = await access()
+    fireEvent.click(level(group, 'Read and change'))
+    const row = group.closest('li')!
+    expect(await within(row).findByRole('status')).toHaveTextContent(UNCONFIRMED)
+    expect(level(group, 'Read and change')).toBeChecked()
+    expect(within(row).queryByRole('alert')).toBeNull()
+  })
+
+  it('shows the error and the old level when the write fails, even if the re-read fails too', async () => {
+    let reads = 0
+    stub({
+      get: () => (reads++ === 0 ? reply(view({ apps: [entry()] })) : reply({ error: 'hermes_offline' }, 503)),
+      put: () => reply({ error: 'level_unavailable' }, 409)
+    })
+    open()
+    const group = await access()
+    fireEvent.click(level(group, 'Everything'))
+    const row = group.closest('li')!
+    expect(await within(row).findByRole('alert')).toHaveTextContent("This bot doesn't ask before actions, so it can only read in apps.")
+    await waitFor(() => expect(level(group, 'Read only')).toBeEnabled())
+    expect(level(group, 'Read only')).toBeChecked()
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(toast.success).not.toHaveBeenCalled()
   })
 })

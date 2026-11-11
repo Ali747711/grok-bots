@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AvatarChoice, BotDetail } from '@/features/bots/types'
 import { AccessoryPicker } from '@/features/profile/AccessoryPicker'
 import { clearProfileDrafts } from '@/features/profile/profile-drafts'
+import { UNCONFIRMED } from '@/features/profile/use-profile-row-action'
 
 import { detail, dev, goTab, json, loaded, open, patches, stub } from './profile-harness'
 
@@ -202,5 +203,21 @@ describe('profile Avatar tab accessories', () => {
     expect(patches(fn)).toHaveLength(1)
     release(new Response(JSON.stringify({ status: 'saved', detail: detail({ avatar: { ...PINK_CAT, headphones: true } }) })))
     await waitFor(() => expect(screen.getByRole('button', { name: 'ghost' })).toBeEnabled())
+  })
+
+  it('keeps the written accessory and says it could not be re-checked when the bot cannot be read again', async () => {
+    let reads = 0
+    const fn = stub({
+      get: () => (reads++ === 0 ? json(detail({ avatar: PINK_CAT })) : json({ error: 'hermes_offline' }, 503)),
+      patch: body => json({ status: 'saved', detail: detail({ avatar: (body as { avatar: AvatarChoice }).avatar }) })
+    })
+    open(dev(), 'avatar')
+    await loaded()
+    fireEvent.click(chip('Hat', 'Crown'))
+    expect(await screen.findByRole('status')).toHaveTextContent(UNCONFIRMED)
+    expect(patches(fn)).toEqual([{ avatar: { type: 'cat', color: '#ff6fae', hat: 'crown' } }])
+    expect(chip('Hat', 'Crown')).toBeChecked()
+    expect(worn()).toEqual({ hat: 'crown' })
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })

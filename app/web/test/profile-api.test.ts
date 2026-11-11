@@ -38,7 +38,7 @@ describe('profile-api', () => {
     const crew = (status: number, body: Record<string, unknown> | null) => new CrewApiError(status, body)
     expect(profileErrorText(crew(503, { error: 'hermes_offline' }))).toBe('Hermes is offline')
     expect(profileErrorText(crew(400, { error: 'primary_not_supported' }))).toBe('Change this in Hermes for the primary bot')
-    expect(profileErrorText(crew(409, { error: 'toolset_locked' }), 'Scout')).toBe('Off while Scout runs in a sandbox')
+    expect(profileErrorText(crew(409, { error: 'toolset_locked' }), { title: 'Scout' })).toBe('Off while Scout runs in a sandbox')
     expect(profileErrorText(crew(409, { error: 'toolset_locked' }))).toBe('Off while the bot runs in a sandbox')
     expect(profileErrorText(crew(502, { error: 'hermes_error', message: 'config is read-only' }))).toBe('config is read-only')
     expect(profileErrorText(crew(400, { error: 'rejected', message: 'No such mode' }))).toBe('No such mode')
@@ -62,6 +62,24 @@ describe('profile-api', () => {
     expect(profileErrorText(new ScreenApiError(400, 'primary_not_supported', 'Not available for the primary bot'))).toBe('Change this in Hermes for the primary bot')
     expect(profileErrorText(new ScreenApiError(502, 'hermes_error', 'Not enough free memory'))).toBe('Not enough free memory')
     expect(profileErrorText(new ScreenApiError(502, 'some_new_code', 'Something went wrong. Try again.'))).toBe("Couldn't save. Try again.")
+  })
+
+  it('says why a setting could not be read with the same mapper', () => {
+    const crew = (status: number, body: Record<string, unknown> | null) => new CrewApiError(status, body)
+    const read = { read: true }
+    expect(profileErrorText(crew(503, { error: 'hermes_offline' }), read)).toBe('Hermes is offline')
+    expect(profileErrorText(new ScreenApiError(503, 'hermes_offline', 'Hermes is offline'), read)).toBe('Hermes is offline')
+    expect(profileErrorText(crew(502, { error: 'hermes_error', message: 'config unreadable' }), read)).toBe('config unreadable')
+    // A screen route's message is already readable text, never a raw code.
+    expect(profileErrorText(new ScreenApiError(502, 'some_new_code', 'Something went wrong. Try again.'), read)).toBe('Something went wrong. Try again.')
+    // Nothing was being saved, so a read never says "Couldn't save".
+    expect(profileErrorText(crew(400, { error: 'bad_body', message: 'Too big' }), read)).toBe("Hermes didn't answer")
+    expect(profileErrorText(crew(502, null), read)).toBe("Hermes didn't answer")
+    expect(profileErrorText(new Error('unexpected answer'), read)).toBe("Hermes didn't answer")
+  })
+
+  it('has one error mapper', async () => {
+    expect(Object.keys(await import('@/features/profile/profile-api')).filter(name => /ErrorText$/.test(name))).toEqual(['profileErrorText'])
   })
 
   it('shows any stored idle stop as one of the three choices (R3)', () => {

@@ -5,24 +5,27 @@ import { Section, Switch } from '@/components/console/fields'
 import { updateBot } from '@/features/bots/bots-api'
 import type { BotDetail } from '@/features/bots/types'
 
-import { RowError } from './RowNotes'
+import { RowError, RowNotice } from './RowNotes'
 import { useProfileRowAction } from './use-profile-row-action'
 
 interface HideSectionProps {
   detail: BotDetail
-  /** Re-reads the bot, so the switch shows what Hermes holds. */
-  reload: () => Promise<unknown>
+  /** Re-reads the bot, so the switch shows what Hermes holds; null when it could not be read. */
+  reload: () => Promise<BotDetail | null>
+  /** Takes the bot as the write answered it, before the re-read confirms it. */
+  onDetail: (detail: BotDetail) => void
 }
 
 /** Hide the bot from the rail's main list. Applies at once. */
-export function HideSection({ detail, reload }: HideSectionProps) {
-  const { pending, error, run } = useProfileRowAction({ title: detail.title, reload })
+export function HideSection({ detail, reload, onDetail }: HideSectionProps) {
+  const { pending, error, notice, run } = useProfileRowAction({ title: detail.title, reload: async () => (await reload()) !== null })
   const hintId = useId()
   const toggle = async (hidden: boolean) => {
     const saved = await run(async () => {
       const out = await updateBot(detail.name, { hidden })
       // A lone `hidden` is not a guarded field, so anything but "saved" is a failure.
       if (out.status !== 'saved') throw new Error('not saved')
+      onDetail(out.detail)
     })
     if (saved) toast.success(hidden ? 'Bot hidden' : 'Bot shown')
   }
@@ -36,6 +39,7 @@ export function HideSection({ detail, reload }: HideSectionProps) {
         <Switch label="Hide from the list" describedBy={hintId} checked={detail.hidden} disabled={pending} onChange={next => void toggle(next)} />
       </div>
       {error && <RowError>{error}</RowError>}
+      {notice && <RowNotice>{notice}</RowNotice>}
     </Section>
   )
 }

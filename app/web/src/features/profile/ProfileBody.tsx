@@ -44,7 +44,8 @@ const SAVING_NOTE: Record<ShownTab, string> = {
 }
 
 const handleOf = (bot: BotView) => (bot.isPrimary ? 'hermes' : bot.name)
-const DIALOGS = '[role=dialog], [role=alertdialog]'
+/** Popups that keep their own keys: ⌘↵ pressed inside one never saves the profile. */
+const POPUPS = '[role=dialog], [role=alertdialog], [role=listbox]'
 
 interface ProfileBodyProps {
   bot: BotView
@@ -72,10 +73,10 @@ export function ProfileBody({ bot, detail, setDetail, reload, tab, onTab }: Prof
     settled.current = true
   }, [tab, bot.sandbox, reloadSettings])
 
-  // ⌘↵ saves from anywhere in the profile, fields included (R7); a dialog keeps its own keys.
+  // ⌘↵ saves from anywhere in the profile, fields included (R7); a dialog or an open list keeps its own keys.
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'Enter' || !(event.metaKey || event.ctrlKey)) return
-    if (event.target instanceof Element && event.target.closest(DIALOGS)) return
+    if (event.target instanceof Element && event.target.closest(POPUPS)) return
     if (!editor.dirty) return
     event.preventDefault()
     editor.save()
@@ -108,7 +109,7 @@ export function ProfileBody({ bot, detail, setDetail, reload, tab, onTab }: Prof
             {tab === 'soul' && <SoulTab {...text} />}
             {tab === 'skills' && <SkillsTab name={bot.name} title={detail.title} isPrimary={bot.isPrimary} />}
             {tab === 'apps' && <AppsSection bot={bot.name} title={detail.title} sandboxed={bot.sandbox === 'on'} />}
-            {tab === 'advanced' && <AdvancedTab detail={detail} isPrimary={bot.isPrimary} settings={settings} reloadBot={editor.reloadMerged} onDeleted={onDeleted} />}
+            {tab === 'advanced' && <AdvancedTab detail={detail} isPrimary={bot.isPrimary} settings={settings} reloadBot={editor.reloadMerged} onDetail={editor.refreshed} onDeleted={onDeleted} />}
           </div>
           <SaveBar
             dirty={editor.dirty} busy={editor.busy} error={saver.error} conflict={saver.conflict}

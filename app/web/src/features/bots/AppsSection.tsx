@@ -8,7 +8,7 @@ import type { AppEntry, AppLevel, BotAppsView } from '@/features/apps/apps-types
 import { AppTile } from '@/features/apps/AppTile'
 import { openDialog, useKeyChanged } from '@/features/apps/open-dialog'
 import { useApps } from '@/features/apps/use-apps'
-import { Note, RowError } from '@/features/profile/RowNotes'
+import { Note, RowError, RowNotice } from '@/features/profile/RowNotes'
 import { useProfileRowAction } from '@/features/profile/use-profile-row-action'
 
 import { AppsNotes } from './AppsNotes'
@@ -30,11 +30,13 @@ interface AppRowProps {
   busy: boolean
   /** Why the last change to this app failed. */
   error: string | null
+  /** The last change to this app was saved but could not be read back. */
+  notice: string | null
   onChange: (toolkit: string, level: AppLevel | null) => void
 }
 
 /** One app: its switch, its level as chips once it is on and connected, and what failed or was capped. */
-function AppRow({ row, bot, title, offered, busy, error, onChange }: AppRowProps) {
+function AppRow({ row, bot, title, offered, busy, error, notice, onChange }: AppRowProps) {
   const { entry } = row
   const on = entry !== undefined
   // The current level always has a chip, so the group never shows nothing chosen.
@@ -63,6 +65,7 @@ function AppRow({ row, bot, title, offered, busy, error, onChange }: AppRowProps
         />
       )}
       {error && <RowError>{error}</RowError>}
+      {notice && <RowNotice>{notice}</RowNotice>}
       {entry?.capped && <Note>{`${row.name} has more tools than a bot can hold, so only ${entry.tools} are on.`}</Note>}
     </li>
   )
@@ -75,12 +78,15 @@ function useBotApps(bot: string) {
     alive.current = true
     return () => { alive.current = false }
   }, [])
-  const reload = useCallback(async () => {
+  /** Resolves false when the apps could not be read: the list stays as it was. */
+  const reload = useCallback(async (): Promise<boolean> => {
     try {
       const next = await getBotApps(bot)
       if (alive.current) setView(next)
+      return true
     } catch {
-      // The list stays as it was; the apps list shows its own error.
+      // The list stays as it was; a row that just wrote says it could not be re-checked.
+      return false
     }
   }, [bot])
   useEffect(() => { void reload() }, [reload])
@@ -96,7 +102,7 @@ function useBotApps(bot: string) {
 export function AppsSection({ bot, title, sandboxed }: { bot: string; title: string; sandboxed: boolean }) {
   const { list, error: listError } = useApps()
   const { view, setView, reload } = useBotApps(bot)
-  const { pending, error, run } = useProfileRowAction({ title, reload })
+  const { pending, error, notice, run } = useProfileRowAction({ title, reload })
   const [changed, setChanged] = useState<string | null>(null)
 
   const rows = useMemo<Row[]>(() => {
@@ -123,7 +129,8 @@ export function AppsSection({ bot, title, sandboxed }: { bot: string; title: str
   const noKey = (view !== null && !view.keyConfigured) || listError === 'no_key' || listError === 'key_rejected'
   const empty = !noKey && list !== null && rows.length === 0
   // A failure whose row is gone is still said, under the list.
-  const orphanError = error !== null && !rows.some(r => r.toolkit === changed)
+  const orphan = !rows.some(r => r.toolkit === changed)
+  const orphanError = error !== null && orphan
   return (
     <Section title="Apps">
       {noKey && <Button type="button" variant="outline" className="self-start" onClick={() => openDialog('settings')}>Set the key in Settings</Button>}
@@ -139,12 +146,13 @@ export function AppsSection({ bot, title, sandboxed }: { bot: string; title: str
           {rows.map(r => (
             <AppRow
               key={r.toolkit} row={r} bot={bot} title={title} offered={view?.offered ?? ['read']} busy={pending || view === null}
-              error={r.toolkit === changed ? error : null} onChange={(t, l) => void change(t, l)}
+              error={r.toolkit === changed ? error : null} notice={r.toolkit === changed ? notice : null} onChange={(t, l) => void change(t, l)}
             />
           ))}
         </ul>
       )}
       {orphanError && <RowError>{error}</RowError>}
+      {notice !== null && orphan && <RowNotice>{notice}</RowNotice>}
       <AppsNotes view={view} sandboxed={sandboxed} />
     </Section>
   )

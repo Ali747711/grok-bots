@@ -4,8 +4,9 @@ import { type Option, OptionList, Section } from '@/components/console/fields'
 import { Button } from '@/components/ui/button'
 
 import { type ApprovalMode, type ApprovalsView, setApprovals } from './profile-api'
-import { Note, PrimaryReason, ReadError, RowError } from './RowNotes'
+import { Note, PrimaryReason, ReadError, RowError, RowNotice } from './RowNotes'
 import { useProfileRowAction } from './use-profile-row-action'
+import { type SettingsErrors, isApprovals } from './use-profile-settings'
 
 interface ApprovalsSectionProps {
   name: string
@@ -15,7 +16,9 @@ interface ApprovalsSectionProps {
   approvals: ApprovalsView | null
   /** Why it could not be read. */
   readError: string | null
-  reload: () => Promise<void>
+  reload: () => Promise<SettingsErrors>
+  /** Shows what a write answered, before the re-read confirms it. */
+  onWritten: (approvals: ApprovalsView) => void
 }
 
 // Copy from docs/ui2/hermes-facts.md Q4 (PF26): what each mode really does.
@@ -53,22 +56,27 @@ function ConfirmOff({ title, onConfirm, onCancel }: ConfirmOffProps) {
  * reads as Hermes's default. A choice applies at once, except "Never ask", which asks first.
  * Read-only for the primary bot: new bots copy its config.
  */
-export function ApprovalsSection({ name, title, isPrimary, approvals, readError, reload }: ApprovalsSectionProps) {
+export function ApprovalsSection({ name, title, isPrimary, approvals, readError, reload, onWritten }: ApprovalsSectionProps) {
   const [confirming, setConfirming] = useState(false)
-  const { pending, error, run } = useProfileRowAction({ title, reload })
+  const { pending, error, notice, run } = useProfileRowAction({ title, reload: async () => (await reload()).approvals === null })
   const locked = isPrimary || pending || approvals === null
 
+  /** Writes the mode and shows what the write answered, or the mode just sent when the answer carries none. */
+  const write = (mode: ApprovalMode, shown: ApprovalsView) => {
+    setConfirming(false)
+    void run(async () => {
+      const answer = await setApprovals(name, mode)
+      onWritten(isApprovals(answer) ? answer : { ...shown, mode, isDefault: false })
+    })
+  }
   const choose = (mode: ApprovalMode) => {
     if (locked || mode === approvals.mode) return
+    // "Never ask" is only ever written by the confirm's own button, however the row was reached.
     if (mode === 'off') setConfirming(true)
-    else {
-      setConfirming(false)
-      void run(() => setApprovals(name, mode))
-    }
+    else write(mode, approvals)
   }
   const turnOff = () => {
-    setConfirming(false)
-    void run(() => setApprovals(name, 'off'))
+    if (!locked) write('off', approvals)
   }
 
   return (
@@ -76,6 +84,7 @@ export function ApprovalsSection({ name, title, isPrimary, approvals, readError,
       <OptionList legend="Approvals" value={approvals?.mode ?? null} options={OPTIONS} onChange={choose} disabled={locked} />
       {confirming && !locked && <ConfirmOff title={title} onConfirm={turnOff} onCancel={() => setConfirming(false)} />}
       {error && <RowError>{error}</RowError>}
+      {notice && <RowNotice>{notice}</RowNotice>}
       {approvals === null && readError && <ReadError reason={readError} />}
       {isPrimary && <PrimaryReason title={title} />}
       <Note>Applies from the next risky command.</Note>

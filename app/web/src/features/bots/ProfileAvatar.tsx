@@ -4,7 +4,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { avatarWear, deriveAvatarType } from '@/features/avatars/avatar-model'
 import { AvatarPicker, type AvatarValue } from '@/features/avatars/AvatarPicker'
 import { AccessoryPicker } from '@/features/profile/AccessoryPicker'
-import { RowError } from '@/features/profile/RowNotes'
+import { RowError, RowNotice } from '@/features/profile/RowNotes'
 import { useProfileRowAction } from '@/features/profile/use-profile-row-action'
 
 import { clearAvatar, setAvatar, updateBot } from './bots-api'
@@ -16,8 +16,8 @@ interface ProfileAvatarProps {
   onDetail: (detail: BotDetail) => void
   /** True while any avatar write (type, colour or photo) is in flight or being prepared. */
   onBusyChange: (busy: boolean) => void
-  /** Re-reads the bot after an accessory write, so the picker shows what Hermes holds. */
-  reload: () => Promise<unknown>
+  /** Re-reads the bot after an accessory write, so the picker shows what Hermes holds; null when it could not be read. */
+  reload: () => Promise<BotDetail | null>
   /** Unfinished setup: type, colour and accessory picks are held and reported (no save), then sent by Finish setup. */
   held?: boolean
   /** The held (unsent) pick, or null once it was sent or dropped. */
@@ -123,7 +123,7 @@ export function ProfileAvatar({ detail, onDetail, onBusyChange, reload, held = f
   // A failed save restores the stored avatar; a held bot only loses the photo, keeping its held pick.
   const onFail = () => setValue(prev => (heldNow.current ? { ...prev, photo: photoUrl(latest.current) } : valueOf(latest.current)))
   const { saving, error, save } = useAvatarSave({ latest, onDetail, onFail })
-  const wear = useProfileRowAction({ title: detail.title, reload })
+  const wear = useProfileRowAction({ title: detail.title, reload: async () => (await reload()) !== null })
   const waiting = useHeldAvatar({ held, heldChoice, onHeld, latest, saving, save, setValue })
   const locked = disabled || saving || preparing || waiting || wear.pending
 
@@ -163,6 +163,7 @@ export function ProfileAvatar({ detail, onDetail, onBusyChange, reload, held = f
       {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
       <AccessoryPicker value={choiceOf(value)} onChange={next => void changeWear(next)} disabled={locked || Boolean(value.photo)} {...(value.photo ? { reason: PHOTO_REASON } : {})} />
       {wear.error && <RowError>{wear.error}</RowError>}
+      {wear.notice && <RowNotice>{wear.notice}</RowNotice>}
     </>
   )
 }
