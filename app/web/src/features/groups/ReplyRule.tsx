@@ -12,6 +12,8 @@ const RULES: readonly { value: Routing; label: string; hint: string }[] = [
   { value: 'lead', label: 'Lead', hint: 'A lead bot decides who answers' }
 ]
 
+const TITLE = 'Who answers when nobody is @mentioned'
+
 interface ReplyRuleProps {
   group: GroupView
   bots: readonly BotView[]
@@ -22,6 +24,8 @@ interface ReplyRuleProps {
 }
 
 interface RuleListProps {
+  /** Accessible name of the radio group. */
+  label: string
   routing: Routing
   onRouting: (routing: Routing) => void
 }
@@ -30,11 +34,10 @@ interface RuleListProps {
  * The three rules in the console option-list look (the chosen row lifts out of the well). The real radio
  * covers its whole row instead of being hidden off-screen, so a click on the radio itself lands on it.
  */
-function RuleList({ routing, onRouting }: RuleListProps) {
+function RuleList({ label, routing, onRouting }: RuleListProps) {
   const name = useId()
   return (
-    <fieldset role="radiogroup" className="m-0 flex min-w-0 flex-col gap-0.5 rounded-[22px] border-0 bg-background p-1">
-      <legend className="sr-only">Reply rule</legend>
+    <fieldset role="radiogroup" aria-label={label} className="m-0 flex min-w-0 flex-col gap-0.5 rounded-[22px] border-0 bg-background p-1">
       {RULES.map(rule => (
         <label key={rule.value} className="group relative flex items-center gap-3 rounded-2xl px-3 py-2.5 transition-colors hover:bg-shell has-checked:bg-shell has-focus-visible:ring-3 has-focus-visible:ring-ring">
           <input type="radio" name={name} value={rule.value} checked={routing === rule.value} onChange={() => onRouting(rule.value)} className="absolute inset-0 m-0 size-full cursor-pointer opacity-0" />
@@ -55,8 +58,8 @@ function RuleList({ routing, onRouting }: RuleListProps) {
 export function ReplyRule({ group, bots, routing, lead, onRouting, onLead }: ReplyRuleProps) {
   const items = group.members.map(m => ({ value: m.memberId, label: memberTitle(group, bots, m.memberId) }))
   return (
-    <Section title="Who answers when nobody is @mentioned" hint="@mentions always go straight to the bots you name.">
-      <RuleList routing={routing} onRouting={onRouting} />
+    <Section title={TITLE} hint="@mentions always go straight to the bots you name.">
+      <RuleList label={TITLE} routing={routing} onRouting={onRouting} />
       {routing === 'lead' && (
         <Select value={lead || null} onValueChange={v => v !== null && onLead(String(v))} items={items}>
           <SelectTrigger aria-label="Lead bot" className="w-full">

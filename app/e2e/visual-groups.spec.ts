@@ -139,17 +139,25 @@ test.beforeAll(async ({ browser }) => {
   }
 })
 
+/** Deletes every spec bot, trying each one, then fails on the first that could not be deleted. */
+async function deleteBots(page: Page): Promise<void> {
+  const results = []
+  for (const bot of BOTS) results.push(await crewApi(page, 'DELETE', `/crew/bots/${bot.name}`))
+  for (const gone of results) expect(gone.status, JSON.stringify(gone.body)).toBeLessThan(300)
+}
+
 test.afterAll(async ({ browser }) => {
   assertTestBots()
   const context = await browser.newContext()
   try {
     const page = await context.newPage()
-    // Only rooms whose members are all test bots are ever disbanded.
-    await deleteTestGroups()
-    if (roomId) expect((await listGroups()).some(r => r.room_id === roomId), 'the spec group is gone').toBe(false)
-    for (const bot of BOTS) {
-      const gone = await crewApi(page, 'DELETE', `/crew/bots/${bot.name}`)
-      expect(gone.status, JSON.stringify(gone.body)).toBeLessThan(300)
+    try {
+      // Only rooms whose members are all test bots are ever disbanded.
+      await deleteTestGroups()
+      if (roomId) expect((await listGroups()).some(r => r.room_id === roomId), 'the spec group is gone').toBe(false)
+    } finally {
+      // The bots go even when the disband failed; that failure still fails the run once they are gone.
+      await deleteBots(page)
     }
   } finally {
     await context.close()

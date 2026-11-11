@@ -111,8 +111,8 @@ function GroupChat({ state, crewConnected, group, panelOpen, onPanel }: Omit<Gro
         <GroupMessageList
           items={room.items} group={group} bots={bots} cut={room.cut} footer={footer}
           onRetry={id => void room.retrySend(id)} onKeepGoing={id => void room.keepGoing(id)}
-          // Only once the log has loaded: before that, "no messages" is not known yet.
-          empty={room.loading ? undefined : <EmptyGroup group={group} bots={bots} titleOf={titleOf} />}
+          // Only when the whole log is known: not while loading, after a failed fetch, or with older messages cut off.
+          empty={room.loading || room.error || room.cut ? undefined : <EmptyGroup group={group} bots={bots} titleOf={titleOf} />}
         />
       )}
       {room.error && (

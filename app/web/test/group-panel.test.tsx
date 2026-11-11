@@ -73,7 +73,8 @@ describe('GroupPanel', () => {
 
   it('offers the three rules as one named radio group', () => {
     setup()
-    const rules = screen.getByRole('radiogroup', { name: 'Reply rule' })
+    const rules = screen.getByRole('radiogroup', { name: 'Who answers when nobody is @mentioned' })
+    expect(screen.queryByRole('radiogroup', { name: 'Reply rule' })).toBeNull()
     expect(within(rules).getAllByRole('radio')).toHaveLength(3)
     // groups.spec clicks the radios themselves: each one covers its row instead of hiding off-screen.
     for (const radio of within(rules).getAllByRole('radio')) expect(radio).not.toHaveClass('sr-only')

@@ -211,6 +211,22 @@ describe('GroupChatView', () => {
     expect(screen.getByText('Start with Launch')).toBeInTheDocument()
   })
 
+  it('does not call the group empty when its log failed to load, and shows the error', async () => {
+    api.fetchGroupEvents.mockRejectedValue(new Error('Hermes did not answer'))
+    mount(state(room({ latestSeq: 5 })))
+    expect(await screen.findByTestId('room-error')).toHaveTextContent('Hermes did not answer')
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+    expect(screen.queryByText('Start with Launch')).toBeNull()
+  })
+
+  it('does not call the group empty when older messages were cut and only notices are loaded', async () => {
+    api.fetchGroupEvents.mockResolvedValue({ events: [ev(301, { kind: 'room.context_set', routing: 'auto', text: undefined, memberId: undefined })], cursor: 301, latestSeq: 301, hasMore: false, epoch: 1 })
+    mount(state(room({ latestSeq: 301 })))
+    expect(await screen.findByText('Replies set to Auto')).toBeInTheDocument()
+    expect(screen.getByText('Older messages are in Hermes.')).toBeInTheDocument()
+    expect(screen.queryByText('Start with Launch')).toBeNull()
+  })
+
   it('opens the details from the header button, which says whether they are open', async () => {
     const onPanel = vi.fn()
     const { rerender } = render(<MemoryRouter><GroupChatView state={state(room())} crewConnected roomId="r1" panelOpen={false} onPanel={onPanel} /></MemoryRouter>)
