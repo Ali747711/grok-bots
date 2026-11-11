@@ -31,7 +31,7 @@ Each name below exists as `<name>-light-1440x900.png` and `<name>-light-1100x800
 | Dialogs | `apps-dialog`, `settings-dialog`, `delete-bot` |
 | Login | `login` |
 
-Not in the set: a live request card and a thread with messages (they need a model turn; the visual run sends none), and the primary bot's Advanced tab (the harness refuses non-test bot pages).
+Not in the set: a live request card, the Needs-you page with a pending request (only its empty state is shot), a thread with messages and so a run card (they need a model turn; the visual run sends none), and the primary bot's Advanced tab (the harness refuses non-test bot pages).
 
 ## Known concerns to judge (from the build ledger)
 
