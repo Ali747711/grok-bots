@@ -31,6 +31,7 @@ export const THEMES: readonly Theme[] = ['dark', 'light']
 const THEME_KEY = 'crew-theme'
 const SHOTS = fileURLToPath(new URL('../../docs/ui2/screenshots/', import.meta.url))
 const DEFAULT_SIZES = '1440x900'
+const SHOT_TIMEZONE = 'UTC'
 
 declare global {
   interface Window {
@@ -82,6 +83,8 @@ export async function watch(page: Page): Promise<Watcher> {
 export async function prepare({ page, theme, size }: Ctx): Promise<void> {
   await page.setViewportSize(size)
   await page.emulateMedia({ colorScheme: theme })
+  // The shots are committed: a fixed zone keeps the machine's own out of every time and timezone field.
+  await (await page.context().newCDPSession(page)).send('Emulation.setTimezoneOverride', { timezoneId: SHOT_TIMEZONE })
   await page.addInitScript(([key, value]) => {
     try {
       window.localStorage.setItem(key, value)
@@ -98,16 +101,20 @@ const MASK_COLOR = '#808080'
 
 /**
  * What every shot covers, because the screenshots are committed: anything named after a bot that is not a
- * test bot (rail rows and their previews), every group row, the credit balance, every connected-app row
- * (the Apps dialog lists the user's own apps) and anything marked `data-private` (the Composio key row and
- * the credit line in Settings).
+ * test bot (rail rows and their previews), every group row, the rail header's bot count line, the credit
+ * balance, every connected-app row (the Apps dialog lists the user's own apps), the app names on a profile's
+ * Apps tab and anything marked `data-private` (the Composio key row and the credit line in Settings).
  */
 export function privateParts(page: Page): Locator[] {
   return [
     page.locator(`xpath=//*[@data-bot and not(${IS_E2E_HANDLE})]`),
     page.locator('[data-group]'),
+    // By tag, not by role: an open dialog hides the rail from the accessibility tree, and the line is still in the shot.
+    page.locator('aside[aria-label="Sidebar"] header h1 + p'),
     page.getByTestId('credit-pill'),
     page.locator('[data-app]'),
+    // The profile's Apps tab: each connected app's tile and name (the switch and the level chips stay visible).
+    page.getByRole('main').locator('li[data-bot] > div:first-child > :not([role="switch"])'),
     page.locator('[data-private]')
   ]
 }
