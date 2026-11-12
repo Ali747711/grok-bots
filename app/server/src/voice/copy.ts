@@ -26,3 +26,6 @@ Teammates and groups: one to three sentences, reacting to the last message. Spea
  * as `cli` but renders Markdown (spec 2026-11-12 §4.4).
  */
 export const PLATFORM_HINT = "You're chatting with your owner in a chat app. Light Markdown renders here (bold, short lists, links, code blocks), but headers, tables and long formatting feel out of place in a chat, so write the way people text."
+
+/** The one hidden turn after a bot is created (spec 2026-11-12 §4.5). */
+export const FIRST_RUN_PROMPT = '(First run, not from your owner.) You were just created and this is your first message to your owner. Greet them in your own voice in one or two sentences. Don\'t recite your profile, tools or setup, and don\'t use any tools. If your job under "Right now" is a concrete task, say what you\'ll start with; otherwise ask the one thing you most need to know.'

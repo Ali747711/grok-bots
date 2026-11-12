@@ -9,6 +9,7 @@ import { refreshQuietly } from './refresh.js'
 import { applyCreateSandbox } from './sandbox-create.js'
 import { readRawConfig, writeConfig, type SandboxDeps } from './sandbox.js'
 import { rawList, type SandboxMarker } from './sandbox-state.js'
+import { sendFirstRun, wantsFirstRun } from './first-run.js'
 import { composeSoul, newOwnerPart } from './soul.js'
 import { readBotMeta, updateBotMeta } from './ui-meta.js'
 
@@ -26,6 +27,8 @@ export interface BotDraft {
   readonly model?: { readonly provider: string; readonly model: string }
   /** Run the bot's tools in a sandbox; absent means off. */
   readonly sandbox?: boolean
+  /** Send the one greeting turn; absent means yes, except for `e2e<digits>` test bots. */
+  readonly firstRun?: boolean
 }
 
 export type StepOutcome = 'ok' | 'skipped' | 'failed'
@@ -120,8 +123,21 @@ const setAvatar = (deps: BotDeps, name: string, image: string) => async (): Prom
 }
 
 // `session.create` with a title is idempotent on the canonical-authority socket (F§1.2).
-const ensureChat = (deps: BotDeps, name: string) => async (): Promise<void> => {
-  await deps.rpc('session.create', { profile: name, title: BOT_CHAT_TITLE, hidden: true, follow_profile_config: true })
+async function openChat(deps: BotDeps, name: string): Promise<string> {
+  const made = await deps.rpc<{ session_id?: string }>('session.create', { profile: name, title: BOT_CHAT_TITLE, hidden: true, follow_profile_config: true })
+  return made?.session_id ?? ''
+}
+
+/** Make the chat, then (voice wired, model set, greeting wanted) send the greeting; a failed greeting is only logged. */
+async function chatStep(deps: BotDeps, steps: Steps, name: string, greet: boolean): Promise<void> {
+  let sessionId = ''
+  await steps.run('chat', async () => { sessionId = await openChat(deps, name) })
+  if (!greet || !deps.voice || steps.outcome.chat !== 'ok' || !sessionId) return
+  try {
+    await sendFirstRun(deps, name, sessionId)
+  } catch (error) {
+    log.warn('first run not sent', { bot: name, error: error instanceof Error ? error.name : 'unknown' })
+  }
 }
 
 async function runtimeNeedsModel(deps: BotDeps, name: string): Promise<boolean> {
@@ -157,7 +173,7 @@ async function createProfile(deps: BotDeps, draft: BotDraft): Promise<void> {
 /**
  * Create a bot the way the official client does (F§1.2). `profiles.create` is atomic; every later step
  * is best-effort and independent, so a failure is reported in the result and the rest still run.
- * The name must already pass `validateBotName`. No intro turn is sent (costs a model call).
+ * The name must already pass `validateBotName`. A finished create sends one hidden greeting (`first-run.ts`).
  */
 export function createBot(deps: BotDeps, draft: BotDraft): Promise<CreateResult> {
   return withBotLock(draft.name, () => runCreate(deps, draft))
@@ -245,7 +261,7 @@ async function runCreate(deps: BotDeps, draft: BotDraft): Promise<CreateResult> 
   if (draft.image) await steps.run('avatar', setAvatar(deps, draft.name, draft.image))
   await voiceStep(deps, steps, draft.name)
   const needsModel = await runtimeNeedsModel(deps, draft.name)
-  if (chatAllowed(steps)) await steps.run('chat', ensureChat(deps, draft.name))
+  if (chatAllowed(steps)) await chatStep(deps, steps, draft.name, !needsModel && wantsFirstRun(draft.name, draft.firstRun))
   deps.sandbox?.onChanged?.(draft.name)
   await refreshQuietly(deps)
   return steps.result(draft.name, needsModel)
@@ -276,7 +292,8 @@ async function runFinish(deps: BotDeps, name: string, body: FinishBody): Promise
   }
   if (body.image) await steps.run('avatar', setAvatar(deps, name, body.image))
   await voiceStep(deps, steps, name)
-  if (chatAllowed(steps)) await steps.run('chat', ensureChat(deps, name))
+  const greet = deps.voice !== undefined && wantsFirstRun(name, undefined) && !(await runtimeNeedsModel(deps, name))
+  if (chatAllowed(steps)) await chatStep(deps, steps, name, greet)
   await refreshQuietly(deps)
   return steps.result(name, false)
 }

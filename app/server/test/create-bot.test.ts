@@ -426,6 +426,56 @@ describe('the voice step', () => {
     expect(result.complete).toBe(true)
   })
 
+  it('sends the first run after the chat when the bot has a model', async () => {
+    const { log, voice } = voiceLog()
+    rpc.handlers.set('session.resume', () => { log.push('session.resume'); return { session_id: 'live' } })
+    rpc.handlers.set('prompt.submit', params => { log.push(`prompt.submit:${String(params.display_kind)}`); return {} })
+    const result = await createBot({ ...deps, voice }, draft)
+    expect(log).toEqual(['markNew:scout', 'prepare:scout', 'session.create', 'session.resume', 'prompt.submit:hidden'])
+    expect(result.complete).toBe(true)
+  })
+
+  it('skips the first run when the bot needs a model or the chat failed', async () => {
+    const { voice } = voiceLog()
+    rpc.handlers.set('setup.runtime_check', () => ({ ok: false }))
+    await createBot({ ...deps, voice }, draft)
+    expect(rpc.of('prompt.submit')).toEqual([])
+    rpc.handlers.set('setup.runtime_check', () => ({ ok: true }))
+    rpc.handlers.set('session.create', () => { throw new Error('no chat') })
+    await createBot({ ...deps, voice }, { ...draft, name: 'scout2' })
+    expect(rpc.of('prompt.submit')).toEqual([])
+  })
+
+  it('a failed first run is logged and the create still succeeds', async () => {
+    const { voice } = voiceLog()
+    rpc.handlers.set('session.resume', () => ({ session_id: 'live' }))
+    rpc.handlers.set('prompt.submit', () => { throw new Error('model down') })
+    const result = await createBot({ ...deps, voice }, draft)
+    expect(result.complete).toBe(true)
+    expect(rpc.of('prompt.submit')).toHaveLength(1)
+  })
+
+  it('a test bot gets no first run unless the create asks for one', async () => {
+    const { voice } = voiceLog()
+    rpc.handlers.set('session.resume', () => ({ session_id: 'live' }))
+    rpc.handlers.set('prompt.submit', () => ({}))
+    rest.configs.set('e2e123', {})
+    await createBot({ ...deps, voice }, { ...draft, name: 'e2e123' })
+    expect(rpc.of('prompt.submit')).toEqual([])
+    rest.configs.set('e2e124', {})
+    await createBot({ ...deps, voice }, { ...draft, name: 'e2e124', firstRun: true })
+    expect(rpc.of('prompt.submit')).toHaveLength(1)
+  })
+
+  it('sends the first run after Finish setup makes the chat', async () => {
+    const { voice } = voiceLog()
+    rpc.handlers.set('session.resume', () => ({ session_id: 'live' }))
+    rpc.handlers.set('prompt.submit', () => ({}))
+    rpc.rows.set('scout', {})
+    await finishBot({ ...deps, voice }, 'scout', {})
+    expect(rpc.of('prompt.submit')).toHaveLength(1)
+  })
+
   it('finish runs the voice step again and then makes the chat', async () => {
     const { log, voice } = voiceLog()
     rpc.rows.set('scout', {})

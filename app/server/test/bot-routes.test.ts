@@ -47,6 +47,13 @@ describe('POST /crew/bots', () => {
     expect(await res.json()).toMatchObject({ name: 'scout', complete: true, steps: { profile: 'ok', look: 'ok', chat: 'ok' } })
   })
 
+  it('accepts firstRun on create and refuses a non-boolean', async () => {
+    expect((await post('/crew/bots', { ...body, firstRun: false })).status).toBe(201)
+    const bad = await post('/crew/bots', { ...body, name: 'scout2', firstRun: 'yes' })
+    expect(bad.status).toBe(400)
+    expect(await bad.json()).toMatchObject({ error: 'bad_body' })
+  })
+
   it('sends sandbox false by default', async () => {
     expect((await post('/crew/bots', body)).status).toBe(201)
     expect(puts).toEqual([])

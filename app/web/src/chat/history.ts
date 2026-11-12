@@ -19,7 +19,8 @@ export interface HistoryRow {
   timestamp?: number | null
 }
 
-const HIDDEN_KINDS = new Set(['hidden'])
+// Machine notices (a background process or delegation finished) are for the bot, not the owner (spec 2026-11-12 §4.4).
+const HIDDEN_KINDS = new Set(['hidden', 'process_complete', 'async_delegation_complete'])
 const NOTICE_MAX = 300
 const RELAYED = /^Message from [^(]*\(@([^)\s]+)\):\s*/
 

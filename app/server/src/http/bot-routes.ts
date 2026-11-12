@@ -23,7 +23,8 @@ const createBody = z.object({
   image: image.optional(),
   role: botRoleSchema.nullable().optional(),
   model: z.object({ provider: z.string().min(1), model: z.string().min(1) }).optional(),
-  sandbox: z.boolean().default(false)
+  sandbox: z.boolean().default(false),
+  firstRun: z.boolean().optional()
 })
 const finishBody = z.object({ avatar: crewAvatarSchema.optional(), title: z.string().max(80).optional(), image: image.optional() })
 

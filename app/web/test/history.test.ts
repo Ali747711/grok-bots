@@ -40,6 +40,22 @@ describe('historyToItems (captured rows)', () => {
     expect(relayed.every(t => t.length <= 'From @hermes: '.length + 300)).toBe(true)
   })
 
+  it('hides process and delegation completion rows and keeps the reply after them', () => {
+    const base = rows[0]!
+    const out = historyToItems([
+      { ...base, role: 'user', display_kind: 'process_complete', content: '[IMPORTANT: Background process proc_1 exited (exit code -15, SIGTERM).' },
+      { ...base, role: 'user', display_kind: 'async_delegation_complete', content: 'delegation done' },
+      { ...base, role: 'assistant', content: 'The test terminal exited as expected.' }
+    ] as HistoryRow[])
+    expect(out).toMatchObject([{ kind: 'assistant', text: 'The test terminal exited as expected.' }])
+    expect(out).toHaveLength(1)
+  })
+
+  it('keeps a teammate notice as From @x', () => {
+    const row = { ...rows[0]!, role: 'user', display_kind: 'internal_notification', content: 'Message from Bella (@bella): done with the draft' } as HistoryRow
+    expect(historyToItems([row])).toMatchObject([{ kind: 'notice', text: 'From @bella: done with the draft' }])
+  })
+
   it('truncates an unattributed internal notification to 300 characters', () => {
     const row = { ...rows[0]!, role: 'user', display_kind: 'internal_notification', content: 'x'.repeat(500) } as HistoryRow
     expect(historyToItems([row])).toMatchObject([{ kind: 'notice', text: 'x'.repeat(300) }])
