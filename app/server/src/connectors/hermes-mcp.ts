@@ -6,6 +6,8 @@ import { log } from '../log.js'
 
 export const SERVER_NAME = 'crew_apps'
 export const TOKEN_ENV = 'MCP_CREW_APPS_API_KEY'
+/** Sent by Hermes on every relay request with the calling profile's own name; the relay requires it to match the path. */
+export const IDENTITY_HEADER = 'X-Crew-Bot'
 export type Hermes = Pick<BotDeps, 'rpc' | 'rest'>
 
 const SERVER_PATH = `/api/mcp/servers/${SERVER_NAME}`
@@ -24,11 +26,16 @@ export async function appsServer(h: Hermes, bot: string): Promise<{ readonly ena
   return found ? { enabled: found.enabled !== false } : null
 }
 
-/** R7: the token goes only in `bearer_token`; Hermes writes it to the profile .env, never into `config`. */
-export async function addAppsServer(h: Hermes, bot: string, url: string, token: string): Promise<void> {
-  await h.rpc('mcp.servers.add', {
-    profile: bot, name: SERVER_NAME, config: { url, trust: 'untrusted', enabled: true }, bearer_token: token
-  })
+/**
+ * R7: the token goes only in `bearer_token`; Hermes writes it to the profile .env, never into `config`.
+ * `identity_header` with `value_from: profile` is resolved by Hermes at connect time to the profile that
+ * opens the connection, and is part of the digest that decides whether a profile may adopt another
+ * profile's live connection. So a clone of this config neither shares this bot's connection nor passes
+ * the relay's identity check. The header is not a secret: it stops config cloning, not a token holder.
+ */
+export async function addAppsServer(h: Hermes, bot: string, url: string, token: string, enabled = true): Promise<void> {
+  const config = { url, trust: 'untrusted', enabled, identity_header: { name: IDENTITY_HEADER, value_from: 'profile' } }
+  await h.rpc('mcp.servers.add', { profile: bot, name: SERVER_NAME, config, bearer_token: token })
 }
 
 export async function setAppsServerEnabled(h: Hermes, bot: string, enabled: boolean): Promise<void> {

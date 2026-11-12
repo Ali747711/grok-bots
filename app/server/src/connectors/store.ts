@@ -13,7 +13,8 @@ const level = z.enum(APP_LEVELS as [AppLevel, ...AppLevel[]])
 const slugKey = z.string().regex(TOOLKIT_RE)
 const recordSchema = z.object({
   apps: z.record(slugKey, level), counts: z.record(slugKey, z.object({ tools: z.number().int(), capped: z.boolean() })),
-  sessionId: z.string(), mcpUrl: z.string(), allowed: z.array(z.string()), tokenHash: z.string().regex(/^[0-9a-f]{64}$/)
+  sessionId: z.string(), mcpUrl: z.string(), allowed: z.array(z.string()), tokenHash: z.string().regex(/^[0-9a-f]{64}$/),
+  identity: z.boolean().optional()
 })
 const hint = z.object({ slug: z.string(), readOnly: z.boolean(), destructive: z.boolean() })
 const toolkitSchema = z.object({ fetchedAt: z.number(), hintsVersion: z.number().optional(), tools: z.array(hint) })
@@ -31,6 +32,8 @@ export interface BotRecord {
   readonly mcpUrl: string
   readonly allowed: readonly string[]
   readonly tokenHash: string
+  /** True once the bot's Hermes entry was written with the identity header; absent on older records until the backfill. */
+  readonly identity?: boolean
 }
 export interface ToolkitEntry { readonly fetchedAt: number; readonly hintsVersion?: number; readonly tools: readonly ToolHint[] }
 export interface PendingSignIn { readonly id: string; readonly toolkit: string; readonly startedAt: number }
@@ -41,6 +44,12 @@ interface State {
   readonly toolkits: Readonly<Record<string, ToolkitEntry>>
   readonly names: Readonly<Record<string, string>>
   readonly pending: readonly PendingSignIn[]
+}
+
+/** The record without its identity mark: the mark is set only after Hermes holds an entry that carries the header. */
+export function unmarked(record: BotRecord): BotRecord {
+  const { identity: _mark, ...rest } = record
+  return rest
 }
 
 export function hashToken(token: string): string {
