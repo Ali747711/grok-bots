@@ -219,7 +219,16 @@ export function clearAvatar(deps: BotDeps, name: string): Promise<BotDetail> {
 /** Delete via REST. `{ok:true}` with or without `settlement_pending` is success (F Gotcha 14). */
 export function deleteBot(deps: BotDeps, name: string): Promise<void> {
   if (name === PRIMARY) return Promise.reject(new PrimaryBotError())
-  return withBotLock(name, () => deleteLocked(deps, name)).then(() => forgetApps(deps, name))
+  return withBotLock(name, () => deleteLocked(deps, name)).then(() => forgetApps(deps, name)).then(() => forgetVoice(deps, name))
+}
+
+/** Never fails the delete: a stale voice record only costs one extra memory reset if the name comes back. */
+async function forgetVoice(deps: BotDeps, name: string): Promise<void> {
+  try {
+    await deps.voice?.forget(name)
+  } catch (error) {
+    log.warn('forgetting voice record after delete failed', { bot: name, error: error instanceof Error ? error.name : 'unknown' })
+  }
 }
 
 /** After the lock is released: `forgetBot` takes the same lock. Never fails the delete. */

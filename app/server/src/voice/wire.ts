@@ -1,3 +1,5 @@
+import { join } from 'node:path'
+
 import type { BotDeps } from '../bots/create.js'
 import type { CrewConfig } from '../config.js'
 import type { KeyStore } from '../connectors/key.js'
@@ -8,6 +10,7 @@ import type { SettingsStore } from '../settings/settings-store.js'
 import type { CrewStateSource } from '../state/crew-state.js'
 import { rosterFingerprint } from './scheduler.js'
 import { createVoiceService, type VoiceService } from './service.js'
+import { VoiceStore } from './voice-store.js'
 
 export interface VoiceWiring {
   readonly config: CrewConfig
@@ -29,8 +32,10 @@ function appsOf(connectors: VoiceWiring['connectors'], bot: string): readonly { 
 /** Builds the voice service, binds it to `bots.voice` and hooks every trigger of spec 2026-11-12 §4.2. */
 export async function wireVoice(input: VoiceWiring): Promise<VoiceService> {
   const { config, bots, crewState, settings, routines, connectors } = input
+  const store = await VoiceStore.load(join(config.stateDir, 'voice.json'))
   const service = createVoiceService({
     bots,
+    store,
     hermesHome: config.hermesHome,
     owner: () => ({ name: settings.get().ownerName, timeZone: settings.get().timeZone }),
     roster: () => crewState.state().bots,

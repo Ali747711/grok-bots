@@ -29,12 +29,12 @@ export interface BotDraft {
 }
 
 export type StepOutcome = 'ok' | 'skipped' | 'failed'
-type FailedStep = 'apps' | 'sandbox' | 'look' | 'avatar' | 'chat'
+type FailedStep = 'apps' | 'sandbox' | 'look' | 'avatar' | 'voice' | 'chat'
 
 export interface CreateResult {
   readonly name: string
   readonly complete: boolean
-  readonly steps: { readonly profile: 'ok'; readonly apps: StepOutcome; readonly sandbox: StepOutcome; readonly look: StepOutcome; readonly avatar: StepOutcome; readonly chat: StepOutcome }
+  readonly steps: { readonly profile: 'ok'; readonly apps: StepOutcome; readonly sandbox: StepOutcome; readonly look: StepOutcome; readonly avatar: StepOutcome; readonly voice: StepOutcome; readonly chat: StepOutcome }
   readonly needsModel: boolean
   readonly error?: { readonly step: FailedStep; readonly message: string }
 }
@@ -46,8 +46,13 @@ export interface BotDeps {
   now(): number
   /** Absent only in tests: delete then skips the sandbox cleanup. */
   readonly sandbox?: SandboxDeps
-  /** Told when a bot's facts changed (toolsets, sandbox, screen); bound late by `wireVoice`. */
-  voice?: { changed(bot?: string): void }
+  /** Crew's voice upkeep (spec 2026-11-12); bound late by `wireVoice`. Absent in tests that do not need it. */
+  voice?: {
+    changed(bot?: string): void
+    markNew(bot: string): Promise<void>
+    prepare(bot: string): Promise<void>
+    forget(bot: string): Promise<void>
+  }
   /** Absent only in tests: delete then skips forgetting the bot's apps. */
   readonly apps?: {
     forget(bot: string): Promise<void>
@@ -87,7 +92,7 @@ const titleCase = (name: string): string => name.replace(/[-_]+/g, ' ').trim().r
  */
 class Steps {
   private first: CreateResult['error']
-  readonly outcome: Record<FailedStep, StepOutcome> = { apps: 'skipped', sandbox: 'skipped', look: 'skipped', avatar: 'skipped', chat: 'skipped' }
+  readonly outcome: Record<FailedStep, StepOutcome> = { apps: 'skipped', sandbox: 'skipped', look: 'skipped', avatar: 'skipped', voice: 'skipped', chat: 'skipped' }
 
   async run(step: FailedStep, action: () => Promise<void>): Promise<void> {
     try {
@@ -215,6 +220,19 @@ async function appsStep(deps: BotDeps, steps: Steps, name: string, after?: () =>
   if (steps.outcome.apps === 'failed') await securePrimary(deps, name)
 }
 
+/** The bot's chat is made only once its apps strip and its voice step did not fail (Finish setup retries). */
+const chatAllowed = (steps: Steps): boolean => steps.outcome.apps === 'ok' && steps.outcome.voice !== 'failed'
+
+/** Empty memory, chat-app settings and the bot's own "Right now" block, before its chat exists. */
+async function voiceStep(deps: BotDeps, steps: Steps, name: string, markNew: boolean): Promise<void> {
+  const voice = deps.voice
+  if (!voice) return
+  await steps.run('voice', async () => {
+    if (markNew) await voice.markNew(name)
+    await voice.prepare(name)
+  })
+}
+
 async function runCreate(deps: BotDeps, draft: BotDraft): Promise<CreateResult> {
   await createProfile(deps, draft)
   const steps = new Steps()
@@ -225,8 +243,9 @@ async function runCreate(deps: BotDeps, draft: BotDraft): Promise<CreateResult> 
   })
   await steps.run('look', writeLook(deps, draft, marker))
   if (draft.image) await steps.run('avatar', setAvatar(deps, draft.name, draft.image))
+  await voiceStep(deps, steps, draft.name, true)
   const needsModel = await runtimeNeedsModel(deps, draft.name)
-  if (steps.outcome.apps === 'ok') await steps.run('chat', ensureChat(deps, draft.name))
+  if (chatAllowed(steps)) await steps.run('chat', ensureChat(deps, draft.name))
   deps.sandbox?.onChanged?.(draft.name)
   await refreshQuietly(deps)
   return steps.result(draft.name, needsModel)
@@ -256,7 +275,8 @@ async function runFinish(deps: BotDeps, name: string, body: FinishBody): Promise
     })
   }
   if (body.image) await steps.run('avatar', setAvatar(deps, name, body.image))
-  if (steps.outcome.apps === 'ok') await steps.run('chat', ensureChat(deps, name))
+  await voiceStep(deps, steps, name, false)
+  if (chatAllowed(steps)) await steps.run('chat', ensureChat(deps, name))
   await refreshQuietly(deps)
   return steps.result(name, false)
 }

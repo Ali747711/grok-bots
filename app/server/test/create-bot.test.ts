@@ -64,7 +64,7 @@ describe('createBot', () => {
     expect(rpc.params('session.create')).toEqual({ profile: 'scout', title: 'Bot Chat', hidden: true, follow_profile_config: true })
     expect(rpc.params('setup.runtime_check')).toEqual({ profile: 'scout' })
     expect((rpc.configures[0]!.ui_meta as Record<string, unknown>)['hermes-bots']).toEqual({ crewAvatar: { type: 'square', color: '#7c3aed' }, shape: 'squircle', color: '#7c3aed', custom: true, imageKind: 'shape', title: 'Researcher', created: 1234, sandbox: OFF_MARKER })
-    expect(result).toEqual({ name: 'scout', complete: true, steps: { profile: 'ok', apps: 'ok', sandbox: 'ok', look: 'ok', avatar: 'skipped', chat: 'ok' }, needsModel: false })
+    expect(result).toEqual({ name: 'scout', complete: true, steps: { profile: 'ok', apps: 'ok', sandbox: 'ok', look: 'ok', avatar: 'skipped', voice: 'skipped', chat: 'ok' }, needsModel: false })
     expect(refreshes).toBe(1)
   })
 
@@ -107,7 +107,7 @@ describe('createBot', () => {
   it('keeps going when the look fails and reports it', async () => {
     rpc.fail('profiles.configure', new Error('disk full'))
     const result = await createBot(deps, draft)
-    expect(result.steps).toEqual({ profile: 'ok', apps: 'ok', sandbox: 'ok', look: 'failed', avatar: 'skipped', chat: 'ok' })
+    expect(result.steps).toEqual({ profile: 'ok', apps: 'ok', sandbox: 'ok', look: 'failed', avatar: 'skipped', voice: 'skipped', chat: 'ok' })
     expect(result.complete).toBe(false)
     expect(result.error).toEqual({ step: 'look', message: 'disk full' })
     expect(rpc.methods()).toContain('session.create')
@@ -118,7 +118,7 @@ describe('createBot', () => {
     rpc.fail('profiles.set_asset', new HermesRpcError(4069, 'asset too large'))
     rpc.fail('session.create', new Error('socket closed'))
     const result = await createBot(deps, { ...draft, image: 'data:image/png;base64,AAAA' })
-    expect(result.steps).toMatchObject({ look: 'ok', avatar: 'failed', chat: 'failed' })
+    expect(result.steps).toMatchObject({ look: 'ok', avatar: 'failed', voice: 'skipped', chat: 'failed' })
     expect(result.error).toEqual({ step: 'avatar', message: 'asset too large' })
   })
 
@@ -351,7 +351,7 @@ describe('createBot sandbox choice', () => {
     const failing = { request: async (method: string) => { if (method === 'DELETE' || (method === 'GET' && reads++ === 0)) return {}; throw new Error('config down') } }
     deps = { ...deps, rest: failing as unknown as BotDeps['rest'] }
     const result = await createBot(deps, { ...draft, image: 'data:image/png;base64,AAAA' })
-    expect(result.steps).toEqual({ profile: 'ok', apps: 'ok', sandbox: 'failed', look: 'ok', avatar: 'ok', chat: 'ok' })
+    expect(result.steps).toEqual({ profile: 'ok', apps: 'ok', sandbox: 'failed', look: 'ok', avatar: 'ok', voice: 'skipped', chat: 'ok' })
     expect(result.complete).toBe(false)
     expect(result.error).toEqual({ step: 'sandbox', message: 'config down' })
     expect(rpc.methods()).toContain('session.create')
@@ -390,13 +390,58 @@ describe('quiet failures are logged', () => {
   })
 })
 
+describe('the voice step', () => {
+  function voiceLog(fail = false): { log: string[]; voice: NonNullable<BotDeps['voice']> } {
+    const log: string[] = []
+    rpc.handlers.set('session.create', () => { log.push('session.create'); return { session_id: 's1' } })
+    return {
+      log,
+      voice: {
+        changed: () => undefined,
+        markNew: async bot => { log.push(`markNew:${bot}`) },
+        prepare: async bot => { log.push(`prepare:${bot}`); if (fail) throw new Error('voice down') },
+        forget: async bot => { log.push(`forget:${bot}`) }
+      }
+    }
+  }
+
+  it("resets memory, writes voice settings and the bot's own Right-now block before Bot Chat exists", async () => {
+    const { log, voice } = voiceLog()
+    const result = await createBot({ ...deps, voice }, draft)
+    expect(log).toEqual(['markNew:scout', 'prepare:scout', 'session.create'])
+    expect(result.steps).toMatchObject({ voice: 'ok', chat: 'ok' })
+    expect(result.complete).toBe(true)
+  })
+
+  it('a failed voice step makes no chat and reports voice failed', async () => {
+    const { log, voice } = voiceLog(true)
+    const result = await createBot({ ...deps, voice }, draft)
+    expect(log).toEqual(['markNew:scout', 'prepare:scout'])
+    expect(result).toMatchObject({ complete: false, steps: { voice: 'failed', chat: 'skipped' }, error: { step: 'voice' } })
+  })
+
+  it('without a voice service the step is skipped and the chat is still made', async () => {
+    const result = await createBot(deps, draft)
+    expect(result.steps).toMatchObject({ voice: 'skipped', chat: 'ok' })
+    expect(result.complete).toBe(true)
+  })
+
+  it('finish runs the voice step again and then makes the chat', async () => {
+    const { log, voice } = voiceLog()
+    rpc.rows.set('scout', {})
+    const result = await finishBot({ ...deps, voice }, 'scout', {})
+    expect(log).toEqual(['prepare:scout', 'session.create'])
+    expect(result.steps).toMatchObject({ voice: 'ok', chat: 'ok' })
+  })
+})
+
 describe('finishBot', () => {
   it('finishes a bot that never got a look, deriving its avatar type from the handle', async () => {
     rpc.rows.set('scout', {})
     const result = await finishBot(deps, 'scout', {})
     expect(rpc.methods()).toEqual(['profiles.list', 'reload.mcp', 'profiles.list', 'profiles.configure', 'session.create'])
     expect((rpc.configures[0]!.ui_meta as Record<string, unknown>)['hermes-bots']).toEqual({ crewAvatar: { type: 'ghost' }, shape: 'blob', color: '#F4F2FA', custom: true, imageKind: 'shape', title: 'Scout', created: 1234 })
-    expect(result).toMatchObject({ name: 'scout', complete: true, steps: { look: 'ok', avatar: 'skipped', chat: 'ok' } })
+    expect(result).toMatchObject({ name: 'scout', complete: true, steps: { look: 'ok', avatar: 'skipped', voice: 'skipped', chat: 'ok' } })
     expect(refreshes).toBe(1)
   })
 

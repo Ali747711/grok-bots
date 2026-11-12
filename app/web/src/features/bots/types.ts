@@ -36,9 +36,9 @@ export type StepOutcome = 'ok' | 'skipped' | 'failed'
 export interface CreateResult {
   readonly name: string
   readonly complete: boolean
-  readonly steps: { readonly profile: 'ok'; readonly apps: StepOutcome; readonly look: StepOutcome; readonly avatar: StepOutcome; readonly chat: StepOutcome; readonly sandbox: StepOutcome }
+  readonly steps: { readonly profile: 'ok'; readonly apps: StepOutcome; readonly look: StepOutcome; readonly avatar: StepOutcome; readonly chat: StepOutcome; readonly sandbox: StepOutcome; readonly voice?: StepOutcome }
   readonly needsModel: boolean
-  readonly error?: { readonly step: 'apps' | 'look' | 'avatar' | 'chat' | 'sandbox'; readonly message: string }
+  readonly error?: { readonly step: 'apps' | 'look' | 'avatar' | 'chat' | 'sandbox' | 'voice'; readonly message: string }
 }
 
 export interface FinishBody {

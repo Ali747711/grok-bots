@@ -1,8 +1,14 @@
+import { mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import type { BotDeps } from '../src/bots/create.js'
 import { NOW_CLOSE, NOW_OPEN, composeSoul, nowOf, ownerPartOf } from '../src/bots/soul.js'
-import { writeRightNow } from '../src/voice/service.js'
+import { PLATFORM_HINT } from '../src/voice/copy.js'
+import { createVoiceService, writeRightNow } from '../src/voice/service.js'
+import { VoiceStore } from '../src/voice/voice-store.js'
 import { FakeRest } from './fake-rpc.js'
 
 const block = (text: string) => `${NOW_OPEN}\n## Right now\n${text}\n${NOW_CLOSE}`
@@ -65,5 +71,44 @@ describe('writeRightNow', () => {
     expect(await writeRightNow(deps, 'scout', block('one'))).toBe('written')
     expect(prompt('scout')).toEqual(['a', 'b'])
     expect(nowOf(rest.souls.get('scout')!)).toBe(block('one'))
+  })
+})
+
+describe('prepare, markNew and forget', () => {
+  async function service() {
+    const store = await VoiceStore.load(join(await mkdtemp(join(tmpdir(), 'crew-voice-svc-')), 'voice.json'))
+    rest.routes.set('GET /api/tools/toolsets', () => [{ name: 'memory', label: '', description: '', platform: 'cli', enabled: true, configured: true }])
+    rest.routes.set('POST /api/memory/reset', () => ({ ok: true }))
+    rest.configs.set('scout', {})
+    const bots = { rest: { request: rest.request } } as unknown as BotDeps
+    const svc = createVoiceService({
+      bots, hermesHome: '/h', store, inScope: () => true,
+      owner: () => ({ name: 'Ali', timeZone: null }), roster: () => [], groups: () => ({ available: true, seatable: [], rooms: [] }),
+      apps: () => [], routines: async () => []
+    })
+    return { svc, store }
+  }
+  const order = () => rest.writes().map(w => w.path === '/api/config' ? Object.keys((w.body as { config: Record<string, unknown> }).config).join('+') : w.path)
+
+  it('a new bot gets its memory reset, then voice settings, then its block, and its version recorded', async () => {
+    const { svc, store } = await service()
+    await svc.markNew('scout')
+    await svc.prepare('scout')
+    expect(order()).toEqual(['/api/memory/reset', 'display+platform_hints', 'agent'])
+    expect(rest.configs.get('scout')!.platform_hints).toEqual({ cli: { replace: PLATFORM_HINT } })
+    expect(store.get('scout')).toEqual({ resetPending: false, soulVersion: 1 })
+  })
+
+  it('finish resets memory only when the bot is marked new', async () => {
+    const { svc } = await service()
+    await svc.prepare('scout')
+    expect(order()).not.toContain('/api/memory/reset')
+  })
+
+  it('forget drops the record', async () => {
+    const { svc, store } = await service()
+    await svc.markNew('scout')
+    await svc.forget('scout')
+    expect(store.get('scout')).toBeUndefined()
   })
 })

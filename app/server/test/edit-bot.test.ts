@@ -214,6 +214,13 @@ describe('avatar', () => {
 })
 
 describe('deleteBot', () => {
+  it('delete forgets the voice record', async () => {
+    const forgotten: string[] = []
+    const voice = { changed: () => undefined, markNew: async () => undefined, prepare: async () => undefined, forget: async (bot: string) => { forgotten.push(bot) } }
+    await deleteBot({ ...deps, voice }, 'scout')
+    expect(forgotten).toEqual(['scout'])
+  })
+
   it('refuses to delete the primary bot without any call', async () => {
     await expect(deleteBot(deps, 'default')).rejects.toBeInstanceOf(PrimaryBotError)
     expect(rest.requests).toEqual([])

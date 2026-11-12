@@ -2,11 +2,13 @@ import { withBotLock } from '../bots/bot-lock.js'
 import type { BotDeps } from '../bots/create.js'
 import { readRawConfig, writeConfig } from '../bots/sandbox.js'
 import { readSoulFile, writeSoulFile } from '../bots/soul-io.js'
-import { composeSoul, hasHouseBlock, nowOf, ownerPartOf } from '../bots/soul.js'
+import { SOUL_VERSION, composeSoul, hasHouseBlock, nowOf, ownerPartOf } from '../bots/soul.js'
+import { applyVoiceSettings, resetMemory } from './bot-settings.js'
 import { gatherFacts, type FactsDeps } from './facts.js'
 import { carrierFor, mergeNowBlock, withoutNowBlock } from './now-block.js'
 import { buildRightNow } from './right-now.js'
 import { createScheduler } from './scheduler.js'
+import type { VoiceStore } from './voice-store.js'
 
 export type WriteOutcome = 'written' | 'unchanged' | 'waiting_for_migration'
 
@@ -49,6 +51,7 @@ const DELAY_MS = 3000
 const SWEEP_MS = 10 * 60_000
 
 export interface VoiceServiceDeps extends FactsDeps {
+  readonly store: VoiceStore
   inScope(bot: string): boolean
   beforeFirstPass?(names: readonly string[]): Promise<void>
 }
@@ -56,8 +59,24 @@ export interface VoiceServiceDeps extends FactsDeps {
 export interface VoiceService {
   /** A bot's facts (or, without a bot, everyone's) may have changed: refresh after a short debounce. */
   changed(bot?: string): void
+  /** Crew just created this bot: its cloned memory is emptied on the next prepare. */
+  markNew(bot: string): Promise<void>
+  /** Memory reset (new bots only), voice settings, then the bot's own block. The caller holds the bot lock. */
+  prepare(bot: string): Promise<void>
+  /** The bot was deleted: drop its record. */
+  forget(bot: string): Promise<void>
   start(): void
   stop(): void
+}
+
+async function prepareBot(deps: VoiceServiceDeps, bot: string): Promise<void> {
+  if (deps.store.get(bot)?.resetPending) {
+    await resetMemory(deps.bots, bot)
+    await deps.store.set(bot, { resetPending: false })
+  }
+  await applyVoiceSettings(deps.bots, bot)
+  await refreshRightNow(deps, bot)
+  await deps.store.set(bot, { soulVersion: SOUL_VERSION })
 }
 
 /** Keeps every in-scope bot's "Right now" block current; each refresh runs under that bot's lock. */
@@ -65,6 +84,9 @@ export function createVoiceService(deps: VoiceServiceDeps): VoiceService {
   let scheduler: ReturnType<typeof createScheduler> | null = null
   return {
     changed: bot => scheduler?.schedule(bot),
+    markNew: bot => deps.store.set(bot, { resetPending: true }),
+    prepare: bot => prepareBot(deps, bot),
+    forget: bot => deps.store.remove(bot),
     start() {
       scheduler ??= createScheduler({
         delayMs: DELAY_MS,
