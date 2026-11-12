@@ -9,7 +9,7 @@ import { refreshQuietly } from './refresh.js'
 import { applyCreateSandbox } from './sandbox-create.js'
 import { readRawConfig, writeConfig, type SandboxDeps } from './sandbox.js'
 import { rawList, type SandboxMarker } from './sandbox-state.js'
-import { composeSoul } from './soul.js'
+import { composeSoul, newOwnerPart } from './soul.js'
 import { readBotMeta, updateBotMeta } from './ui-meta.js'
 
 const CREATE_TIMEOUT_MS = 120_000
@@ -136,7 +136,7 @@ async function createProfile(deps: BotDeps, draft: BotDraft): Promise<void> {
       clone_from: 'default',
       share_auth: true,
       no_skills: false,
-      soul: composeSoul({ name, title, mission }),
+      soul: composeSoul(newOwnerPart({ name, title, mission })),
       ...(model ? { model: model.model, provider: model.provider } : {})
     }, CREATE_TIMEOUT_MS)
   } catch (error) {

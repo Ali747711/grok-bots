@@ -24,6 +24,11 @@ const cronAll = async () => {
   return (res.body as { name?: string }[]).map(j => j.name ?? '')
 }
 const soulOf = async (bot: string) => ((await hermesRest('GET', `/api/profiles/${bot}/soul`)).body as { content: string }).content
+/** The owner's part of a raw Soul: everything before Crew's house block. */
+const ownerPart = (soul: string): string => {
+  const at = soul.indexOf('\n\n<!-- crew:house v')
+  return at === -1 ? soul : soul.slice(0, at)
+}
 
 /** A real 8x8 PNG (valid for the browser's image decoder). */
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR4nGP4z9CAFTEMLQkAibNfwVYq284AAAAASUVORK5CYII=', 'base64')
@@ -77,6 +82,7 @@ test('a bot created in Crew appears identically in the official Webapp', async (
   expect(soul.startsWith(`# ${title}\n`)).toBe(true)
   expect(soul).toContain('**Mission:** Find papers')
   expect(soul).not.toContain('**Role:**')
+  expect(soul).toContain('<!-- crew:house v1 -->')
   expect(row?.canonical_session?.title).toBe('Bot Chat')
 })
 
@@ -106,9 +112,9 @@ test('concurrent edits keep both changes', async ({ page }) => {
   await page.getByLabel('Persona (SOUL.md)').fill(ours)
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.getByText(/Changed in another app: Persona/)).toBeVisible({ timeout: 30_000 })
-  expect(await soulOf(handle)).toBe(theirs)
+  expect(ownerPart(await soulOf(handle))).toBe(theirs)
   await page.getByRole('button', { name: 'Save anyway', exact: true }).click()
-  await expect.poll(() => soulOf(handle), { timeout: 30_000 }).toBe(ours)
+  await expect.poll(async () => ownerPart(await soulOf(handle)), { timeout: 30_000 }).toBe(ours)
 })
 
 test('a failed creation step can be finished', async ({ page }) => {

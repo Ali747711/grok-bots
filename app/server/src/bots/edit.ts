@@ -6,6 +6,8 @@ import type { BotDeps } from './create.js'
 import { refreshQuietly } from './refresh.js'
 import { cleanupBeforeDelete } from './sandbox-cleanup.js'
 import { removeQuietly } from './sandbox.js'
+import { saveOwnerPart } from './soul-io.js'
+import { ownerPartOf } from './soul.js'
 import { type BotMeta, BotNotFoundError, BotMetaWriteError, updateBotMeta } from './ui-meta.js'
 
 const PRIMARY = 'default'
@@ -120,7 +122,8 @@ export async function readBotDetail(deps: BotDeps, name: string): Promise<BotDet
     pinned: readPinned(meta.pinned),
     role: readRole(meta.role),
     description: typeof row.description === 'string' ? row.description : '',
-    soul: soul.exists === false ? '' : (soul.content ?? ''),
+    // The Soul tab and its conflict check see only the owner's part; the house block is Crew's.
+    soul: soul.exists === false ? '' : ownerPartOf(soul.content ?? ''),
     model: rest?.model && rest.provider ? { provider: rest.provider, model: rest.model } : null,
     metaRevision: typeof revision === 'number' ? revision : 0
   }
@@ -180,7 +183,7 @@ async function runUpdate(deps: BotDeps, name: string, patch: BotPatch): Promise<
   const meta = metaPatch(patch)
   if (Object.keys(meta).length > 0) await writeMeta(deps, name, meta)
   if (patch.description !== undefined) await configure(deps, { name, description: patch.description }, 'description')
-  if (patch.soul !== undefined) await deps.rest.request('PUT', `/api/profiles/${enc(name)}/soul`, { body: { content: patch.soul } })
+  if (patch.soul !== undefined) await saveOwnerPart(deps, name, patch.soul)
   await refreshQuietly(deps)
   return { status: 'saved', detail: await readBotDetail(deps, name) }
 }

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import type { BotDeps } from '../src/bots/create.js'
 import { createBot } from '../src/bots/create.js'
 import { clearAvatar, deleteBot, NotSavedError, PrimaryBotError, readBotDetail, setAvatar, updateBot } from '../src/bots/edit.js'
+import { composeSoul, houseBlock, NOW_CLOSE, NOW_OPEN } from '../src/bots/soul.js'
 import { HermesRestError, HermesRpcError } from '../src/hermes/errors.js'
 import { FakeRest, FakeRpc } from './fake-rpc.js'
 
@@ -55,6 +56,34 @@ describe('readBotDetail', () => {
   })
 })
 
+describe('house block', () => {
+  it('returns only the owner part as the soul', async () => {
+    rest.soul('scout', composeSoul('mine'))
+    expect((await readBotDetail(deps, 'scout')).soul).toBe('mine')
+  })
+
+  it('saves the owner part plus one house block and keeps a now block', async () => {
+    const now = `${NOW_OPEN}\n## Right now\n- You: Scout\n${NOW_CLOSE}`
+    rest.soul('scout', composeSoul('Original', now))
+    const out = await updateBot(deps, 'scout', { soul: `edited\n\n${houseBlock()}\n`, baseline: { soul: 'Original' } })
+    expect(out.status).toBe('saved')
+    expect(rest.souls.get('scout')).toBe(composeSoul('edited', now))
+  })
+
+  it('detects a conflict on the stripped text', async () => {
+    rest.soul('scout', composeSoul('changed outside'))
+    const out = await updateBot(deps, 'scout', { soul: 'Mine', baseline: { soul: 'Original' } })
+    expect(out).toMatchObject({ status: 'conflict', fields: ['soul'], current: { soul: 'changed outside' } })
+  })
+
+  it('a soul with only the house changed is not a conflict', async () => {
+    rest.soul('scout', 'Original\n\n<!-- crew:house v1 -->\nolder house text\n<!-- /crew:house -->\n')
+    const out = await updateBot(deps, 'scout', { soul: 'Mine', baseline: { soul: 'Original' } })
+    expect(out.status).toBe('saved')
+    expect(rest.souls.get('scout')).toBe(composeSoul('Mine'))
+  })
+})
+
 describe('updateBot', () => {
   it('refuses to overwrite a soul changed since load', async () => {
     rest.soul('scout', 'Edited in the Webapp')
@@ -90,7 +119,7 @@ describe('updateBot', () => {
     const [first, second] = rpc.configures
     expect(metaOf(first!)).toEqual({ title: 'New', shape: 'circle', color: '#111111', imageKind: 'shape', groups: ['ops'] })
     expect(second).toEqual({ name: 'scout', description: 'New desc' })
-    expect(rest.writes()).toEqual([{ method: 'PUT', path: '/api/profiles/scout/soul', body: { content: 'New soul' } }])
+    expect(rest.writes()).toEqual([{ method: 'PUT', path: '/api/profiles/scout/soul', body: { content: composeSoul('New soul') } }])
     expect(refreshes).toBe(1)
     expect(out).toMatchObject({ status: 'saved', detail: { title: 'New', description: 'New desc', soul: 'New soul' } })
   })

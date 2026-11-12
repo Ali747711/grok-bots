@@ -34,6 +34,25 @@ afterEach(() => {
   clearProfileDrafts()
 })
 
+describe('profile Soul tab', () => {
+  it('shows the house-rules note under the persona', async () => {
+    stub({ get: () => json(detail({ soul: 'Be nice' })) })
+    open(dev(), 'soul')
+    await loaded()
+    expect(screen.getByText("Crew adds its own house rules for voice and memory. They don't show here, and your text never changes them.")).toBeInTheDocument()
+  })
+
+  it('a starter appends to the owner text only', async () => {
+    stub({ get: () => json(detail({ soul: 'Be nice' })) })
+    open(dev(), 'soul')
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: 'Careful' }))
+    const value = (screen.getByLabelText('Persona (SOUL.md)') as HTMLTextAreaElement).value
+    expect(value.startsWith('Be nice\n\nYou are Dev.')).toBe(true)
+    expect(value).not.toContain('<!--')
+  })
+})
+
 describe('profile Advanced tab', () => {
   it('lists Approvals, Computer, Sandbox, Hide and Danger zone, with Sandbox in a section of its own', async () => {
     stub()

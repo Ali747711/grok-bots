@@ -5,6 +5,9 @@ import { Field, ON_WELL, type TextTabProps } from './IdentityTab'
 
 export const SOUL_MAX = 100_000
 
+/** The server keeps Crew's house block out of this field (spec 2026-11-12 §4.1). */
+const HOUSE_NOTE = "Crew adds its own house rules for voice and memory. They don't show here, and your text never changes them."
+
 interface Starter {
   label: string
   write: (title: string) => string
@@ -45,6 +48,7 @@ export function SoulTab({ form, title, onChange }: TextTabProps) {
         })}
         <span className="ml-auto text-xs font-medium text-faint tabular-nums">{`${form.soul.length.toLocaleString('en-US')} / ${SOUL_MAX.toLocaleString('en-US')}`}</span>
       </div>
+      <p className="px-1 text-xs font-medium text-faint">{HOUSE_NOTE}</p>
     </Field>
   )
 }

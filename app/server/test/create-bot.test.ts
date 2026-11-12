@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import { OFF_MARKER } from '../src/bots/sandbox-state.js'
 
-import { composeSoul } from '../src/bots/soul.js'
+import { composeSoul, newOwnerPart } from '../src/bots/soul.js'
 import { type BotDraft, type BotDeps, createBot, CreateBotError, finishBot } from '../src/bots/create.js'
 import { BotNotFoundError } from '../src/bots/ui-meta.js'
 import { HermesRpcError } from '../src/hermes/errors.js'
@@ -59,7 +59,7 @@ describe('createBot', () => {
     const result = await createBot(deps, draft)
     expect(rpc.methods()).toEqual(['profiles.create', 'reload.mcp', 'profiles.list', 'profiles.list', 'profiles.configure', 'setup.runtime_check', 'session.create'])
     expect(rpc.params('profiles.create')).toEqual({ name: 'scout', description: 'Find papers', clone_from: 'default',
-      share_auth: true, no_skills: false, soul: composeSoul({ name: 'scout', title: 'Researcher', mission: 'Find papers' }) })
+      share_auth: true, no_skills: false, soul: composeSoul(newOwnerPart({ name: 'scout', title: 'Researcher', mission: 'Find papers' })) })
     expect(rpc.of('profiles.create')[0]!.timeoutMs).toBe(120_000)
     expect(rpc.params('session.create')).toEqual({ profile: 'scout', title: 'Bot Chat', hidden: true, follow_profile_config: true })
     expect(rpc.params('setup.runtime_check')).toEqual({ profile: 'scout' })
