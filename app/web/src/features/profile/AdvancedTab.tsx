@@ -16,6 +16,8 @@ interface AdvancedTabProps {
   /** Takes the bot as a Hide write answered it. */
   onDetail: (detail: BotDetail) => void
   onDeleted: () => void
+  /** Setup is unfinished: Hide waits for Finish setup. */
+  unfinished?: boolean
 }
 
 /**
@@ -23,7 +25,7 @@ interface AdvancedTabProps {
  * The sections are siblings with nothing wrapping them all in a `<section>`: the sandbox e2e finds
  * the Sandbox section as the one `<section>` that holds its heading.
  */
-export function AdvancedTab({ detail, isPrimary, settings, reloadBot, onDetail, onDeleted }: AdvancedTabProps) {
+export function AdvancedTab({ detail, isPrimary, settings, reloadBot, onDetail, onDeleted, unfinished = false }: AdvancedTabProps) {
   const { name, title } = detail
   const { reload, apply } = settings
   return (
@@ -31,7 +33,8 @@ export function AdvancedTab({ detail, isPrimary, settings, reloadBot, onDetail, 
       <ApprovalsSection name={name} title={title} isPrimary={isPrimary} approvals={settings.approvals} readError={settings.errors.approvals} reload={reload} onWritten={approvals => apply({ approvals })} />
       <ComputerSection name={name} title={title} isPrimary={isPrimary} screen={settings.screen} readError={settings.errors.screen} reload={reload} onWritten={screen => apply({ screen })} />
       <SandboxSection bot={name} title={title} />
-      <HideSection detail={detail} reload={reloadBot} onDetail={onDetail} />
+      {/* Hiding the primary would only drop it from the header count and the New group picker: it never leaves the rail. */}
+      {!isPrimary && <HideSection detail={detail} reload={reloadBot} onDetail={onDetail} unfinished={unfinished} />}
       {!isPrimary && <DangerZone name={name} title={title} onDeleted={onDeleted} />}
     </>
   )

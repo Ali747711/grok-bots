@@ -64,3 +64,15 @@ describe('profile Hide row when the bot cannot be read again', () => {
     expect(toast.success).not.toHaveBeenCalled()
   })
 })
+
+describe('profile Hide row on a half-made bot (final review 1)', () => {
+  it('holds the switch until setup is finished and writes nothing', async () => {
+    const fn = stub({ get: () => json(detail()) })
+    open(dev({ setupIncomplete: true }), 'advanced')
+    await loaded()
+    expect(hide()).toBeDisabled()
+    expect(screen.getByText('Finish setup first.')).toBeInTheDocument()
+    fireEvent.click(hide())
+    expect(patches(fn)).toEqual([])
+  })
+})

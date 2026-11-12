@@ -163,8 +163,9 @@ describe('profile Advanced tab', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Never' }))
     expect(puts(fn, 'approvals')).toEqual([])
     expect(puts(fn, 'screen/config')).toEqual([])
-    // Hide stays available: it is Crew's own cosmetic, not part of the config new bots copy.
-    expect(hide()).toBeEnabled()
+    // No Hide for the primary: it never leaves the rail, so the switch would only drop it from the count and the group picker.
+    expect(screen.queryByRole('switch', { name: 'Hide from the list' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Hide' })).toBeNull()
     goTab('Identity')
     expect(within(screen.getByRole('tabpanel')).getByText('@hermes')).toBeInTheDocument()
   })

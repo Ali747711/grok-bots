@@ -73,7 +73,7 @@ function useRowActions({ bot, onMoved }: Pick<RailRowProps, 'bot' | 'onMoved'>) 
 function RowActions({ bot, onMoved }: Pick<RailRowProps, 'bot' | 'onMoved'>) {
   const { busy, togglePin, toggleHidden } = useRowActions({ bot, onMoved })
   return (
-    <div className="absolute top-1/2 right-2 flex -translate-y-1/2 items-center opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+    <div className="absolute top-1/2 right-2 flex -translate-y-1/2 items-center opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 pointer-events-none group-focus-within:pointer-events-auto group-hover:pointer-events-auto">
       {!bot.hidden && (
         <IconButton label={`Pin ${bot.title}`} pressed={bot.pinned} disabled={busy} data-rail-action="pin" onClick={togglePin} className={ACTION}>
           <Pin className="size-3.5" fill={bot.pinned ? 'currentColor' : 'none'} />
@@ -97,6 +97,8 @@ function RowActions({ bot, onMoved }: Pick<RailRowProps, 'bot' | 'onMoved'>) {
  * and, on hover or focus, pin and hide. The primary bot carries a "Primary" tag and no actions.
  */
 export function RailRow({ bot, active, showStatus, onSelect, onMoved }: RailRowProps) {
+  // No pin or hide for the primary, nor for a half-made bot: any write to it would end "Finish setup" before its title and avatar are stored.
+  const actions = !bot.isPrimary && !bot.setupIncomplete
   return (
     <div
       data-bot={bot.name}
@@ -114,7 +116,7 @@ export function RailRow({ bot, active, showStatus, onSelect, onMoved }: RailRowP
         onClick={() => onSelect(bot.name)}
         className={cn(
           'relative flex h-12 w-full items-center gap-2.5 rounded-full py-1.5 pr-3 pl-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring',
-          !bot.isPrimary && (bot.hidden ? 'group-focus-within:pr-10 group-hover:pr-10' : 'group-focus-within:pr-[68px] group-hover:pr-[68px]')
+          actions && (bot.hidden ? 'group-focus-within:pr-10 group-hover:pr-10' : 'group-focus-within:pr-[68px] group-hover:pr-[68px]')
         )}
       >
         {/* A stale rail must not show live status, so the avatar sees an idle copy (hidden and old bots still sleep). */}
@@ -130,7 +132,7 @@ export function RailRow({ bot, active, showStatus, onSelect, onMoved }: RailRowP
           <span className="block truncate text-xs leading-4 font-medium text-muted-foreground">{bot.preview ?? ' '}</span>
         </span>
       </button>
-      {!bot.isPrimary && <RowActions bot={bot} onMoved={onMoved} />}
+      {actions && <RowActions bot={bot} onMoved={onMoved} />}
     </div>
   )
 }

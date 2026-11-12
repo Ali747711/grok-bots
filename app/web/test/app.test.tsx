@@ -533,6 +533,18 @@ describe('window shortcuts', () => {
     press({ key: 'D' })
     expect(document.documentElement.dataset.theme).toBe('dark')
   })
+
+  it('d also answers to the D key of another layout, but not while an IME composes (final review 5)', async () => {
+    document.documentElement.dataset.theme = 'dark'
+    renderAt('/bots/dev')
+    await screen.findByRole('heading', { name: 'Dev' })
+    // A Korean layout types ㅇ on that key.
+    press({ key: 'ㅇ', code: 'KeyD', isComposing: true })
+    press({ key: 'Process', code: 'KeyD', isComposing: true })
+    expect(document.documentElement.dataset.theme).toBe('dark')
+    press({ key: 'ㅇ', code: 'KeyD' })
+    expect(document.documentElement.dataset.theme).toBe('light')
+  })
 })
 
 describe('W7: a bot deleted elsewhere', () => {

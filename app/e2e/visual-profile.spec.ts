@@ -299,7 +299,7 @@ check('the save bar keeps edits across leaving, saves with Ctrl+Enter from a fie
 check('the primary bot shows approvals and sleep read-only (opened, never changed, never shot)', async page => {
   await page.goto(`${CREW}/bots/${PRIMARY}?panel=profile&tab=advanced`)
   const panel = tabPanel(page)
-  await expect(panel.getByRole('heading', { level: 3 })).toHaveText(['Approvals', 'Computer', 'Sandbox', 'Hide'])
+  await expect(panel.getByRole('heading', { level: 3 })).toHaveText(['Approvals', 'Computer', 'Sandbox'])
   const approvals = panel.getByRole('radiogroup', { name: 'Approvals' })
   const sleeps = panel.getByRole('radiogroup', { name: 'Stop the screen after' })
   await expect(approvals.getByRole('radio', { checked: true })).toHaveCount(1)

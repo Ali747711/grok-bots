@@ -47,15 +47,5 @@ export const blurSwap: Variants = {
   exit: { opacity: 0, filter: 'blur(4px)', transition: blurSwapTransition }
 }
 
-/** List items arriving. Source: invite-disclosure, tightened for density. */
-export const riseIn: Variants = {
-  initial: { opacity: 0, y: 6 },
-  animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: 6 }
-}
-
-/** Per-item delay for staggered lists. Source: invite-disclosure. */
-export const STAGGER_STEP = 0.04
-
 /** Press feedback shared by every pressable surface. */
 export const press = { scale: 0.96 } as const

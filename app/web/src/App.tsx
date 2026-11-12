@@ -11,6 +11,7 @@ import { NewGroupDialog } from '@/features/groups/NewGroupDialog'
 import { NeedsYouPage } from '@/features/needs-you/NeedsYouPage'
 import { PanelBoundary } from '@/features/panel/PanelBoundary'
 import { Rail } from '@/features/rail/Rail'
+import { seatableBots } from '@/features/rail/rail-sections'
 import { SidePanel } from '@/features/side-panel/SidePanel'
 import { Shell } from '@/layout/Shell'
 import type { CrewState } from '@/state/types'
@@ -59,8 +60,7 @@ export default function App() {
   const [newGroupOpen, setNewGroupOpen] = useState(false)
   const goHome = useCallback(() => navigate('/', { replace: true }), [navigate])
   const { selected, selectedGroupId, panel, sideTab, groupPanel, onNeedsYou, lastBotUrl } = useWhere()
-  const seatable = new Set(state?.groups?.seatable ?? [])
-  const groupBots = (state?.bots ?? []).filter(b => !b.hidden && seatable.has(b.name))
+  const groupBots = seatableBots(state?.bots ?? [], state?.groups?.seatable ?? [])
   const bot = (selected && state?.bots.find(b => b.name === selected)) || null
   const panelGroup = groupPanel ? state?.groups?.rooms.find(r => r.id === selectedGroupId) : undefined
   const groupUrl = (roomId: string, open: boolean) => `/groups/${encodeURIComponent(roomId)}${open ? '?panel=group' : ''}`

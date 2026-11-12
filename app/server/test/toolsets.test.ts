@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { HIDDEN_TOOLSETS, OFFERED_TOOLSETS, toolsetViews } from '../src/bots/toolsets.js'
+import { HIDDEN_TOOLSETS, OFFERED_TOOLSETS, ToolsetShapeError, toolsetViews } from '../src/bots/toolsets.js'
+import { failure } from '../src/http/bot-errors.js'
 
 const row = (name: string, extra: Record<string, unknown> = {}) =>
   ({ name, label: `${name} label`, description: `${name} desc`, platform: 'cli', enabled: true, configured: true, ...extra })
@@ -48,7 +49,10 @@ describe('toolsetViews', () => {
   })
 
   it('throws on a bad row shape', () => {
-    expect(() => toolsetViews({ nope: 1 }, {})).toThrow()
-    expect(() => toolsetViews([{ label: 'x' }], {})).toThrow()
+    expect(() => toolsetViews({ nope: 1 }, {})).toThrow(ToolsetShapeError)
+    expect(() => toolsetViews([{ label: 'x' }], {})).toThrow(ToolsetShapeError)
+    // The parser's own text never travels: the route answers 502 with no message (final review 3).
+    const caught = (() => { try { toolsetViews([{ label: 'x' }], {}) } catch (e) { return e } })()
+    expect(failure(caught, 'scout')).toEqual({ status: 502, body: { error: 'hermes_error' } })
   })
 })

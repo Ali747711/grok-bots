@@ -1,4 +1,4 @@
-import { isModKey, shouldIgnoreShortcut, useWindowKeydown } from '@/hooks/use-window-keydown'
+import { isLetterKey, isModKey, shouldIgnoreShortcut, useWindowKeydown } from '@/hooks/use-window-keydown'
 import { toggleTheme } from '@/lib/use-theme'
 
 interface AppShortcutActions {
@@ -29,6 +29,6 @@ export function useAppShortcuts({ toggleSide, leave }: AppShortcutActions): void
       leave()
       return
     }
-    if (event.key.toLowerCase() === 'd') toggleTheme()
+    if (isLetterKey(event, 'd')) toggleTheme()
   })
 }

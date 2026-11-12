@@ -1,24 +1,16 @@
 import { type KeyboardEvent as ReactKeyboardEvent, type RefObject, useCallback, useEffect, useRef } from 'react'
 
-import { isModKey, shouldIgnoreShortcut, useWindowKeydown } from '@/hooks/use-window-keydown'
+import { isLetterKey, isModKey, shouldIgnoreShortcut, useWindowKeydown } from '@/hooks/use-window-keydown'
 import type { BotView } from '@/state/types'
 
 /** Every focusable row of the rail (bots and groups) carries `data-rail-row`, for the arrow keys. */
 const RAIL_ROW = '[data-rail-row]'
-
-const POPUPS = '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]'
 
 /** 0-8 for ⌥1 … ⌥9, otherwise null. `code` is used because ⌥digit types a symbol on macOS. */
 function digitIndex(event: KeyboardEvent): number | null {
   if (!event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return null
   const match = /^Digit([1-9])$/.exec(event.code)
   return match ? Number(match[1]) - 1 : null
-}
-
-/** A dialog or menu is open over the rail, so the rail's shortcuts must not act behind it. */
-function popupHasFocus(event: KeyboardEvent): boolean {
-  const target = event.target instanceof Element ? event.target : null
-  return target?.closest(POPUPS) != null || document.activeElement?.closest(POPUPS) != null
 }
 
 interface RailKeys {
@@ -30,13 +22,13 @@ interface RailKeys {
 
 /**
  * The rail's window shortcuts: ⌘K (Ctrl K) focuses Find and ⌥1-⌥9 opens the bot at that position.
- * Both stand down in fields, inside the bot's screen and while the user holds control of it (R7):
+ * Both stand down in fields, in an open dialog, menu or listbox, inside the bot's screen and while the user holds control of it (R7):
  * ⌥2 there would switch bots and hand control back mid-task.
  */
 export function useRailKeys({ findRef, visible, onSelect }: RailKeys): void {
   useWindowKeydown(event => {
-    if (event.repeat || shouldIgnoreShortcut(event) || popupHasFocus(event)) return
-    if (isModKey(event) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'k') {
+    if (event.repeat || shouldIgnoreShortcut(event)) return
+    if (isModKey(event) && !event.altKey && !event.shiftKey && isLetterKey(event, 'k')) {
       event.preventDefault()
       findRef.current?.focus()
       findRef.current?.select()

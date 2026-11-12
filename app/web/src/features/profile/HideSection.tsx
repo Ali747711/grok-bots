@@ -5,7 +5,7 @@ import { Section, Switch } from '@/components/console/fields'
 import { updateBot } from '@/features/bots/bots-api'
 import type { BotDetail } from '@/features/bots/types'
 
-import { RowError, RowNotice } from './RowNotes'
+import { Note, RowError, RowNotice } from './RowNotes'
 import { useProfileRowAction } from './use-profile-row-action'
 
 interface HideSectionProps {
@@ -14,10 +14,12 @@ interface HideSectionProps {
   reload: () => Promise<BotDetail | null>
   /** Takes the bot as the write answered it, before the re-read confirms it. */
   onDetail: (detail: BotDetail) => void
+  /** Setup is unfinished: a write now would end "Finish setup" before the title and avatar are stored. */
+  unfinished?: boolean
 }
 
 /** Hide the bot from the rail's main list. Applies at once. */
-export function HideSection({ detail, reload, onDetail }: HideSectionProps) {
+export function HideSection({ detail, reload, onDetail, unfinished = false }: HideSectionProps) {
   const { pending, error, notice, run } = useProfileRowAction({ title: detail.title, reload: async () => (await reload()) !== null })
   const hintId = useId()
   const toggle = async (hidden: boolean) => {
@@ -36,8 +38,9 @@ export function HideSection({ detail, reload, onDetail }: HideSectionProps) {
           <p className="text-[13px] font-semibold">Hide from the list</p>
           <p id={hintId} className="text-xs font-medium text-faint">{`${detail.title} moves to Hidden in the rail. It keeps working.`}</p>
         </div>
-        <Switch label="Hide from the list" describedBy={hintId} checked={detail.hidden} disabled={pending} onChange={next => void toggle(next)} />
+        <Switch label="Hide from the list" describedBy={hintId} checked={detail.hidden} disabled={pending || unfinished} onChange={next => void toggle(next)} />
       </div>
+      {unfinished && <Note>Finish setup first.</Note>}
       {error && <RowError>{error}</RowError>}
       {notice && <RowNotice>{notice}</RowNotice>}
     </Section>

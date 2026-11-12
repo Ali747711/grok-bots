@@ -37,6 +37,14 @@ export class ToolsetRefusedError extends Error {
   }
 }
 
+/** Hermes's toolset list did not have the shape Crew reads. Carries no detail: the parser's text is not for the user. */
+export class ToolsetShapeError extends Error {
+  constructor() {
+    super('toolset list has an unexpected shape')
+    this.name = 'ToolsetShapeError'
+  }
+}
+
 const rowsSchema = z.array(z.object({
   name: z.string(),
   label: z.string().optional(),
@@ -56,9 +64,11 @@ function isExtra(row: Row, turnedOff: readonly unknown[]): boolean {
   return row.enabled === true || turnedOff.includes(row.name)
 }
 
-/** Turns the REST rows (`GET /api/tools/toolsets`) into the Skills switches. A bad shape throws (502). */
+/** Turns the REST rows (`GET /api/tools/toolsets`) into the Skills switches. A bad shape throws `ToolsetShapeError` (502, no message). */
 export function toolsetViews(rows: unknown, raw: unknown): readonly ToolsetView[] {
-  const parsed = rowsSchema.parse(rows).filter(onCli)
+  const result = rowsSchema.safeParse(rows)
+  if (!result.success) throw new ToolsetShapeError()
+  const parsed = result.data.filter(onCli)
   const turnedOff = rawToolsetList(raw)
   const locked = sandboxStateOf(raw).state !== 'off'
   const picked = [

@@ -38,9 +38,18 @@ export function matchesFind(bot: BotView, query: string): boolean {
   return fields.some(field => field.toLowerCase().includes(term))
 }
 
+/** Whether the bot counts as on the list. The primary always does: it never leaves the rail, whatever its `hidden` says. */
+const isListed = (bot: BotView): boolean => bot.isPrimary || !bot.hidden
+
+/** The bots the New group picker offers: seatable and on the list. */
+export function seatableBots(bots: readonly BotView[], seatable: readonly string[]): BotView[] {
+  const allowed = new Set(seatable)
+  return bots.filter(bot => isListed(bot) && allowed.has(bot.name))
+}
+
 /** The header line: "6 bots · 2 working". Hidden bots are not counted; "working" shows only while statuses do. */
 export function railSummary(bots: readonly BotView[], showStatus: boolean): string {
-  const shown = bots.filter(bot => !bot.hidden)
+  const shown = bots.filter(isListed)
   const working = showStatus ? shown.filter(bot => bot.status === 'working').length : 0
   const total = `${shown.length} ${shown.length === 1 ? 'bot' : 'bots'}`
   return working > 0 ? `${total} · ${working} working` : total

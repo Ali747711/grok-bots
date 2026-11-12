@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { connectionText, matchesFind, railSections, railSummary } from '@/features/rail/rail-sections'
+import { connectionText, matchesFind, railSections, railSummary, seatableBots } from '@/features/rail/rail-sections'
 
 import { bot } from './fixtures'
 
@@ -77,5 +77,18 @@ describe('connectionText', () => {
     expect(connectionText('connecting', true)).toBe('Connecting…')
     expect(connectionText('offline', true)).toBe('Hermes offline')
     expect(connectionText('signed_out', true)).toBe('Signed out of Hermes')
+  })
+})
+
+describe('the primary and `hidden` (final review 2)', () => {
+  const primary = bot({ name: 'default', title: 'Hermes', isPrimary: true, hidden: true })
+
+  it('counts a primary marked hidden: it never leaves the rail', () => {
+    expect(railSummary([primary, bot({ name: 'a' }), bot({ name: 'old', hidden: true })], true)).toBe('2 bots')
+  })
+
+  it('offers a primary marked hidden to the New group picker, and no other hidden or unseatable bot', () => {
+    const bots = [primary, bot({ name: 'a' }), bot({ name: 'old', hidden: true }), bot({ name: 'far' })]
+    expect(names(seatableBots(bots, ['default', 'a', 'old']))).toEqual(['default', 'a'])
   })
 })

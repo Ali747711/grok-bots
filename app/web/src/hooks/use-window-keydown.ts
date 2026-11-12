@@ -47,6 +47,15 @@ export function isModKey(event: KeyboardEvent): boolean {
   return IS_APPLE ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
 }
 
+/**
+ * True for a letter shortcut: the typed character, or the same physical key on a layout that types
+ * something else there (ㅇ for `d` on a Korean one). The key code is not trusted while an IME composes.
+ */
+export function isLetterKey(event: KeyboardEvent, letter: string): boolean {
+  if (event.key.toLowerCase() === letter) return true
+  return !event.isComposing && event.code === `Key${letter.toUpperCase()}`
+}
+
 /** Display label for a command shortcut, e.g. "⌘K" or "Ctrl K". */
 export function modShortcut(key: string): string {
   return IS_APPLE ? `⌘${key}` : `Ctrl ${key}`

@@ -267,6 +267,16 @@ describe('Rail pin and hide', () => {
     expect(screen.getAllByText('Primary')).toHaveLength(1)
   })
 
+  it('offers no pin or hide on a half-made bot: a write would end Finish setup (final review 1)', () => {
+    renderRail(crewState({ bots: [...three(), bot({ name: 'half', title: 'Half', setupIncomplete: true })] }))
+    expect(within(rowOf('half')).getByText('Finish setup')).toBeInTheDocument()
+    expect(within(rowOf('half')).getAllByRole('button')).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: /^(Pin|Hide|Show) Half$/ })).toBeNull()
+    // A finished bot keeps both, out of the pointer's way until the row is hovered or focused.
+    const actions = within(rowOf('dev')).getByRole('button', { name: 'Pin Dev' }).parentElement!
+    expect(actions).toHaveClass('pointer-events-none', 'group-hover:pointer-events-auto', 'group-focus-within:pointer-events-auto')
+  })
+
   it('keeps focus on the pin button when the row moves to another section', async () => {
     const view = renderRail(crewState({ bots: three() }))
     const pin = within(rowOf('dev')).getByRole('button', { name: 'Pin Dev' })
@@ -364,6 +374,14 @@ describe('Rail keys', () => {
     expect(open('default')).toHaveFocus()
     press({ key: 'ArrowUp' }, open('default'))
     expect(open('dev')).toHaveFocus()
+  })
+
+  it('⌘K also answers to the K key of another layout, but not while an IME composes (final review 5)', () => {
+    renderRail(crewState({ bots: three() }))
+    press({ key: 'ㅏ', code: 'KeyK', ctrlKey: true, isComposing: true })
+    expect(find()).not.toHaveFocus()
+    press({ key: 'ㅏ', code: 'KeyK', ctrlKey: true })
+    expect(find()).toHaveFocus()
   })
 
   it('⌥digit and ⌘K do nothing from inside the live view or a field', () => {

@@ -83,7 +83,8 @@ export function ProfileBody({ bot, detail, setDetail, reload, tab, onTab }: Prof
   }
   const onDeleted = () => {
     dropProfileDraft(bot.name)
-    navigate('/')
+    // Replace: Back must not return to the deleted bot's profile.
+    navigate('/', { replace: true })
   }
   const text = { form: editor.form, title: detail.title, onChange: editor.edit }
 
@@ -109,7 +110,7 @@ export function ProfileBody({ bot, detail, setDetail, reload, tab, onTab }: Prof
             {tab === 'soul' && <SoulTab {...text} />}
             {tab === 'skills' && <SkillsTab name={bot.name} title={detail.title} isPrimary={bot.isPrimary} />}
             {tab === 'apps' && <AppsSection bot={bot.name} title={detail.title} sandboxed={bot.sandbox === 'on'} />}
-            {tab === 'advanced' && <AdvancedTab detail={detail} isPrimary={bot.isPrimary} settings={settings} reloadBot={editor.reloadMerged} onDetail={editor.refreshed} onDeleted={onDeleted} />}
+            {tab === 'advanced' && <AdvancedTab detail={detail} isPrimary={bot.isPrimary} settings={settings} reloadBot={editor.reloadMerged} onDetail={editor.refreshed} onDeleted={onDeleted} unfinished={unfinished} />}
           </div>
           <SaveBar
             dirty={editor.dirty} busy={editor.busy} error={saver.error} conflict={saver.conflict}

@@ -2,7 +2,7 @@ import { CreateBotError } from '../bots/create.js'
 import { NotSavedError, PrimaryBotError } from '../bots/edit.js'
 import { SandboxCleanupError } from '../bots/sandbox-cleanup.js'
 import { SandboxRefusedError } from '../bots/sandbox.js'
-import { ToolsetRefusedError } from '../bots/toolsets.js'
+import { ToolsetRefusedError, ToolsetShapeError } from '../bots/toolsets.js'
 import { BotNotFoundError } from '../bots/ui-meta.js'
 import { HermesRestError, HermesRpcError, HermesUnavailableError } from '../hermes/errors.js'
 import { ScheduleError } from '../routines/schedule.js'
@@ -38,6 +38,10 @@ export function failure(error: unknown, name: string): Failure {
   if (error instanceof SandboxRefusedError) return { status: 409, body: { error: error.code } }
   if (error instanceof ToolsetRefusedError) {
     return error.code === 'toolset_locked' ? { status: 409, body: { error: error.code } } : { status: 400, body: { error: error.code } }
+  }
+  if (error instanceof ToolsetShapeError) {
+    log.warn('toolset list has an unexpected shape', { bot: name })
+    return { status: 502, body: { error: 'hermes_error' } }
   }
   if (error instanceof InvalidImageError) return { status: 502, body: { error: 'bad_image_name' } }
   if (error instanceof DockerError) return { status: 503, body: { error: 'docker_unavailable' } }
