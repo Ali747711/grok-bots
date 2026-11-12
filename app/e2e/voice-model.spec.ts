@@ -18,7 +18,8 @@ const MODEL = { provider: 'openrouter', model: 'anthropic/claude-haiku-5.5' }
 const MIN_CREDIT = 0.2
 const REPLY_MS = 180_000
 const FORBIDDEN: readonly RegExp[] = [
-  /:\d{1,3}\b|display (number )?\d+/i,
+  // A display number like ":20", not a clock time like "08:00".
+  /(^|[^\d]):\d{1,3}\b(?!:\d)|display (number )?:?\d+/i,
   /\bpid\b/i,
   /computer_use|cronjob|session_search|execute_code|read_file|write_file|terminal\(|mcp_|message_agent/,
   /\/home\/|\.hermes|\/workspace/,
@@ -28,26 +29,27 @@ let page: Page
 
 const sentences = (text: string): number => text.trim().split(/(?<=[.!?])\s+/).filter(s => /\w/.test(s)).length
 
-async function chatRows(): Promise<{ role: string; content: string }[]> {
-  const chat = (await profileRows()).find(p => p.name === BOT)?.canonical_session as { id?: string; resolved_id?: string } | null | undefined
+async function chatRows(bot = BOT): Promise<{ role: string; content: string }[]> {
+  const chat = (await profileRows()).find(p => p.name === bot)?.canonical_session as { id?: string; resolved_id?: string } | null | undefined
   const id = chat?.resolved_id ?? chat?.id
-  return id ? sessionMessages(BOT, id) : []
+  return id ? sessionMessages(bot, id) : []
 }
-const lastReply = async (): Promise<string> => [...await chatRows()].reverse().find(r => r.role === 'assistant')?.content ?? ''
+const lastReply = async (bot = BOT): Promise<string> => [...await chatRows(bot)].reverse().find(r => r.role === 'assistant')?.content ?? ''
 
-async function ask(text: string): Promise<string> {
-  const before = (await chatRows()).filter(r => r.role === 'assistant').length
+async function ask(text: string, bot = BOT, timeout = REPLY_MS): Promise<string> {
+  const before = (await chatRows(bot)).filter(r => r.role === 'assistant').length
   await send(page, text)
-  await expect.poll(async () => (await chatRows()).filter(r => r.role === 'assistant').length, { timeout: REPLY_MS }).toBeGreaterThan(before)
-  await waitIdle(page, BOT, REPLY_MS)
-  const reply = await lastReply()
+  await expect.poll(async () => (await chatRows(bot)).filter(r => r.role === 'assistant').length, { timeout }).toBeGreaterThan(before)
+  await waitIdle(page, bot, timeout)
+  const reply = await lastReply(bot)
   test.info().annotations.push({ type: text, description: reply })
   return reply
 }
 
+/** Style checks are soft: the run still fails, but every later turn is still asked and recorded. */
 function plain(reply: string, max: number): void {
-  expect(sentences(reply), reply).toBeLessThanOrEqual(max)
-  for (const re of FORBIDDEN) expect(reply, `${re}`).not.toMatch(re)
+  expect.soft(sentences(reply), reply).toBeLessThanOrEqual(max)
+  for (const re of FORBIDDEN) expect.soft(reply, `${re}`).not.toMatch(re)
 }
 
 const memorySize = async (): Promise<number> => {
@@ -119,7 +121,9 @@ test('@model a Grok-style bot: greets once, knows itself, remembers and forgets'
   await rebuild()
   expect((await ask("What's my favourite fruit?")).toLowerCase()).not.toContain(FRUIT)
   // The stored prompt carries Crew's chat-app hint (platform_hints.cli.replace), proven without a turn of its own.
-  const sessions = (await hermesRest('GET', `/api/sessions?profile=${BOT}&full=1`)).body as { sessions?: { system_prompt?: string }[] }
-  expect(JSON.stringify(sessions)).toContain("You're chatting with your owner in a chat app.")
+  const chat = (await profileRows()).find(p => p.name === BOT)?.canonical_session as { id?: string; resolved_id?: string } | null | undefined
+  const stored = (await hermesRest('GET', `/api/sessions/${chat?.resolved_id ?? chat?.id}?profile=${BOT}`)).body as { system_prompt?: string }
+  expect(String(stored.system_prompt ?? '')).toContain("You're chatting with your owner in a chat app.")
   test.info().annotations.push({ type: 'page', description: CREW })
 })
+

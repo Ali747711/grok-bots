@@ -68,7 +68,7 @@ function listSections(input: RightNowInput): ListSection[] {
   const mate = (m: RightNowInput['teammates'][number]) =>
     `${item(m.title)} (@${item(m.handle)})${m.role ? `: ${item(m.role)}` : ''}${m.job ? `, ${item(m.job)}` : ''}`
   return [
-    { label: 'Apps', empty: 'none connected.', items: input.apps.map(a => `${item(a.name)}: ${LEVEL_WORDS[a.level]}`) },
+    { label: 'Apps', empty: "none connected. Only your owner can connect apps, from Crew's Apps.", items: input.apps.map(a => `${item(a.name)}: ${LEVEL_WORDS[a.level]}`) },
     { label: 'Routines', empty: 'none.', items: input.routines.map(r => `${item(r.title)}, ${item(r.when)}, ${ROUTINE_STATE[r.state]}`) },
     { label: 'Teammates', empty: 'none.', items: input.teammates.map(mate) },
     { label: "Groups you're in", empty: 'none.', items: input.groups.map(g => `${item(g.name)}${g.purpose ? `: ${item(g.purpose)}` : ''}`) }

@@ -5,6 +5,8 @@ Wants=hermes-gateway.service
 
 [Service]
 Environment=NODE_ENV=production
+# Crew's voice upkeep for every bot (owner-approved 2026-11-12); default is e2e test bots only.
+Environment=CREW_VOICE_SCOPE=all
 ExecStart=/usr/bin/node /home/ali/projects/grok-bots/app/server/dist/main.js
 Restart=on-failure
 RestartSec=3

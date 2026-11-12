@@ -37,7 +37,7 @@ describe('buildRightNow', () => {
     const block = buildRightNow({ ...INPUT, owner: { name: null, timeZone: 'Asia/Seoul' }, self: { ...INPUT.self, role: null, job: '' }, apps: [], routines: [], teammates: [], groups: [] })
     expect(lineOf(block, 'Owner:')).toBe('Owner: name not set yet; if they tell you, remember it. Time zone Asia/Seoul.')
     expect(lineOf(block, 'You:')).toBe('You: Scout (@scout).')
-    expect(lineOf(block, 'Apps:')).toBe('Apps: none connected.')
+    expect(lineOf(block, 'Apps:')).toBe("Apps: none connected. Only your owner can connect apps, from Crew's Apps.")
     expect(lineOf(block, 'Routines:')).toBe('Routines: none.')
     expect(lineOf(block, 'Teammates:')).toBe('Teammates: none.')
     expect(lineOf(block, "Groups you're in:")).toBe("Groups you're in: none.")
