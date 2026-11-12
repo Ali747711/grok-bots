@@ -281,6 +281,59 @@ describe('createBot sandbox choice', () => {
     expect(rpc.methods()).toContain('session.create')
   })
 
+  it("replaces the primary's relay token when a new bot's strip fails, in create and again in Finish setup, never the bot's own", async () => {
+    const rotated: string[] = []
+    deps = { ...deps, apps: { forget: async () => undefined, rotate: async bot => { rotated.push(bot); return true } } }
+    await createBot(deps, draft)
+    expect(rotated).toEqual([])
+    rest.failDeletes = true
+    const result = await createBot(deps, { ...draft, name: 'scout2' })
+    expect(result.steps).toMatchObject({ apps: 'failed', chat: 'skipped' })
+    expect(rotated).toEqual(['default'])
+    const still = await finishBot(deps, 'scout2', {})
+    expect(still.complete).toBe(false)
+    expect(rotated).toEqual(['default', 'default'])
+    rest.failDeletes = false
+    expect((await finishBot(deps, 'scout2', {})).complete).toBe(true)
+    expect(rotated).toEqual(['default', 'default'])
+  })
+
+  it('logs a failed or unconfirmed rotation without a token and keeps the bot incomplete so Finish setup retries both', async () => {
+    const warnings = async (run: () => Promise<unknown>): Promise<Record<string, unknown>[]> => {
+      const lines: string[] = []
+      const restore = setLogSink(l => lines.push(l))
+      try { await run() } finally { restore() }
+      return lines.map(l => JSON.parse(l) as Record<string, unknown>).filter(l => l.level === 'warn')
+    }
+    rest.failDeletes = true
+    const attempts: string[] = []
+    deps = { ...deps, apps: { forget: async () => undefined, rotate: async bot => { attempts.push(bot); throw new Error('hermes down tok_secret_value') } } }
+    const logged = await warnings(() => createBot(deps, draft))
+    expect(logged).toEqual([expect.objectContaining({ msg: 'primary apps token rotation failed', name: 'scout', error: 'Error' })])
+    expect(JSON.stringify(logged)).not.toContain('tok_secret_value')
+    deps = { ...deps, apps: { forget: async () => undefined, rotate: async bot => { attempts.push(bot); return false } } }
+    const again = await warnings(async () => {
+      const result = await finishBot(deps, 'scout', {})
+      expect(result.complete).toBe(false)
+      expect(result.steps).toMatchObject({ apps: 'failed', chat: 'skipped' })
+    })
+    expect(again).toEqual([expect.objectContaining({ msg: 'primary apps token rotation not confirmed', name: 'scout' })])
+    expect(attempts).toEqual(['default', 'default'])
+  })
+
+  it('Finish setup on a finished bot asks for its apps entry to be restored after the strip; create never does', async () => {
+    const restored: string[] = []
+    deps = { ...deps, apps: { forget: async () => undefined, restore: async bot => { restored.push(bot) } } }
+    await createBot(deps, draft)
+    expect(restored).toEqual([])
+    const finished = await finishBot(deps, 'scout', {})
+    expect(finished.steps).toMatchObject({ apps: 'ok', chat: 'ok' })
+    expect(restored).toEqual(['scout'])
+    rest.failDeletes = true
+    await finishBot(deps, 'scout', {})
+    expect(restored).toEqual(['scout'])
+  })
+
   it('fails closed when the cloned app grants cannot be rewritten', async () => {
     rest.configs.set('scout', { command_allowlist: ['mcp:crew_apps/GITHUB_DELETE_A_REPOSITORY', 'ls'] })
     const request = rest.request

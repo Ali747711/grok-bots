@@ -64,7 +64,7 @@ describe('bot apps', () => {
     } as unknown as Composio
     deps = {
       bots: { rpc: rpc.call, rest: rest as never }, composio, keys: { get: () => key }, store,
-      reconnector: { schedule: b => scheduled.push(b), idle: async () => undefined },
+      reconnector: { schedule: b => scheduled.push(b), idle: async () => undefined, settled: async () => true },
       relayUrl: b => `http://127.0.0.1:7070/mcp/${b}`, newToken: () => `tok${++tokens}`, now: () => now
     }
   })
@@ -105,6 +105,25 @@ describe('bot apps', () => {
     await setBotApps(deps, 'scout', { github: 'read' })
     expect(rpc.of('mcp.servers.add').map(c => c.params.bearer_token)).toEqual(['tok1', 'tok2'])
     expect(store.record('scout')?.tokenHash).toBe(hashToken('tok2'))
+  })
+
+  it('marks the record only after Hermes accepted the entry: a failed add leaves it unmarked for the backfill', async () => {
+    rpc.fail('mcp.servers.add', new HermesRestError(500, 'boom'))
+    await expect(setBotApps(deps, 'scout', { github: 'read' })).rejects.toBeInstanceOf(HermesRestError)
+    expect(store.record('scout')).toBeDefined()
+    expect(store.record('scout')?.identity).toBeUndefined()
+    rpc.handlers.set('mcp.servers.add', p => { calls.push('add'); server = { enabled: true }; return p })
+    await setBotApps(deps, 'scout', { github: 'read' })
+    expect(store.record('scout')?.identity).toBe(true)
+    // a marked record whose server vanished: the re-add fails, so the mark is dropped
+    server = null
+    rpc.fail('mcp.servers.add', new HermesRestError(500, 'boom'))
+    await expect(setBotApps(deps, 'scout', { github: 'read' })).rejects.toBeInstanceOf(HermesRestError)
+    expect(store.record('scout')?.identity).toBeUndefined()
+    // a stale server replaced for a new record: also unmarked until the add went through
+    server = { enabled: true }
+    await expect(setBotApps(deps, 'two', { github: 'read' })).rejects.toBeInstanceOf(HermesRestError)
+    expect(store.record('two')?.identity).toBeUndefined()
   })
 
   it('replaces an existing server when the record is new, so the token matches', async () => {

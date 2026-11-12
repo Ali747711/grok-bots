@@ -46,6 +46,12 @@ interface State {
   readonly pending: readonly PendingSignIn[]
 }
 
+/** The record without its identity mark: the mark is set only after Hermes holds an entry that carries the header. */
+export function unmarked(record: BotRecord): BotRecord {
+  const { identity: _mark, ...rest } = record
+  return rest
+}
+
 export function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex')
 }

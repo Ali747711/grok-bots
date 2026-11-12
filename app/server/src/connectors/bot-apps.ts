@@ -9,7 +9,7 @@ import type { KeyStore } from './key.js'
 import { TOOLKIT_RE, allowList, allowedSlugs, approvalsAsk, offeredLevels, type AppLevel } from './levels.js'
 import { PRELOAD_CAP, ROOM_WRITES_DECLINED } from './policy.js'
 import type { Reconnector } from './reconnect.js'
-import { hashToken, type BotRecord, type ConnectorStore } from './store.js'
+import { hashToken, unmarked, type BotRecord, type ConnectorStore } from './store.js'
 
 export interface ConnectorDeps {
   readonly bots: Hermes
@@ -121,13 +121,17 @@ async function syncServer(
     // The record is new but Hermes still holds the old token: replace the server so the hashes match.
     await removeAppsServer(deps.bots, bot)
     await addAppsServer(deps.bots, bot, deps.relayUrl(bot), minted)
+    await deps.store.setRecord(bot, { ...record, identity: true })
     // The live transport keeps its old header until it rebuilds.
     deps.reconnector.schedule(bot)
   } else if (server === null) {
     // R7: a token exists only in this call, so a record whose server is gone gets a new one.
     const token = minted ?? deps.newToken()
-    if (minted === undefined) await deps.store.setRecord(bot, { ...record, tokenHash: hashToken(token), identity: true })
+    const fresh = { ...unmarked(record), tokenHash: hashToken(token) }
+    if (minted === undefined) await deps.store.setRecord(bot, fresh)
     await addAppsServer(deps.bots, bot, deps.relayUrl(bot), token)
+    // Marked only now: a record whose write to Hermes failed stays unmarked, and the backfill repairs it.
+    await deps.store.setRecord(bot, { ...fresh, identity: true })
   } else if (!server.enabled) {
     await setAppsServerEnabled(deps.bots, bot, true)
   } else if (changed) {
@@ -153,8 +157,8 @@ export function setBotApps(deps: ConnectorDeps, bot: string, apps: Readonly<Reco
     const record: BotRecord = {
       apps, counts: built.counts, sessionId: built.sessionId, mcpUrl: built.mcpUrl, allowed: built.allowed,
       tokenHash: old?.tokenHash ?? hashToken(minted as string),
-      // A new record's server is always (re)written by syncServer, with the identity header.
-      ...(old === undefined || old.identity === true ? { identity: true } : {})
+      // A new record is marked by syncServer, once Hermes holds its entry with the identity header.
+      ...(old?.identity === true ? { identity: true } : {})
     }
     await saveOrDrop(deps, bot, record)
     if (old) await deleteSessionQuietly(deps, bot, old.sessionId)

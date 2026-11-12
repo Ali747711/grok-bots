@@ -6,7 +6,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { setBotApps, type ConnectorDeps } from '../src/connectors/bot-apps.js'
 import type { Composio } from '../src/connectors/composio.js'
-import { IDENTITY_RETRY_MS, createIdentityBackfill, ensureIdentity } from '../src/connectors/identity.js'
+import { IDENTITY_RETRY_MS, createIdentityBackfill, ensureIdentity, rotateToken, unmarkRecord } from '../src/connectors/identity.js'
 import { ConnectorStore, hashToken, type BotRecord } from '../src/connectors/store.js'
 import { HermesRestError, HermesRpcError } from '../src/hermes/errors.js'
 import { setLogSink } from '../src/log.js'
@@ -31,6 +31,7 @@ describe('apps identity backfill', () => {
   let now: number
   let tokens: number
   let composioCalls: number
+  let reconnectOk: boolean
   let deps: ConnectorDeps
 
   beforeAll(() => { setLogSink(() => undefined) })
@@ -47,6 +48,7 @@ describe('apps identity backfill', () => {
     now = 1_000
     tokens = 0
     composioCalls = 0
+    reconnectOk = true
     const of = (q?: Record<string, string>): string => q?.profile ?? ''
     rpc.handlers.set('mcp.servers.add', p => {
       calls.push(`add:${p.profile as string}`)
@@ -63,7 +65,7 @@ describe('apps identity backfill', () => {
     const composio = new Proxy({}, { get: () => async () => { composioCalls += 1; throw new Error('composio must not be called') } }) as Composio
     deps = {
       bots: { rpc: rpc.call, rest: rest as never }, composio, keys: { get: () => key }, store,
-      reconnector: { schedule: b => scheduled.push(b), idle: async () => undefined },
+      reconnector: { schedule: b => scheduled.push(b), idle: async () => undefined, settled: async () => reconnectOk },
       relayUrl: b => `http://127.0.0.1:7070/mcp/${b}`, newToken: () => `tok${++tokens}`, now: () => now
     }
   })
@@ -71,7 +73,7 @@ describe('apps identity backfill', () => {
 
   it("replaces an older bot's entry with one that carries the identity header, a fresh token and a reconnect", async () => {
     await store.setRecord('bella', legacy('bella'))
-    expect(await ensureIdentity(deps, 'bella')).toBe(true)
+    expect(await ensureIdentity(deps, 'bella')).toBe('done')
     expect(calls).toEqual(['remove:bella', 'env:bella', 'add:bella'])
     expect(rpc.params('mcp.servers.add')).toEqual({
       profile: 'bella', name: 'crew_apps', bearer_token: 'tok1',
@@ -83,7 +85,7 @@ describe('apps identity backfill', () => {
 
   it('leaves the primary working: same apps, levels and session, its own URL, no Composio call', async () => {
     await store.setRecord('default', legacy('default'))
-    expect(await ensureIdentity(deps, 'default')).toBe(true)
+    expect(await ensureIdentity(deps, 'default')).toBe('done')
     const { tokenHash: _old, ...kept } = legacy('default')
     expect(store.record('default')).toMatchObject({ ...kept, identity: true })
     expect((rpc.params('mcp.servers.add')?.config as { url: string }).url).toBe('http://127.0.0.1:7070/mcp/default')
@@ -98,11 +100,11 @@ describe('apps identity backfill', () => {
     calls.length = 0
     scheduled.length = 0
     const before = store.record('bella')
-    expect(await ensureIdentity(deps, 'bella')).toBe(false)
+    expect(await ensureIdentity(deps, 'bella')).toBe('none')
     const reloaded = await ConnectorStore.load(file, () => 'unused')
     expect(reloaded.record('bella')).toEqual(before)
-    expect(await ensureIdentity({ ...deps, store: reloaded }, 'bella')).toBe(false)
-    expect(await ensureIdentity(deps, 'nobody')).toBe(false)
+    expect(await ensureIdentity({ ...deps, store: reloaded }, 'bella')).toBe('none')
+    expect(await ensureIdentity(deps, 'nobody')).toBe('none')
     expect(calls).toEqual([])
     expect(scheduled).toEqual([])
     expect(tokens).toBe(1)
@@ -121,7 +123,7 @@ describe('apps identity backfill', () => {
     expect(store.record('scout')?.identity).toBe(true)
     expect(rpc.params('mcp.servers.add')?.config).toMatchObject({ identity_header: { name: 'X-Crew-Bot', value_from: 'profile' } })
     calls.length = 0
-    expect(await ensureIdentity(live, 'scout')).toBe(false)
+    expect(await ensureIdentity(live, 'scout')).toBe('none')
     expect(calls).toEqual([])
   })
 
@@ -157,6 +159,65 @@ describe('apps identity backfill', () => {
     expect(scheduled).toEqual([])
   })
 
+  it('keeps a truly paused bot paused: no key, its server present and disabled, no reconnect, still marked', async () => {
+    await store.setRecord('bella', legacy('bella'))
+    servers.bella = { enabled: false }
+    key = null
+    expect(await ensureIdentity(deps, 'bella')).toBe('done')
+    expect(calls).toEqual(['remove:bella', 'env:bella', 'add:bella'])
+    expect((rpc.params('mcp.servers.add')?.config as { enabled: boolean }).enabled).toBe(false)
+    expect(servers.bella).toEqual({ enabled: false })
+    expect(scheduled).toEqual([])
+    expect(store.record('bella')).toMatchObject({ identity: true, tokenHash: hashToken('tok1') })
+  })
+
+  it('does not mark the record when the reconnect fails, and the next roster sync runs it again', async () => {
+    await store.setRecord('default', legacy('default'))
+    reconnectOk = false
+    expect(await ensureIdentity(deps, 'default')).toBe('unconfirmed')
+    expect(store.record('default')?.identity).toBeUndefined()
+    expect(store.record('default')?.tokenHash).toBe(hashToken('tok1'))
+    const backfill = createIdentityBackfill(deps)
+    backfill.onRoster(['default'])
+    await backfill.idle()
+    expect(store.record('default')?.identity).toBeUndefined()
+    reconnectOk = true
+    now += IDENTITY_RETRY_MS
+    backfill.onRoster(['default'])
+    await backfill.idle()
+    expect(store.record('default')).toMatchObject({ identity: true, tokenHash: hashToken('tok3') })
+    expect(scheduled).toEqual(['default', 'default', 'default'])
+  })
+
+  it('rotates a marked bot on demand: the old token dies, the entry is rewritten, and the mark returns only after the reconnect', async () => {
+    await store.setRecord('default', { ...legacy('default'), identity: true })
+    expect(await rotateToken(deps, 'default')).toBe('done')
+    expect(calls).toEqual(['remove:default', 'env:default', 'add:default'])
+    expect(store.record('default')).toMatchObject({ identity: true, tokenHash: hashToken('tok1') })
+    expect(scheduled).toEqual(['default'])
+    reconnectOk = false
+    expect(await rotateToken(deps, 'default')).toBe('unconfirmed')
+    expect(store.record('default')?.identity).toBeUndefined()
+    expect(store.record('default')?.tokenHash).toBe(hashToken('tok2'))
+    expect(await rotateToken(deps, 'nobody')).toBe('none')
+    expect(composioCalls).toBe(0)
+  })
+
+  it('unmarks a record whose entry was stripped, so the backfill writes it again; a bot without apps is untouched', async () => {
+    await store.setRecord('bella', { ...legacy('bella'), identity: true })
+    servers.bella = null
+    await unmarkRecord(deps, 'bella')
+    await unmarkRecord(deps, 'nobody')
+    expect(store.record('bella')?.identity).toBeUndefined()
+    expect(store.record('nobody')).toBeUndefined()
+    const backfill = createIdentityBackfill(deps)
+    backfill.onRoster(['bella'])
+    await backfill.idle()
+    expect(calls).toEqual(['add:bella'])
+    expect(servers.bella).toEqual({ enabled: true })
+    expect(store.record('bella')).toMatchObject({ identity: true, apps: { github: 'all' } })
+  })
+
   it('fails closed when Hermes refuses the write: the old token stops working, the record stays unmarked, and a retry completes', async () => {
     await store.setRecord('bella', legacy('bella'))
     rpc.fail('mcp.servers.add', new HermesRpcError(4001, 'refused'))
@@ -165,7 +226,7 @@ describe('apps identity backfill', () => {
     expect(store.record('bella')?.tokenHash).not.toBe(hashToken('old-bella'))
     expect(scheduled).toEqual([])
     rpc.handlers.set('mcp.servers.add', p => { servers[p.profile as string] = { enabled: true }; return { ok: true } })
-    expect(await ensureIdentity(deps, 'bella')).toBe(true)
+    expect(await ensureIdentity(deps, 'bella')).toBe('done')
     expect(store.record('bella')).toMatchObject({ identity: true, tokenHash: hashToken('tok2') })
   })
 

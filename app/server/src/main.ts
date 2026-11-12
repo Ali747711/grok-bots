@@ -10,7 +10,7 @@ import { TicketStore } from './auth/tickets.js'
 import { expirePending } from './connectors/account.js'
 import { clampIfNoApprovals, forgetBot, type ConnectorDeps } from './connectors/bot-apps.js'
 import { createComposio } from './connectors/composio.js'
-import { createIdentityBackfill, type IdentityBackfill } from './connectors/identity.js'
+import { createIdentityBackfill, rotateToken, unmarkRecord, type IdentityBackfill } from './connectors/identity.js'
 import { KeyStore } from './connectors/key.js'
 import { createReconnector } from './connectors/reconnect.js'
 import { loadConnectorStore } from './connectors/store.js'
@@ -113,7 +113,7 @@ export async function start(): Promise<Server> {
     now: Date.now, newTriggerId: () => randomBytes(16).toString('hex'), newSecret: () => randomBytes(32).toString('hex'), newId: randomUUID
   } : undefined
   const sandbox = { docker: createDocker(runner), puller: createImagePuller(runner), hermesHome: config.hermesHome, groups: () => crewState.state().groups, onChanged: roster.invalidate }
-  const base = { rpc: watcher.request, rest, refresh: watcher.refresh, now: Date.now, sandbox, apps: { forget: (bot: string) => (connectors ? forgetBot(connectors, bot) : Promise.resolve()), clamp: (bot: string, raw: unknown) => { if (connectors) clampIfNoApprovals(connectors, bot, raw) } } }
+  const base = { rpc: watcher.request, rest, refresh: watcher.refresh, now: Date.now, sandbox, apps: { forget: (bot: string) => (connectors ? forgetBot(connectors, bot) : Promise.resolve()), clamp: (bot: string, raw: unknown) => { if (connectors) clampIfNoApprovals(connectors, bot, raw) }, rotate: async (bot: string) => (connectors ? (await rotateToken(connectors, bot)) !== 'unconfirmed' : true), restore: async (bot: string) => { if (connectors) await unmarkRecord(connectors, bot) } } }
   const keys = await KeyStore.load(config.composioKeyFile)
   const connectorStore = await loadConnectorStore(join(config.stateDir, 'connectors.json'), randomUUID)
   if (connectorStore) {
