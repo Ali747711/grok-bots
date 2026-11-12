@@ -74,6 +74,10 @@ export interface PendingView {
 export interface CrewSettings {
   /** Integer 1-20, or null for no limit. */
   readonly maxWorkingBots: number | null
+  /** What the bots call the owner. Missing from an older server. */
+  readonly ownerName?: string | null
+  /** IANA zone the bots use; set from the browser on the first save. Missing from an older server. */
+  readonly timeZone?: string | null
 }
 
 export interface CrewState {

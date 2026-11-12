@@ -35,13 +35,13 @@ const put = (app: ReturnType<typeof createApp>, body: unknown, csrf = true) =>
 
 describe('SettingsStore', () => {
   it('starts with defaults when the file is missing', async () => {
-    expect((await SettingsStore.load(file)).get()).toEqual({ maxWorkingBots: 2 })
+    expect((await SettingsStore.load(file)).get()).toEqual({ maxWorkingBots: 2, ownerName: null, timeZone: null })
   })
 
   it('persists an update and reloads it', async () => {
     const store = await SettingsStore.load(file)
-    expect(await store.update({ maxWorkingBots: null })).toEqual({ maxWorkingBots: null })
-    expect((await SettingsStore.load(file)).get()).toEqual({ maxWorkingBots: null })
+    expect(await store.update({ maxWorkingBots: null })).toEqual({ maxWorkingBots: null, ownerName: null, timeZone: null })
+    expect((await SettingsStore.load(file)).get()).toEqual({ maxWorkingBots: null, ownerName: null, timeZone: null })
     expect((await stat(file)).mode & 0o777).toBe(0o600)
   })
 
@@ -51,7 +51,7 @@ describe('SettingsStore', () => {
     const lines: string[] = []
     const restore = setLogSink(l => lines.push(l))
     try {
-      expect((await SettingsStore.load(file)).get()).toEqual({ maxWorkingBots: 2 })
+      expect((await SettingsStore.load(file)).get()).toEqual({ maxWorkingBots: 2, ownerName: null, timeZone: null })
     } finally {
       restore()
     }
@@ -69,16 +69,53 @@ describe('SettingsStore', () => {
   })
 })
 
+describe('owner name and time zone', () => {
+  it('loads an old file without the new keys as null', async () => {
+    await SettingsStore.load(file).then(s => s.update({ maxWorkingBots: 5 }))
+    await writeFile(file, JSON.stringify({ maxWorkingBots: 5 }))
+    expect((await SettingsStore.load(file)).get()).toEqual({ maxWorkingBots: 5, ownerName: null, timeZone: null })
+  })
+
+  it('PUT saves a name and a zone and keeps the limit', async () => {
+    const settings = await SettingsStore.load(file)
+    await settings.update({ maxWorkingBots: 4 })
+    const app = createApp({ ...base, settings })
+    const res = await put(app, { ownerName: ' Ali ', timeZone: 'Asia/Seoul' })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ maxWorkingBots: 4, ownerName: 'Ali', timeZone: 'Asia/Seoul' })
+  })
+
+  it('PUT clears the name with an empty string or null', async () => {
+    const settings = await SettingsStore.load(file)
+    const app = createApp({ ...base, settings })
+    for (const value of ['', '   ', null]) {
+      await settings.update({ ownerName: 'Ali' })
+      expect((await put(app, { ownerName: value })).status).toBe(200)
+      expect(settings.get().ownerName).toBeNull()
+    }
+  })
+
+  it('refuses a bad zone, a newline in the name, 61 characters, an extra key and {}', async () => {
+    const app = createApp({ ...base, settings: await SettingsStore.load(file) })
+    for (const body of [{ timeZone: 'Mars/Olympus' }, { ownerName: 'A\nB' }, { ownerName: '<b>' }, { ownerName: 'x'.repeat(61) }, { ownerName: 'Ali', extra: 1 }, {}]) {
+      const res = await put(app, body)
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({ error: 'bad_body' })
+    }
+    expect((await put(app, { ownerName: 'x'.repeat(60) })).status).toBe(200)
+  })
+})
+
 describe('settings routes', () => {
   it('GET returns the settings and PUT updates them', async () => {
     const settings = await SettingsStore.load(file)
     const app = createApp({ ...base, settings })
     const get = await app.request('/crew/settings', { headers: headers() })
-    expect(await get.json()).toEqual({ maxWorkingBots: 2 })
+    expect(await get.json()).toEqual({ maxWorkingBots: 2, ownerName: null, timeZone: null })
     const res = await put(app, { maxWorkingBots: 7 })
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ maxWorkingBots: 7 })
-    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ maxWorkingBots: 7 })
+    expect(await res.json()).toEqual({ maxWorkingBots: 7, ownerName: null, timeZone: null })
+    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ maxWorkingBots: 7, ownerName: null, timeZone: null })
   })
 
   it('accepts null (no limit) and the 1 and 20 bounds', async () => {
@@ -98,7 +135,7 @@ describe('settings routes', () => {
     }
     expect((await app.request('/crew/settings', { method: 'PUT', headers: headers(), body: '{' })).status).toBe(400)
     expect(await readFile(file, 'utf8')).toBe(before)
-    expect(settings.get()).toEqual({ maxWorkingBots: 3 })
+    expect(settings.get()).toEqual({ maxWorkingBots: 3, ownerName: null, timeZone: null })
   })
 
   it('refuses a PUT without the CSRF header and requires a session', async () => {
@@ -125,7 +162,7 @@ describe('settings routes', () => {
       while (!text.includes('\n\n')) text += decoder.decode((await reader.read()).value)
       return JSON.parse(text.split('\n').find(l => l.startsWith('data:'))!.slice(5)) as CrewState
     }
-    expect((await next()).settings).toEqual({ maxWorkingBots: 2 })
+    expect((await next()).settings).toEqual({ maxWorkingBots: 2, ownerName: null, timeZone: null })
     expect((await put(app, { maxWorkingBots: 4 })).status).toBe(200)
     expect((await next()).settings.maxWorkingBots).toBe(4)
     controller.abort()

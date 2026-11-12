@@ -7,17 +7,17 @@ import { AppsDialog } from '@/features/apps/AppsDialog'
 import { type CrewDialog, useDialogRequests } from '@/features/apps/open-dialog'
 import { SettingsDialog } from '@/features/settings/SettingsDialog'
 import { CreditPillView, useUsage } from '@/features/usage/CreditPill'
-import type { BotView } from '@/state/types'
+import type { BotView, CrewSettings } from '@/state/types'
 
 import { ThemeMenu } from './ThemeMenu'
 
 interface RailFooterProps {
   bots: readonly BotView[]
-  maxWorkingBots: number | null
+  settings: CrewSettings
 }
 
 /** Credit pill, then Apps, Settings and the theme menu. Polls credit once and shares it with the Settings dialog. */
-export function RailFooter({ bots, maxWorkingBots }: RailFooterProps) {
+export function RailFooter({ bots, settings }: RailFooterProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [appsOpen, setAppsOpen] = useState(false)
   const usage = useUsage()
@@ -37,7 +37,7 @@ export function RailFooter({ bots, maxWorkingBots }: RailFooterProps) {
         <ThemeMenu />
       </footer>
       <AppsDialog open={appsOpen} onOpenChange={setAppsOpen} bots={bots} />
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} maxWorkingBots={maxWorkingBots} usage={usage} />
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} settings={settings} usage={usage} />
     </>
   )
 }

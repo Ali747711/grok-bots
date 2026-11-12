@@ -1,21 +1,39 @@
 import { chmod, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
+import { IANAZone } from 'luxon'
 import { z } from 'zod'
 
 import { log } from '../log.js'
 
 export const MAX_WORKING_BOTS_RANGE = { min: 1, max: 20 } as const
 
+export const OWNER_NAME_MAX = 60
+
 export interface CrewSettings {
   /** Integer 1-20, or null for no limit. */
   readonly maxWorkingBots: number | null
+  /** What the bots call the owner (spec 2026-11-12 §4.2); shared by every bot. */
+  readonly ownerName: string | null
+  /** IANA zone the bots use for the owner's time, taken from the browser on the first save. */
+  readonly timeZone: string | null
 }
 
-export const DEFAULT_SETTINGS: CrewSettings = { maxWorkingBots: 2 }
+export const DEFAULT_SETTINGS: CrewSettings = { maxWorkingBots: 2, ownerName: null, timeZone: null }
 
-export const settingsPatchSchema = z.object({
-  maxWorkingBots: z.number().int().min(MAX_WORKING_BOTS_RANGE.min).max(MAX_WORKING_BOTS_RANGE.max).nullable()
+const maxWorkingBots = z.number().int().min(MAX_WORKING_BOTS_RANGE.min).max(MAX_WORKING_BOTS_RANGE.max).nullable()
+// No line breaks or angle brackets: the name goes into every bot's prompt, one line, never a marker.
+const ownerName = z.string().trim().max(OWNER_NAME_MAX).regex(/^[^\r\n<>]*$/).transform(v => v || null).nullable()
+const timeZone = z.string().max(64).refine(zone => IANAZone.isValidZone(zone)).nullable()
+
+export const settingsPatchSchema = z.object({ maxWorkingBots, ownerName, timeZone }).partial().strict()
+  .refine(patch => Object.keys(patch).length > 0)
+
+/** The file on disk: an older file has only `maxWorkingBots`, so the new keys default to null. */
+const settingsFileSchema = z.object({
+  maxWorkingBots,
+  ownerName: ownerName.optional().default(null),
+  timeZone: timeZone.optional().default(null)
 })
 
 /** Crew's own preferences, kept in `<stateDir>/settings.json` (0600, written tmp + rename). */
@@ -33,7 +51,7 @@ export class SettingsStore {
     let current = DEFAULT_SETTINGS
     try {
       const raw = await readFile(file, 'utf8')
-      const parsed = settingsPatchSchema.safeParse(JSON.parse(raw))
+      const parsed = settingsFileSchema.safeParse(JSON.parse(raw))
       if (parsed.success) current = parsed.data
       else log.warn('settings file invalid, using defaults', { file })
     } catch (error) {

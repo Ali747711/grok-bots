@@ -1,10 +1,12 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
 vi.mock('sonner', () => ({ toast }))
 
 import { SettingsDialog } from '@/features/settings/SettingsDialog'
+import { browserTimeZone } from '@/features/settings/settings-api'
+import type { CrewSettings } from '@/state/types'
 
 const json = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status }))
 
@@ -32,8 +34,48 @@ const choose = (name: string) => {
   fireEvent.click(option)
 }
 
-const open = (value: number | null = 2, onOpenChange = vi.fn()) =>
-  render(<SettingsDialog open onOpenChange={onOpenChange} maxWorkingBots={value} usage={{ state: 'ok', remaining: 2 }} />)
+const open = (value: number | null = 2, onOpenChange = vi.fn(), over: Partial<CrewSettings> = { timeZone: 'Europe/Paris' }) =>
+  render(<SettingsDialog open onOpenChange={onOpenChange} settings={{ maxWorkingBots: value, ownerName: null, timeZone: null, ...over }} usage={{ state: 'ok', remaining: 2 }} />)
+const putBody = (fetchFn: ReturnType<typeof stubFetch>) =>
+  JSON.parse(String(fetchFn.mock.calls.find(([url]) => url === '/crew/settings')?.[1]?.body)) as Record<string, unknown>
+const nameBox = () => screen.getByRole('textbox', { name: 'Your name' })
+
+describe('SettingsDialog owner name', () => {
+  it('shows Your name with the saved value', () => {
+    stubFetch(() => json({}))
+    open(2, vi.fn(), { ownerName: 'Ali', timeZone: 'Asia/Seoul' })
+    expect(nameBox()).toHaveValue('Ali')
+    expect(screen.getByText('Your bots call you this and use your time zone (Asia/Seoul).')).toBeInTheDocument()
+    expect(screen.getByText('Your name and how many bots may work at once.')).toBeInTheDocument()
+  })
+
+  it('sends the browser time zone on the first save only', async () => {
+    const first = stubFetch(() => json({ maxWorkingBots: 2, ownerName: 'Ali', timeZone: browserTimeZone() }))
+    const done = vi.fn()
+    open(2, done, { timeZone: null })
+    fireEvent.change(nameBox(), { target: { value: ' Ali ' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(done).toHaveBeenCalledWith(false))
+    expect(putBody(first)).toEqual({ maxWorkingBots: 2, ownerName: 'Ali', timeZone: browserTimeZone() })
+    cleanup()
+    const later = stubFetch(() => json({ maxWorkingBots: 2, ownerName: 'Ali', timeZone: 'Europe/Paris' }))
+    const done2 = vi.fn()
+    open(2, done2, { ownerName: 'Ali', timeZone: 'Europe/Paris' })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(done2).toHaveBeenCalledWith(false))
+    expect(putBody(later)).not.toHaveProperty('timeZone')
+  })
+
+  it('saves an empty name as null', async () => {
+    const fetchFn = stubFetch(() => json({ maxWorkingBots: 2, ownerName: null, timeZone: 'Europe/Paris' }))
+    const done = vi.fn()
+    open(2, done, { ownerName: 'Ali', timeZone: 'Europe/Paris' })
+    fireEvent.change(nameBox(), { target: { value: '   ' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(done).toHaveBeenCalledWith(false))
+    expect(putBody(fetchFn).ownerName).toBeNull()
+  })
+})
 
 describe('SettingsDialog', () => {
   it('shows the current limit, the credit helper and the credit line', async () => {
@@ -54,7 +96,7 @@ describe('SettingsDialog', () => {
     expect(toast.success).toHaveBeenCalledWith('Settings saved')
     const call = fetchFn.mock.calls.find(([url]) => url === '/crew/settings')
     expect(call?.[1]?.method).toBe('PUT')
-    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ maxWorkingBots: null })
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ maxWorkingBots: null, ownerName: null })
   })
 
   it('saves a number', async () => {
@@ -64,7 +106,7 @@ describe('SettingsDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(fetchFn.mock.calls.some(([url]) => url === '/crew/settings')).toBe(true))
     const call = fetchFn.mock.calls.find(([url]) => url === '/crew/settings')
-    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ maxWorkingBots: 6 })
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ maxWorkingBots: 6, ownerName: null })
   })
 
   it('shows an error and stays open when saving fails', async () => {

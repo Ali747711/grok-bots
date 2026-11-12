@@ -175,7 +175,7 @@ export function Rail({ state, crewConnected, selected, selectedGroupId, needsYou
           {finding && visible.length === 0 && sections.hidden.length === 0 && <p className="px-2 py-6 text-center text-[13px] font-medium text-faint">No bot matches</p>}
         </LayoutGroup>
       </div>
-      <RailFooter bots={state?.bots ?? []} maxWorkingBots={state?.settings ? state.settings.maxWorkingBots : DEFAULT_MAX_WORKING_BOTS} />
+      <RailFooter bots={state?.bots ?? []} settings={state?.settings ?? { maxWorkingBots: DEFAULT_MAX_WORKING_BOTS }} />
     </div>
   )
 }
