@@ -76,6 +76,7 @@ function ApprovalControls({ entry, disabled, send }: { entry: PendingView; disab
               type="button"
               size="sm"
               variant={choice === 'once' ? 'default' : 'outline'}
+              data-emphasis={choice === 'once' ? 'primary' : undefined}
               title={hint || undefined}
               disabled={disabled}
               onClick={() => void send({ choice })}

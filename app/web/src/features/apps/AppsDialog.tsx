@@ -1,8 +1,8 @@
 import { useState } from 'react'
 
-import { DIALOG_DESCRIPTION, DIALOG_TITLE, ERROR_TEXT, WELL } from '@/components/console/dialog-styles'
+import { DIALOG_DESCRIPTION, DIALOG_TITLE, ERROR_TEXT, NOTE, WELL } from '@/components/console/dialog-styles'
 import { Button } from '@/components/ui/button'
-import { type PillTone, StatusPill } from '@/features/routines/StatusPill'
+import { type PillTone, StatusPill } from '@/components/console/status-pill'
 import type { BotView } from '@/state/types'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
@@ -18,7 +18,6 @@ const STATUS: Record<ConnectedApp['status'], { text: string; tone: PillTone }> =
   pending: { text: 'Waiting for sign-in…', tone: 'warn' },
   failed: { text: 'Not connected', tone: 'error' }
 }
-const NOTE = 'px-1 text-[13px] font-medium text-muted-foreground'
 
 function KeyProblem({ error, onSettings }: { error: string; onSettings: () => void }) {
   return (

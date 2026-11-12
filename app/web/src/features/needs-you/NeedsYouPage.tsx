@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { CrewAvatar } from '@/features/avatars/CrewAvatar'
 import { submitAnswer } from '@/features/requests/answer-request'
 import { RequestCard } from '@/features/requests/RequestCard'
+import { RevealHidden } from '@/features/requests/reveal-hidden'
 import type { CrewState, PendingKind, PendingView } from '@/state/types'
 
 const KIND_LABEL: Record<PendingKind, string> = { approval: 'Approval', clarify: 'Question', sudo: 'Password', secret: 'Secret' }
@@ -38,7 +39,7 @@ function EntryHeader({ entry, state, stale, age }: EntryHeaderProps) {
           <span className="shrink-0">{KIND_LABEL[entry.kind]}</span>
           <span className="ml-auto shrink-0">{age}</span>
         </span>
-        <span className="mt-0.5 block text-sm break-words">{entry.summary}</span>
+        <span className="mt-0.5 block text-sm break-words"><RevealHidden text={entry.summary} /></span>
         <span className="mt-1 block text-xs font-medium text-muted-foreground">Open chat</span>
       </span>
     </Link>

@@ -142,4 +142,11 @@ describe('NeedsYouPage', () => {
     expect(link).toHaveAttribute('href', '/groups/r%201')
     expect(within(link).getByText('Open chat')).toBeInTheDocument()
   })
+
+  it('shows hidden characters in a summary as markers, in the link too', () => {
+    renderPage(crewState({ bots: [bot({ name: 'dev', title: 'Dev' })], pending: [pending('a', 'dev', 'approval', 'rm \u202Efdp.exe', 5)] }))
+    const link = screen.getByRole('link', { name: /rm/ })
+    expect(link.textContent).toContain('⟨U+202E⟩')
+    expect(link.textContent).not.toContain('\u202E')
+  })
 })

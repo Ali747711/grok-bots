@@ -1,4 +1,4 @@
-import { type PillTone, StatusPill } from '@/features/routines/StatusPill'
+import { type PillTone, StatusPill } from '@/components/console/status-pill'
 
 import type { TriggerOutcome } from './types'
 

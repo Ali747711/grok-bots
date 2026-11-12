@@ -1,4 +1,4 @@
-import type { PillTone } from './StatusPill'
+import type { PillTone } from '@/components/console/status-pill'
 import type { RunView } from './types'
 
 export const STATUS_WORD: Record<RunView['status'], string> = {

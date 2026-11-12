@@ -8,6 +8,8 @@ export const FIELD = 'flex flex-col gap-2'
 export const FIELD_LABEL = 'px-1 text-[13px] font-semibold'
 /** A note under a control. Faint text: only on the shell or a well, never on `bg-control`. */
 export const HINT = 'px-1 text-xs font-medium text-faint'
+/** A plain line of secondary text in a dialog. */
+export const NOTE = 'px-1 text-[13px] font-medium text-muted-foreground'
 /** A failure, as plain red text on the shell or a well (never on a red tint). */
 export const ERROR_TEXT = 'px-1 text-[13px] font-medium text-destructive'
 /** An inner surface on a shell. */

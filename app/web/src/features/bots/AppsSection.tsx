@@ -44,8 +44,9 @@ function AppRow({ row, bot, title, offered, busy, error, notice, onChange }: App
   return (
     <li className="flex flex-col gap-1.5" data-bot={bot}>
       <div className="flex items-center gap-3 rounded-2xl bg-shell py-2 pr-3 pl-2">
-        <AppTile name={row.name} />
-        <div className="flex min-w-0 flex-1 flex-col">
+        {/* `data-private`: the committed screenshots mask which apps the user connected. */}
+        <span data-private="app" className="flex shrink-0"><AppTile name={row.name} /></span>
+        <div data-private="app" className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-[13px] font-semibold">{row.name}</span>
           {row.known && !row.connected && <span className="text-xs font-medium text-muted-foreground">Not connected</span>}
         </div>

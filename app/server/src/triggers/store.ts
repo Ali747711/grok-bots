@@ -1,4 +1,4 @@
-import { chmod, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { access, chmod, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
 import { z } from 'zod'
@@ -66,6 +66,18 @@ function withoutKey<T>(record: Readonly<Record<string, T>>, key: string): Record
  * Mutations change memory at once and queue a write of the latest snapshot; their promise settles
  * when a write containing them finished.
  */
+/** `<file>.corrupt-<ms>`, with the stamp moved on while that name is taken: two bad files in one millisecond must both be kept. */
+async function asideName(file: string): Promise<string> {
+  for (let stamp = Date.now(); ; stamp++) {
+    const name = `${file}.corrupt-${stamp}`
+    try {
+      await access(name)
+    } catch {
+      return name
+    }
+  }
+}
+
 export class TriggerStore {
   private chain: Promise<unknown> = Promise.resolve()
 
@@ -90,7 +102,7 @@ export class TriggerStore {
       // invalid JSON: handled below like a schema failure
     }
     if (!parsed) {
-      await rename(file, `${file}.corrupt-${Date.now()}`)
+      await rename(file, await asideName(file))
       log.error('triggers file invalid, moved aside', { file })
       return new TriggerStore(file, EMPTY)
     }

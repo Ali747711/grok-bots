@@ -1,5 +1,5 @@
 import { ChevronDown } from 'lucide-react'
-import { AnimatePresence, motion } from 'motion/react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useId, useState } from 'react'
 
 import { IconButton } from '@/components/console/icon-button'
@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils'
 
 import { describeSchedule } from './describe-schedule'
 import { RoutineDetails } from './RoutineDetails'
-import { type PillTone, StatusPill } from './StatusPill'
+import { type PillTone, StatusPill } from '@/components/console/status-pill'
 import type { LastStatus, RoutineView } from './types'
 import { useRowActions } from './use-row-actions'
 import { formatInZone } from './use-schedule-preview'
@@ -75,6 +75,8 @@ function StatusLine({ routine }: { routine: RoutineView }) {
 export function RoutineRow({ routine, onChanged, onEdit, historyOpen, onToggleHistory, triggerCount = 0, triggers, sandboxed = false }: RoutineRowProps) {
   const [open, setOpen] = useState(false)
   const detailsId = useId()
+  // Reduced motion: the details appear at once instead of springing open.
+  const still = useReducedMotion()
   const { note, runTick, run, toggle, remove } = useRowActions(routine, onChanged)
 
   return (
@@ -89,8 +91,8 @@ export function RoutineRow({ routine, onChanged, onEdit, historyOpen, onToggleHi
         {!routine.finished && (
           <Button type="button" size="sm" variant="outline" disabled={routine.running} onClick={() => void run()}>{routine.running ? 'Running…' : 'Run now'}</Button>
         )}
-        <IconButton label="Routine details" aria-expanded={open} aria-controls={open ? detailsId : undefined} onClick={() => setOpen(o => !o)}>
-          <motion.span initial={false} animate={{ rotate: open ? 180 : 0 }} transition={snappy} className="flex">
+        <IconButton label="Routine details" className="aria-expanded:bg-lifted aria-expanded:shadow-lifted" aria-expanded={open} aria-controls={open ? detailsId : undefined} onClick={() => setOpen(o => !o)}>
+          <motion.span initial={false} animate={{ rotate: open ? 180 : 0 }} transition={still ? { duration: 0 } : snappy} className="flex">
             <ChevronDown aria-hidden="true" />
           </motion.span>
         </IconButton>
@@ -99,7 +101,7 @@ export function RoutineRow({ routine, onChanged, onEdit, historyOpen, onToggleHi
         {open && (
           <motion.div
             key="details" id={detailsId} role="group" aria-label={`${routine.title} details`} className="overflow-hidden"
-            initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={settle}
+            initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={still ? { duration: 0 } : settle}
           >
             <RoutineDetails
               routine={routine} onChanged={onChanged} onEdit={onEdit} onToggle={() => void toggle()} onDelete={() => void remove()}

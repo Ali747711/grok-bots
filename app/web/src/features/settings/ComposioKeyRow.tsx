@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { codeOf, getKey, removeKey, saveKey } from '@/features/apps/apps-api'
 import { notifyKeyChanged } from '@/features/apps/open-dialog'
 import { CrewApiError } from '@/lib/crew-json'
-import { StatusPill } from '@/features/routines/StatusPill'
+import { StatusPill } from '@/components/console/status-pill'
 import { ConfirmAction } from '@/features/triggers/ConfirmAction'
 
 const INPUT_ID = 'composio-key-input'

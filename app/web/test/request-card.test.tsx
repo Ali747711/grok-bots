@@ -344,3 +344,11 @@ describe('RequestCard: input safety', () => {
     expect(screen.getByText('Answer this in the app that asked')).toBeInTheDocument()
   })
 })
+
+describe('RequestCard: the emphasised choice', () => {
+  it('marks only Allow once as the primary choice', () => {
+    render(<RequestCard entry={entry({ choices: ['session', 'always', 'once', 'deny'] })} onAnswer={noop} />)
+    const emphasised = screen.getAllByRole('button').filter(b => b.getAttribute('data-emphasis') === 'primary')
+    expect(emphasised.map(b => b.textContent)).toEqual(['Allow once'])
+  })
+})

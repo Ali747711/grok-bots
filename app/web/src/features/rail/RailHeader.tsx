@@ -22,7 +22,8 @@ export function RailHeader({ state, crewConnected, showStatus, newBotOpen, onNew
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
           <h1 className="text-[15px] leading-5 font-semibold tracking-tight">Crew</h1>
-          {state && <p className="truncate text-xs font-medium text-faint tabular-nums">{railSummary(state.bots, showStatus)}</p>}
+          {/* `data-private`: the committed screenshots mask the count of the user's bots. */}
+          {state && <p data-private="bot-count" className="truncate text-xs font-medium text-faint tabular-nums">{railSummary(state.bots, showStatus)}</p>}
         </div>
         <NewBotDisclosure open={newBotOpen} onOpenChange={onNewBotOpen} onCreated={onCreated} />
       </div>

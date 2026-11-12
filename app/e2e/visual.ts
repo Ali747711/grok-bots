@@ -115,6 +115,7 @@ export function privateParts(page: Page): Locator[] {
     page.locator('[data-app]'),
     // The profile's Apps tab: each connected app's tile and name (the switch and the level chips stay visible).
     page.getByRole('main').locator('li[data-bot] > div:first-child > :not([role="switch"])'),
+    // Also carries the two structural masks above by attribute (`bot-count`, `app`), so a layout change cannot unmask them.
     page.locator('[data-private]')
   ]
 }

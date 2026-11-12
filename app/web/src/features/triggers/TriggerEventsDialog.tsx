@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { DIALOG_TITLE } from '@/components/console/dialog-styles'
+import { DIALOG_TITLE, NOTE } from '@/components/console/dialog-styles'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { RunTranscript } from '@/features/routines/RunTranscript'
@@ -20,7 +20,6 @@ interface TriggerEventsDialogProps {
   routine: RoutineView | null
 }
 
-const NOTE = 'px-1 text-[13px] font-medium text-muted-foreground'
 
 function EventRow({ event, timezone, onOpenRun }: { event: TriggerEvent; timezone: string | null; onOpenRun: (runId: string) => void }) {
   return (

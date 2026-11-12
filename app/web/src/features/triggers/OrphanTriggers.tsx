@@ -1,4 +1,4 @@
-import { StatusPill } from '@/features/routines/StatusPill'
+import { StatusPill } from '@/components/console/status-pill'
 
 import { TriggerItem } from './TriggerItem'
 import type { TriggerView } from './types'
