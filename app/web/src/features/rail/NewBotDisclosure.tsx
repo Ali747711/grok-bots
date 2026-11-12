@@ -22,9 +22,9 @@ const LAYOUT_ID = 'new-bot'
 const RESETS: readonly Dialog.Root.ChangeEventReason[] = ['escape-key', 'close-press']
 // Beside the 272 px rail (8 px page padding, 8 px gap); pulled left and narrowed where the window has no room.
 const PANEL =
-  'fixed top-2 left-[max(8px,min(288px,calc(100vw-448px)))] z-50 flex max-h-[calc(100dvh-16px)] w-[440px] max-w-[calc(100vw-16px)] flex-col overflow-y-auto rounded-3xl bg-shell p-1 text-sm shadow-xl ring-1 ring-foreground/10 outline-none'
+  'fixed top-2 left-[max(8px,min(288px,calc(100vw-448px)))] z-50 flex max-h-[calc(100dvh-16px)] w-[440px] max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-3xl bg-shell p-1 text-sm shadow-xl ring-1 ring-foreground/10 outline-none'
 const CLOSE =
-  'flex size-7 items-center justify-center rounded-full bg-control text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring'
+  'flex size-7 items-center justify-center rounded-full bg-control text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50'
 
 /** Open state, the draft that outlives a closed panel, and what each way of closing does to it. */
 function useNewBotPanel({ onCreated, open: openProp, onOpenChange }: NewBotDisclosureProps) {
@@ -35,6 +35,8 @@ function useNewBotPanel({ onCreated, open: openProp, onOpenChange }: NewBotDiscl
   // A half-made bot came from this draft, so it is used up however the panel closes.
   const spent = useRef(false)
   const returnFocus = useRef(false)
+  // A create is in flight: the panel stays until it answers, or a half-made bot's notice would never be seen.
+  const [creating, setCreating] = useState(false)
 
   const close = (reset: boolean) => {
     if (reset || spent.current) setDraft(EMPTY_NEW_BOT_DRAFT)
@@ -46,10 +48,12 @@ function useNewBotPanel({ onCreated, open: openProp, onOpenChange }: NewBotDiscl
     open,
     draft,
     setDraft,
+    creating,
+    setCreating,
     show: () => setOpen(true),
     onChange: (next: boolean, details: Dialog.Root.ChangeEventDetails) => {
       if (next) setOpen(true)
-      else close(RESETS.includes(details.reason))
+      else if (!creating) close(RESETS.includes(details.reason))
     },
     onPartial: () => {
       spent.current = true
@@ -104,14 +108,14 @@ export function NewBotDisclosure(props: NewBotDisclosureProps) {
           render={<motion.div layoutId={LAYOUT_ID} transition={morph} style={{ borderRadius: 24 }} />}
           className={PANEL}
         >
-          <div className="flex items-center justify-between py-2 pr-2 pl-4">
+          <div className="flex flex-none items-center justify-between py-2 pr-2 pl-4">
             <Dialog.Title className="text-[15px] leading-5 font-semibold">New bot</Dialog.Title>
-            <Dialog.Close aria-label="Close" className={CLOSE}>
+            <Dialog.Close aria-label="Close" disabled={panel.creating} className={CLOSE}>
               <X className="size-4" strokeWidth={2.5} aria-hidden="true" />
             </Dialog.Close>
           </div>
-          <div className="p-3 pt-1">
-            <NewBotForm draft={panel.draft} onDraft={panel.setDraft} onCreated={panel.created} onPartial={panel.onPartial} />
+          <div className="min-h-0 flex-1 scroll-thin overflow-y-auto px-3 pt-1">
+            <NewBotForm draft={panel.draft} onDraft={panel.setDraft} onCreated={panel.created} onPartial={panel.onPartial} onBusyChange={panel.setCreating} />
           </div>
         </Dialog.Popup>
       </Dialog.Portal>

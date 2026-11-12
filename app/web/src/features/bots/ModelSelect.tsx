@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { crewFetch } from '@/lib/crew-api'
+import { cn } from '@/lib/utils'
 
 import type { ModelChoice } from './types'
 
@@ -18,6 +19,8 @@ interface ModelSelectProps {
   /** Offer "Default (<model>)", which sends no model. */
   allowDefault?: boolean
   id?: string
+  /** Extra classes for the trigger, e.g. the fill for a field that sits on a well. */
+  className?: string
 }
 
 interface RawOptions {
@@ -43,7 +46,7 @@ async function loadOptions(): Promise<ModelOptions | null> {
 const DEFAULT = '__default__'
 
 /** Models of the current provider (read from Hermes), plus the default. The label is the element with id `${id}-label`. */
-export function ModelSelect({ value, onChange, allowDefault = true, id = 'bot-model' }: ModelSelectProps) {
+export function ModelSelect({ value, onChange, allowDefault = true, id = 'bot-model', className }: ModelSelectProps) {
   const [options, setOptions] = useState<ModelOptions | null>(null)
   const [failed, setFailed] = useState(false)
 
@@ -76,7 +79,7 @@ export function ModelSelect({ value, onChange, allowDefault = true, id = 'bot-mo
   return (
     <div className="flex flex-col gap-1">
       <Select value={chosen} onValueChange={v => v !== null && pick(v)} items={items}>
-        <SelectTrigger id={id} aria-labelledby={`${id}-label`} className="w-full">
+        <SelectTrigger id={id} aria-labelledby={`${id}-label`} className={cn('w-full', className)}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

@@ -5,7 +5,6 @@ import { ChoiceChips, OptionList, Section, Switch } from '@/components/console/f
 import { IconButton } from '@/components/console/icon-button'
 import { RolePicker } from '@/components/console/role-picker'
 import { StatusChip, StatusDot, STATUS_LABEL } from '@/components/console/status'
-import { TextField } from '@/components/console/text-field'
 import { TooltipProvider } from '@/components/ui/tooltip'
 
 const OPTIONS = [
@@ -122,9 +121,23 @@ describe('console fields', () => {
     expect(button).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('Section renders a section with an h3 and TextField ties its label', () => {
-    render(<Section title="Sleep" hint="When idle"><TextField id="nm" label="Name" defaultValue="x" /></Section>)
+  it('Section renders a section with an h3 and its hint', () => {
+    render(<Section title="Sleep" hint="When idle"><p>body</p></Section>)
     expect(screen.getByRole('heading', { level: 3, name: 'Sleep' })).toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('x')
+    expect(screen.getByText('When idle')).toBeInTheDocument()
+  })
+
+  it('draws the unchosen radio ring and the off switch in colours that show on a light well (light review C1, C2)', () => {
+    render(<><OptionList legend="Pick" value="one" options={OPTIONS} onChange={() => {}} /><Switch checked={false} onChange={() => {}} label="Off" /><Switch checked onChange={() => {}} label="On" /></>)
+    for (const radio of screen.getAllByRole('radio')) {
+      const ring = radio.nextElementSibling!
+      expect(ring).toHaveClass('border-ring')
+      expect(ring).not.toHaveClass('border-control')
+    }
+    const off = screen.getByRole('switch', { name: 'Off' })
+    expect(off).toHaveClass('bg-switch-off')
+    expect(off).not.toHaveClass('bg-control')
+    expect(off.firstElementChild).toHaveClass('bg-shell', 'dark:bg-background')
+    expect(screen.getByRole('switch', { name: 'On' })).toHaveClass('bg-watermelon')
   })
 })

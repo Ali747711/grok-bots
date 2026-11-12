@@ -18,6 +18,8 @@ interface IdentityTabProps extends TextTabProps {
   allowDefault: boolean
 }
 
+/** A field on the profile's `bg-background` well takes the shell fill in light (light review I3); dark keeps its own. */
+export const ON_WELL = 'not-dark:bg-shell'
 export const NAME_MAX = 80
 export const JOB_MAX = 2000
 
@@ -46,7 +48,7 @@ export function IdentityTab({ form, title, handle, allowDefault, onChange }: Ide
   return (
     <>
       <Field label={<label htmlFor="profile-name">Name</label>} hint="Shown in the rail and in the conversation.">
-        <Input id="profile-name" value={form.name} maxLength={NAME_MAX} autoComplete="off" onChange={e => onChange({ name: e.target.value })} />
+        <Input id="profile-name" className={ON_WELL} value={form.name} maxLength={NAME_MAX} autoComplete="off" onChange={e => onChange({ name: e.target.value })} />
         <p className="px-1 text-xs font-medium text-muted-foreground">
           <span>{`@${handle}`}</span>
           <span className="text-faint"> · the handle never changes</span>
@@ -56,10 +58,10 @@ export function IdentityTab({ form, title, handle, allowDefault, onChange }: Ide
         <RolePicker value={form.role} onChange={role => onChange({ role })} />
       </Field>
       <Field label={<label htmlFor="profile-job">Job</label>} hint={`What ${title} is for.`}>
-        <Textarea id="profile-job" maxLength={JOB_MAX} value={form.description} onChange={e => onChange({ description: e.target.value })} />
+        <Textarea id="profile-job" className={ON_WELL} maxLength={JOB_MAX} value={form.description} onChange={e => onChange({ description: e.target.value })} />
       </Field>
       <Field label={<span id="profile-model-label">Model</span>} hint="The model that does the thinking. Hermes asks before a costly one.">
-        <ModelSelect id="profile-model" value={form.model} onChange={model => onChange({ model })} allowDefault={allowDefault} />
+        <ModelSelect id="profile-model" className={ON_WELL} value={form.model} onChange={model => onChange({ model })} allowDefault={allowDefault} />
       </Field>
     </>
   )

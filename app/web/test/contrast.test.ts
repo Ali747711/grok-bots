@@ -23,27 +23,48 @@ const TEXT = 4.5
 const NON_TEXT = 3
 const SURFACES = ['background', 'shell', 'raised', 'control']
 
-/** [foreground token, surface tokens, minimum ratio]: spec §5.1 review rule plus R13. */
-const RULES: [string, string[], number][] = [
+/** Dark is frozen (R13), so a pair that only light draws safely is measured in light alone. */
+const LIGHT_ONLY = ['light']
+
+/** [foreground token, surface tokens, minimum ratio, themes (all when left out)]: spec §5.1 review rule plus R13 and the light review. */
+const RULES: [string, string[], number, string[]?][] = [
   ['foreground', SURFACES, TEXT],
   ['muted-foreground', SURFACES, TEXT],
   // Faint text never sits on --control (spec §5.1 ruling).
   ['faint', ['background', 'shell', 'raised'], TEXT],
-  ['destructive', ['shell', 'raised'], TEXT],
+  ['destructive', ['background', 'shell', 'raised'], TEXT],
+  ['destructive', ['control'], TEXT, LIGHT_ONLY],
   // `text-background` on `bg-destructive` (the hidden-character marker in the approval card).
   ['background', ['destructive'], TEXT],
   ['primary-foreground', ['primary'], TEXT],
+  // Also the unchosen radio ring (light review C1) and the sidebar focus ring.
   ['ring', SURFACES, NON_TEXT],
-  ['status-working', ['shell', 'raised'], NON_TEXT],
-  ['status-waiting', ['shell', 'raised'], NON_TEXT],
-  ['status-idle', ['shell', 'raised'], NON_TEXT],
-  ['watermelon', ['shell', 'raised'], NON_TEXT]
+  // No class uses it today; dark keeps crew-bots' value (frozen), so only light is held to the ring rule.
+  ['sidebar-ring', SURFACES, NON_TEXT, LIGHT_ONLY],
+  ['status-working', SURFACES, NON_TEXT],
+  ['status-waiting', SURFACES, NON_TEXT],
+  ['status-idle', SURFACES, NON_TEXT],
+  ['watermelon', ['background', 'shell', 'raised'], NON_TEXT],
+  ['watermelon', ['control'], NON_TEXT, LIGHT_ONLY],
+  // Control shapes (light review C2, I1): not WCAG text pairs, so the floor is the step the dark theme has.
+  ['switch-off', ['background', 'shell'], 1.5],
+  ['lifted', ['background'], 1.1],
+  ['raised', ['shell'], 1.15],
+  // The text tiers stay apart (light review I4).
+  ['muted-foreground', ['faint'], 1.25]
 ]
+
+/** A token's value with `var(--other)` followed to the colour it names. */
+function valueOf(tokens: Record<string, string>, name: string, depth = 0): string | undefined {
+  const value = tokens[`--${name}`]
+  const ref = /^var\(--([\w-]+)\)$/.exec(value ?? '')
+  return ref && depth < 5 ? valueOf(tokens, ref[1]!, depth + 1) : value
+}
 
 /** A missing or unparseable token yields 0, so the row fails with its name rather than breaking collection. */
 function ratioOf(tokens: Record<string, string>, fg: string, bg: string): number {
-  const a = tokens[`--${fg}`]
-  const b = tokens[`--${bg}`]
+  const a = valueOf(tokens, fg)
+  const b = valueOf(tokens, bg)
   if (!a || !b) return 0
   try {
     return Math.floor(contrastRatio(a, b) * 100) / 100
@@ -53,14 +74,15 @@ function ratioOf(tokens: Record<string, string>, fg: string, bg: string): number
 }
 
 /** [text token, fill token, fill alpha, surfaces under the fill, minimum]: class-map pairs with a translucent fill. */
-const TINT_RULES: [string, string, number, string[], number][] = [
+const TINT_RULES: [string, string, number, string[], number, string[]?][] = [
   // `text-destructive` on `bg-destructive/10` (error badges, the destructive button).
-  ['destructive', 'destructive', 0.1, ['shell', 'raised'], TEXT]
+  ['destructive', 'destructive', 0.1, ['background', 'shell', 'raised'], TEXT],
+  ['destructive', 'destructive', 0.1, ['control'], TEXT, LIGHT_ONLY]
 ]
 
 /** Like `ratioOf`, with `fill` at `alpha` composited over `under` as the background. */
 function tintRatioOf(tokens: Record<string, string>, fg: string, fill: string, alpha: number, under: string): number {
-  const [a, b, c] = [tokens[`--${fg}`], tokens[`--${fill}`], tokens[`--${under}`]]
+  const [a, b, c] = [valueOf(tokens, fg), valueOf(tokens, fill), valueOf(tokens, under)]
   if (!a || !b || !c) return 0
   try {
     return Math.floor(contrastOf(parseColor(a), compositeOver(parseColor(b), alpha, parseColor(c))) * 100) / 100
@@ -70,10 +92,10 @@ function tintRatioOf(tokens: Record<string, string>, fg: string, fill: string, a
 }
 
 const pairs = Object.entries(THEMES).flatMap(([theme, tokens]) =>
-  RULES.flatMap(([fg, surfaces, min]) => surfaces.map(bg => ({ theme, fg, bg, min, ratio: ratioOf(tokens, fg, bg) }))))
+  RULES.filter(rule => rule[3]?.includes(theme) ?? true).flatMap(([fg, surfaces, min]) => surfaces.map(bg => ({ theme, fg, bg, min, ratio: ratioOf(tokens, fg, bg) }))))
 
 const tintPairs = Object.entries(THEMES).flatMap(([theme, tokens]) =>
-  TINT_RULES.flatMap(([fg, fill, alpha, surfaces, min]) =>
+  TINT_RULES.filter(rule => rule[5]?.includes(theme) ?? true).flatMap(([fg, fill, alpha, surfaces, min]) =>
     surfaces.map(under => ({ theme, fg, bg: `${fill}/${alpha * 100} over ${under}`, min, ratio: tintRatioOf(tokens, fg, fill, alpha, under) }))))
 
 describe('contrast check', () => {

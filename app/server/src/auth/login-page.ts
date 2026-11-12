@@ -8,10 +8,11 @@ export const LOGIN_PAGE_HTML = `<!doctype html>
 <style>
   /* Crew UI 2 tokens, copied as literals from docs/ui2/tokens.md: this page loads no stylesheet, font or script file. */
   :root { color-scheme: light dark; --canvas: oklch(0.955 0 0); --card: oklch(0.995 0 0); --text: oklch(0.145 0 0);
-          --muted: oklch(0.515 0 0); --chip: oklch(0.965 0 0);
+          --muted: oklch(0.42 0 0); --chip: oklch(0.945 0 0);
           --panel-shadow: 0 1px 2px oklch(0 0 0 / 5%), 0 8px 24px -8px oklch(0 0 0 / 10%); }
   * { box-sizing: border-box; }
-  body { font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; display: grid; place-items: center;
+  /* Inter only where it is already installed: this page loads no font file (its CSP is default-src 'none'). */
+  body { font: 14px/1.5 "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; display: grid; place-items: center;
          min-height: 100vh; margin: 0; padding: 16px; color: var(--text); background: var(--canvas); }
   main { width: 100%; max-width: 380px; padding: 32px 28px; text-align: center; background: var(--card); border-radius: 24px;
          box-shadow: var(--panel-shadow); }

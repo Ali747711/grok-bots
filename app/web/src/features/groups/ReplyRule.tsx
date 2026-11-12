@@ -1,6 +1,5 @@
-import { useId } from 'react'
-
 import { Section } from '@/components/console/fields'
+import { RadioRows } from '@/components/console/radio-rows'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { BotView, GroupView, Routing } from '@/state/types'
 
@@ -23,43 +22,12 @@ interface ReplyRuleProps {
   onLead: (memberId: string) => void
 }
 
-interface RuleListProps {
-  /** Accessible name of the radio group. */
-  label: string
-  routing: Routing
-  onRouting: (routing: Routing) => void
-}
-
-/**
- * The three rules in the console option-list look (the chosen row lifts out of the well). The real radio
- * covers its whole row instead of being hidden off-screen, so a click on the radio itself lands on it.
- */
-function RuleList({ label, routing, onRouting }: RuleListProps) {
-  const name = useId()
-  return (
-    <fieldset role="radiogroup" aria-label={label} className="m-0 flex min-w-0 flex-col gap-0.5 rounded-[22px] border-0 bg-background p-1">
-      {RULES.map(rule => (
-        <label key={rule.value} className="group relative flex items-center gap-3 rounded-2xl px-3 py-2.5 transition-colors hover:bg-shell has-checked:bg-shell has-focus-visible:ring-3 has-focus-visible:ring-ring">
-          <input type="radio" name={name} value={rule.value} checked={routing === rule.value} onChange={() => onRouting(rule.value)} className="absolute inset-0 m-0 size-full cursor-pointer opacity-0" />
-          <span aria-hidden="true" className="flex size-4 shrink-0 items-center justify-center rounded-full border-[1.5px] border-control transition-colors group-has-checked:border-foreground">
-            <span className="size-2 rounded-full bg-foreground opacity-0 transition-opacity group-has-checked:opacity-100" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-[13px] font-semibold">{rule.label}</span>
-            <span className="block text-xs font-medium text-faint">{rule.hint}</span>
-          </span>
-        </label>
-      ))}
-    </fieldset>
-  )
-}
-
 /** Who answers a message that mentions nobody. Lead needs a seated member. */
 export function ReplyRule({ group, bots, routing, lead, onRouting, onLead }: ReplyRuleProps) {
   const items = group.members.map(m => ({ value: m.memberId, label: memberTitle(group, bots, m.memberId) }))
   return (
     <Section title={TITLE} hint="@mentions always go straight to the bots you name.">
-      <RuleList label={TITLE} routing={routing} onRouting={onRouting} />
+      <RadioRows legend={TITLE} showLegend={false} value={routing} options={RULES} onChange={onRouting} />
       {routing === 'lead' && (
         <Select value={lead || null} onValueChange={v => v !== null && onLead(String(v))} items={items}>
           <SelectTrigger aria-label="Lead bot" className="w-full">

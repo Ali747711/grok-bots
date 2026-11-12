@@ -60,7 +60,7 @@ export function SegmentedTabs<T extends string>({ tabs, value, onChange, label, 
               active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
             )}
           >
-            {active && <motion.span layoutId={`${idPrefix}-active-pill`} transition={slide} className="absolute inset-0 rounded-full bg-raised" />}
+            {active && <motion.span layoutId={`${idPrefix}-active-pill`} transition={slide} className="absolute inset-0 rounded-full bg-lifted shadow-lifted" />}
             <tab.icon className="relative size-4" aria-hidden="true" />
             <span className="relative">{tab.label}</span>
           </button>

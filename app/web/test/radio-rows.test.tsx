@@ -56,4 +56,14 @@ describe('RadioRows', () => {
     render(<RadioRows legend="Runs" value="schedule" options={OPTIONS} onChange={() => {}}><p>Hint</p></RadioRows>)
     expect(within(screen.getByRole('group', { name: 'Runs' })).getByText('Hint')).toBeInTheDocument()
   })
+
+  it('shows a hint under a label and can leave the legend to a heading above (the group reply rule)', () => {
+    render(<RadioRows legend="Who answers" showLegend={false} value="a" options={[{ value: 'a', label: 'Auto', hint: 'A quick check' }, { value: 'b', label: 'Lead' }]} onChange={() => {}} />)
+    expect(screen.getByRole('radiogroup', { name: 'Who answers' })).toBeInTheDocument()
+    expect(document.querySelector('legend')).toBeNull()
+    expect(screen.getByRole('radio', { name: /^Auto/ })).toBeChecked()
+    expect(screen.getByText('A quick check')).toBeInTheDocument()
+    // The unchosen ring is the ring colour, which shows on a light well (light review C1).
+    expect(screen.getByRole('radio', { name: 'Lead' }).nextElementSibling).toHaveClass('border-ring')
+  })
 })

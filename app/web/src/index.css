@@ -53,6 +53,10 @@
     --color-control: var(--control);
     --color-hover: var(--hover);
     --color-faint: var(--faint);
+    --color-lifted: var(--lifted);
+    --color-switch-off: var(--switch-off);
+    --color-field-border: var(--field-border);
+    --shadow-lifted: var(--lifted-shadow);
     --color-watermelon: var(--watermelon);
     --color-status-working: var(--status-working);
     --color-status-waiting: var(--status-waiting);
@@ -81,22 +85,22 @@
     color-scheme: light;
     --background: oklch(0.955 0 0);
     --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
+    --card: var(--shell);
     --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
+    --popover: var(--shell);
     --popover-foreground: oklch(0.145 0 0);
     --primary: oklch(0.205 0 0);
     --primary-foreground: oklch(0.985 0 0);
     --secondary: oklch(0.97 0 0);
     --secondary-foreground: oklch(0.205 0 0);
     --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.515 0 0);
+    --muted-foreground: oklch(0.42 0 0);
     --accent: oklch(0.97 0 0);
     --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.495 0.245 27.325);
+    --destructive: oklch(0.45 0.245 27.325);
     --border: oklch(0 0 0 / 8%);
     --input: oklch(0.922 0 0);
-    --ring: oklch(0.61 0 0);
+    --ring: oklch(0.6 0 0);
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
@@ -110,16 +114,21 @@
     --sidebar-accent: oklch(0.97 0 0);
     --sidebar-accent-foreground: oklch(0.205 0 0);
     --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
+    --sidebar-ring: var(--ring);
 
     --shell: oklch(0.995 0 0);
-    --raised: oklch(0.965 0 0);
+    --raised: oklch(0.945 0 0);
     --control: oklch(0.925 0 0);
     --hover: color-mix(in oklab, var(--control) 50%, var(--raised));
     --faint: oklch(0.5 0 0);
+    /* Light-review C2/I1/I3: what sits on a `bg-background` well. Dark maps each back to its old value. */
+    --lifted: oklch(1 0 0);
+    --lifted-shadow: 0 1px 2px oklch(0 0 0 / 8%), 0 0 0 1px oklch(0 0 0 / 5%);
+    --switch-off: oklch(0.78 0 0);
+    --field-border: oklch(0 0 0 / 8%);
     --watermelon: #ee2563;
-    --status-working: oklch(0.596 0.145 163.225);
-    --status-waiting: oklch(0.65 0.179 58.318);
+    --status-working: oklch(0.58 0.145 163.225);
+    --status-waiting: oklch(0.62 0.179 58.318);
     --status-error: var(--destructive);
     --status-idle: oklch(0.556 0 0);
     /* Light panels float on a soft shadow; dark gets that separation from luminance. */
@@ -166,6 +175,10 @@
     --control: oklch(0.371 0 0);
     --hover: color-mix(in oklab, var(--raised) 55%, var(--shell));
     --faint: oklch(0.65 0 0);
+    --lifted: var(--raised);
+    --lifted-shadow: 0 0 #0000;
+    --switch-off: var(--control);
+    --field-border: transparent;
     --status-working: oklch(0.765 0.177 163.223);
     --status-waiting: oklch(0.828 0.189 84.429);
     --status-idle: oklch(0.708 0 0);

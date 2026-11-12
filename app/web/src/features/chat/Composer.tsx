@@ -72,7 +72,7 @@ export function ComposerAction({ running, canSend, stopDisabled, onStop }: Actio
       type="submit"
       label="Send"
       disabled={!canSend}
-      className={cn(ROUND, canSend ? 'bg-primary text-primary-foreground hover:bg-primary/80 hover:text-primary-foreground' : 'bg-raised text-faint')}
+      className={cn(ROUND, canSend ? 'bg-primary text-primary-foreground hover:bg-primary/80 hover:text-primary-foreground' : 'bg-lifted text-faint shadow-lifted')}
     >
       <ArrowUp className="size-4" strokeWidth={2.5} aria-hidden="true" />
     </IconButton>

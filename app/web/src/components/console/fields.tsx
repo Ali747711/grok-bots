@@ -46,10 +46,10 @@ export function Switch({ checked, onChange, label, disabled = false, describedBy
       onClick={() => onChange(!checked)}
       className={cn(
         'relative h-6 w-10 shrink-0 rounded-full outline-none transition-colors duration-300 focus-visible:ring-3 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
-        checked ? 'bg-watermelon' : 'bg-control'
+        checked ? 'bg-watermelon' : 'bg-switch-off'
       )}
     >
-      <motion.span initial={false} animate={{ x: checked ? 16 : 0 }} transition={slide} className="absolute top-1 left-1 size-4 rounded-full bg-background shadow-sm" />
+      <motion.span initial={false} animate={{ x: checked ? 16 : 0 }} transition={slide} className="absolute top-1 left-1 size-4 rounded-full bg-shell shadow-sm dark:bg-background" />
     </button>
   )
 }
@@ -84,7 +84,7 @@ export function OptionList<T extends string>({ legend, value, options, onChange,
           )}
         >
           <input type="radio" name={name} value={option.value} checked={value === option.value} onChange={() => onChange(option.value)} className="sr-only" />
-          <span aria-hidden="true" className="flex size-4 shrink-0 items-center justify-center rounded-full border-[1.5px] border-control transition-colors group-has-checked:border-foreground">
+          <span aria-hidden="true" className="flex size-4 shrink-0 items-center justify-center rounded-full border-[1.5px] border-ring transition-colors group-has-checked:border-foreground">
             <span className="size-2 rounded-full bg-foreground opacity-0 transition-opacity group-has-checked:opacity-100" />
           </span>
           <span className="min-w-0 flex-1">

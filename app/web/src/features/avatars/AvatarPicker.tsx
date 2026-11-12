@@ -1,5 +1,5 @@
 import { BotAvatar } from 'bot-avatars'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { PhotoError, toAvatarPng } from '@/features/bots/image'
@@ -31,6 +31,8 @@ interface AvatarPickerProps {
 }
 
 const PREVIEW_SIZE = 72
+/** The share of the preview's size a hat needs above it. */
+const HAT_ROOM = 0.2
 const RING = 'ring-2 ring-foreground ring-offset-2 ring-offset-popover'
 
 function TypeGrid({ value, onChange, onTypePick, disabled }: Pick<AvatarPickerProps, 'value' | 'onChange' | 'onTypePick' | 'disabled'>) {
@@ -47,7 +49,7 @@ function TypeGrid({ value, onChange, onTypePick, disabled }: Pick<AvatarPickerPr
             onTypePick?.(type)
             onChange({ ...value, type })
           }}
-          className={cn('grid place-items-center rounded-xl bg-muted p-1 transition-shadow', value.type === type && RING)}
+          className={cn('grid place-items-center rounded-xl bg-lifted p-1 shadow-lifted transition-shadow', value.type === type && RING)}
         >
           <BotAvatar shading="fabric" type={type} {...(value.color ? { color: value.color } : {})} size={44} paused interactive={false} />
         </button>
@@ -89,6 +91,14 @@ function PhotoControls({ value, onChange, onBusyChange, disabled }: AvatarPicker
   const [error, setError] = useState<string | null>(null)
   const [preparing, setPreparing] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
+  // A photo is prepared in the background: once the picker is gone (the panel closed), its result is dropped.
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
 
   const pick = async (file: File | undefined) => {
     if (!file) return
@@ -96,11 +106,12 @@ function PhotoControls({ value, onChange, onBusyChange, disabled }: AvatarPicker
     setPreparing(true)
     onBusyChange?.(true)
     try {
-      onChange({ ...value, photo: await toAvatarPng(file) })
+      const photo = await toAvatarPng(file)
+      if (mounted.current) onChange({ ...value, photo })
     } catch (e) {
-      setError(e instanceof PhotoError ? e.message : 'Could not read that image')
+      if (mounted.current) setError(e instanceof PhotoError ? e.message : 'Could not read that image')
     } finally {
-      setPreparing(false)
+      if (mounted.current) setPreparing(false)
       onBusyChange?.(false)
     }
   }
@@ -132,8 +143,10 @@ function PhotoControls({ value, onChange, onBusyChange, disabled }: AvatarPicker
 /** The photo's preview, or the fur avatar as it will look. Decorative: the controls around it name the choices. */
 function Preview({ value, size }: { value: AvatarValue; size: number }) {
   const look = { name: 'preview', title: 'Preview', avatar: { type: value.type, ...(value.color ? { color: value.color } : {}), ...avatarWear(value) }, imageKind: null, hasAvatar: false, status: 'idle' as const, hidden: false, lastActive: null }
+  // A hat is drawn above the avatar's own box, so the preview leaves room for it over the line above.
+  const wearsHat = !value.photo && value.hat !== undefined && value.hat !== 'none'
   return (
-    <div data-testid="avatar-preview" className="flex-none" style={{ width: size, height: size }}>
+    <div data-testid="avatar-preview" className="flex-none" style={{ width: size, height: size, marginTop: wearsHat ? Math.round(size * HAT_ROOM) : 0 }}>
       {value.photo ? (
         <img src={value.photo} alt="Photo preview" className="size-full rounded-[30%] object-cover" />
       ) : (

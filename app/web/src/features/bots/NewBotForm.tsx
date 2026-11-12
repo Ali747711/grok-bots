@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { deriveAvatarType, type AvatarType } from '@/features/avatars/avatar-model'
 import { AvatarPicker, type AvatarValue } from '@/features/avatars/AvatarPicker'
 
-import { createBot, finishBot } from './bots-api'
+import { createBot, finishBot, updateBot } from './bots-api'
 import { describeCreateFailure } from './create-errors'
 import { ModelSelect } from './ModelSelect'
 import type { BotRole } from './roles'
@@ -40,10 +40,14 @@ interface NewBotFormProps {
   onCreated: (name: string) => void
   /** A bot was made from this draft but is not finished: the draft must not make a second one. */
   onPartial?: () => void
+  /** True while a create or finish call is in flight, so the panel can stay open until it answers. */
+  onBusyChange?: (busy: boolean) => void
 }
 
 const FIELD = 'flex flex-col gap-1.5'
 const LABEL = 'text-[13px] font-semibold'
+/** Create stays in view on a short window (light review I8): it sticks to the bottom of the panel's scrolling body, which has no bottom padding of its own. */
+const FOOTER = 'sticky bottom-0 z-10 -mx-3 flex flex-col gap-2 bg-shell px-3 pt-2 pb-3'
 
 interface Failure {
   handle?: string
@@ -51,13 +55,14 @@ interface Failure {
 }
 
 /** Busy flag, failure text and the partial result for create / finish calls. */
-function useCreateFlow({ onCreated, onPartial }: Pick<NewBotFormProps, 'onCreated' | 'onPartial'>) {
+function useCreateFlow({ onCreated, onPartial, onBusyChange }: Pick<NewBotFormProps, 'onCreated' | 'onPartial' | 'onBusyChange'>) {
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<Failure>({})
   const [partial, setPartial] = useState<CreateResult | null>(null)
 
   const run = async (action: () => Promise<CreateResult>) => {
     setBusy(true)
+    onBusyChange?.(true)
     setFailure({})
     try {
       const result = await action()
@@ -71,6 +76,7 @@ function useCreateFlow({ onCreated, onPartial }: Pick<NewBotFormProps, 'onCreate
       setFailure(describeCreateFailure(error))
     } finally {
       setBusy(false)
+      onBusyChange?.(false)
     }
   }
   return { busy, failure, setFailure, partial, run }
@@ -197,11 +203,11 @@ function Fields({ draft, handle, handleError, avatar, changes, onIdentity, onPho
 }
 
 /** The New bot fields and the create flow: name and handle, job, look, role, model and sandbox. */
-export function NewBotForm({ draft, onDraft, onCreated, onPartial }: NewBotFormProps) {
+export function NewBotForm({ draft, onDraft, onCreated, onPartial, onBusyChange }: NewBotFormProps) {
   const changes = useDraftChanges(draft, onDraft)
   const [photoBusy, setPhotoBusy] = useState(false)
   const [sandboxReady, setSandboxReady] = useState(true)
-  const flow = useCreateFlow({ onCreated, onPartial })
+  const flow = useCreateFlow({ onCreated, onPartial, onBusyChange })
 
   const handle = draft.handleEdited ? draft.handle : slugifyProfileName(draft.name)
   const check = validateBotName(handle)
@@ -217,7 +223,12 @@ export function NewBotForm({ draft, onDraft, onCreated, onPartial }: NewBotFormP
   }
 
   const create = () => flow.run(() => createBot({ name: handle, title, mission: draft.mission, avatar: choice, ...image, role: draft.role, ...(draft.model ? { model: draft.model } : {}), sandbox: draft.sandbox }))
-  const finish = (botName: string) => flow.run(() => finishBot(botName, { avatar: choice, title, ...image }))
+  // The role is stored with the look, so a failed look step loses it: send it again once setup has finished.
+  const finish = (botName: string) => flow.run(async () => {
+    const result = await finishBot(botName, { avatar: choice, title, ...image })
+    if (result.complete && draft.role) await updateBot(botName, { role: draft.role })
+    return result
+  })
 
   return (
     <div className="flex flex-col gap-4">
@@ -226,12 +237,14 @@ export function NewBotForm({ draft, onDraft, onCreated, onPartial }: NewBotFormP
         avatar={avatar} changes={changes} onIdentity={forget} onPhotoBusy={setPhotoBusy}
       />
       <SandboxChoice checked={draft.sandbox} onChange={sandbox => forget({ sandbox })} onReadyChange={setSandboxReady} />
-      {flow.failure.general && <p role="alert" className="text-sm text-destructive">{flow.failure.general}</p>}
-      {flow.partial ? (
-        <PartialNotice result={flow.partial} busy={flow.busy || photoBusy} onFinish={() => void finish(flow.partial!.name)} onOpen={() => onCreated(flow.partial!.name)} />
-      ) : (
-        <Button type="button" className="w-full" disabled={flow.busy || photoBusy || !check.ok || !sandboxReady} onClick={() => void create()}>Create</Button>
-      )}
+      <div className={FOOTER}>
+        {flow.failure.general && <p role="alert" className="text-sm text-destructive">{flow.failure.general}</p>}
+        {flow.partial ? (
+          <PartialNotice result={flow.partial} busy={flow.busy || photoBusy} onFinish={() => void finish(flow.partial!.name)} onOpen={() => onCreated(flow.partial!.name)} />
+        ) : (
+          <Button type="button" className="w-full" disabled={flow.busy || photoBusy || !check.ok || !sandboxReady} onClick={() => void create()}>Create</Button>
+        )}
+      </div>
     </div>
   )
 }

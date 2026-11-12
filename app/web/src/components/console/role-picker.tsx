@@ -42,7 +42,7 @@ export function RolePicker({ value, onChange, disabled = false }: RolePickerProp
             <input type="radio" name={name} value={role ?? ''} checked={value === role} onChange={() => onChange(role)} className="peer sr-only" />
             <span
               className={cn(
-                'flex flex-col items-center gap-1.5 rounded-2xl px-1 py-3 text-muted-foreground transition-colors peer-checked:bg-raised peer-checked:text-foreground peer-focus-visible:ring-3 peer-focus-visible:ring-ring',
+                'flex flex-col items-center gap-1.5 rounded-2xl px-1 py-3 text-muted-foreground transition-colors peer-checked:bg-lifted peer-checked:text-foreground peer-checked:shadow-lifted peer-focus-visible:ring-3 peer-focus-visible:ring-ring',
                 !disabled && 'hover:text-foreground'
               )}
             >

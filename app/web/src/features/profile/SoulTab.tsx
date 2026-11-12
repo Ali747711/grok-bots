@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 
-import { Field, type TextTabProps } from './IdentityTab'
+import { Field, ON_WELL, type TextTabProps } from './IdentityTab'
 
 export const SOUL_MAX = 100_000
 
@@ -33,7 +33,7 @@ export function SoulTab({ form, title, onChange }: TextTabProps) {
       <Textarea
         id="profile-soul"
         maxLength={SOUL_MAX}
-        className="max-h-[50vh] min-h-48 overflow-y-auto font-mono text-xs leading-relaxed md:text-xs"
+        className={`max-h-[50vh] min-h-48 overflow-y-auto font-mono text-xs leading-relaxed md:text-xs ${ON_WELL}`}
         value={form.soul}
         onChange={e => onChange({ soul: e.target.value })}
       />

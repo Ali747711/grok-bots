@@ -183,6 +183,18 @@ describe('NewBotDisclosure', () => {
     expect(finishBody).toEqual({ avatar: { type: deriveAvatarType('research-bot') }, title: 'Research Bot' })
   })
 
+  it('sends the chosen role again after a finished setup, and nothing more when no role was chosen', async () => {
+    const fn = stub(() => json(incomplete, 201))
+    const { onCreated } = setup()
+    type('Name', 'Research Bot')
+    fireEvent.click(screen.getByRole('radio', { name: 'Engineer' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Finish setup' }))
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith('research-bot'))
+    const patch = fn.mock.calls.find(([u, init]) => u === '/crew/bots/research-bot' && init?.method === 'PATCH')
+    expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ role: 'engineer' })
+  })
+
   it('opens the half-made bot', async () => {
     stub(() => json(incomplete, 201))
     const { onCreated } = setup()
@@ -260,7 +272,12 @@ describe('NewBotDisclosure', () => {
       expect(trigger()).toHaveAttribute('aria-haspopup', 'dialog')
       openPanel()
       await waitFor(() => expect(screen.getByLabelText('Name')).toHaveFocus())
-      expect(panel()).toHaveClass('w-[440px]', 'max-h-[calc(100dvh-16px)]', 'overflow-y-auto', 'rounded-3xl', 'bg-shell')
+      expect(panel()).toHaveClass('w-[440px]', 'max-h-[calc(100dvh-16px)]', 'overflow-hidden', 'rounded-3xl', 'bg-shell')
+      // Light review I8: only the body scrolls; the title and Close sit above it and Create sticks to its bottom.
+      const body = within(panel()).getByLabelText('Name').closest('.overflow-y-auto')
+      expect(body).not.toBeNull()
+      expect(body!.contains(within(panel()).getByRole('button', { name: 'Close' }))).toBe(false)
+      expect(within(panel()).getByRole('button', { name: 'Create' }).parentElement).toHaveClass('sticky', 'bottom-0', 'bg-shell')
       type('Name', 'Scout')
       const controls = within(panel()).getAllByRole('button')
       const first = within(panel()).getByRole('button', { name: 'Close' })

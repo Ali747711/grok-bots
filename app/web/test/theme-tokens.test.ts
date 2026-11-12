@@ -88,13 +88,23 @@ describe('theme tokens', () => {
     expect(token(dark, '--watermelon')).toBeUndefined()
   })
 
-  it('orders the light ladder: shell lightest, raised and canvas below, control darkest', () => {
+  it('orders the light ladder: shell lightest, then canvas, raised, control', () => {
     const [background, shell, raised, control] = ['--background', '--shell', '--raised', '--control'].map(name => lightness(light, name))
-    expect(shell).toBeGreaterThan(raised!)
+    // Monotonic (light review I2): shell, canvas, raised, control. A well is never between raised and control.
     expect(shell).toBeGreaterThan(background!)
-    expect(control).toBeLessThan(raised!)
-    expect(control).toBeLessThan(background!)
+    expect(background).toBeGreaterThan(raised!)
+    expect(raised).toBeGreaterThan(control!)
     expect(token(light, '--hover')).toBe('color-mix(in oklab, var(--control) 50%, var(--raised))')
+  })
+
+  it('maps the light-only helpers back to the old dark values (light review C2, I1, I3)', () => {
+    expect(token(dark, '--lifted')).toBe('var(--raised)')
+    expect(token(dark, '--switch-off')).toBe('var(--control)')
+    expect(token(dark, '--field-border')).toBe('transparent')
+    // Never `none`: it would void the whole composed box-shadow, focus rings included.
+    expect(token(dark, '--lifted-shadow')).toBe('0 0 #0000')
+    for (const name of ['lifted', 'switch-off', 'field-border']) expect(css, name).toContain(`--color-${name}: var(--${name});`)
+    expect(css).toContain('--shadow-lifted: var(--lifted-shadow);')
   })
 
   it('gives light panels a soft shadow that dark does without', () => {
