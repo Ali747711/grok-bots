@@ -47,8 +47,8 @@ describe('buildRightNow', () => {
   it('tells a sandboxed bot without its browser tool to use the Browser on its own screen', () => {
     const line = lineOf(buildRightNow({ ...INPUT, computer: { on: true, sandboxed: true, browser: false } }), 'Computer:')
     expect(line).toContain('separate from your owner')
-    expect(line).toContain('click the round browser logo on the dock at the bottom of your screen')
-    expect(line).toContain('foreground')
+    expect(line).toContain('Your browser opens on your screen when the screen starts')
+    expect(line).toContain('retry it in the foreground')
     expect(lineOf(buildRightNow({ ...INPUT, computer: { on: true, sandboxed: true, browser: true } }), 'Computer:')).not.toContain('dock')
   })
 

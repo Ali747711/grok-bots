@@ -18,3 +18,11 @@ RUN set -e; logo=$(ls /opt/playwright/chromium-*/chrome-linux*/product_logo_48.p
       install -D -m 0644 "$logo" /usr/share/icons/hicolor/48x48/apps/internet-web-browser.png; \
       if command -v gtk-update-icon-cache >/dev/null; then gtk-update-icon-cache -q -f /usr/share/icons/hicolor || true; fi; \
     fi
+
+# Open the browser when the screen starts, so the bot never has to find and click the dock first: its screen
+# tool clicks in the background by default, and the Xfce dock ignores such clicks (live probe, 2026-11-12).
+COPY open-browser.py /usr/local/lib/crew/open-browser.py
+COPY xfce4-panel-wrapper.sh /usr/local/lib/crew/xfce4-panel-wrapper.sh
+# The real dock keeps its own file name (in a Crew folder), so its window still reads "xfce4-panel".
+RUN mkdir -p /usr/local/lib/crew/real && mv /usr/bin/xfce4-panel /usr/local/lib/crew/real/xfce4-panel \
+ && install -m 0755 /usr/local/lib/crew/xfce4-panel-wrapper.sh /usr/bin/xfce4-panel
