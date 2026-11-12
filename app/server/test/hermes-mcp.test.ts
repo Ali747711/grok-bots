@@ -13,7 +13,7 @@ function setup() {
 }
 
 describe('hermes-mcp', () => {
-  it('adds crew_apps with trust untrusted, enabled, the relay URL and the token only as bearer_token', async () => {
+  it('adds crew_apps with trust untrusted, enabled, the relay URL, a per-profile identity header and the token only as bearer_token', async () => {
     const { rpc, h } = setup()
     rpc.handlers.set('mcp.servers.add', () => ({ ok: true }))
     await addAppsServer(h, 'scout', 'http://127.0.0.1:7070/mcp/scout', 'tok_secret')
@@ -23,10 +23,15 @@ describe('hermes-mcp', () => {
       method: 'mcp.servers.add',
       params: {
         profile: 'scout', name: 'crew_apps',
-        config: { url: 'http://127.0.0.1:7070/mcp/scout', trust: 'untrusted', enabled: true },
+        config: {
+          url: 'http://127.0.0.1:7070/mcp/scout', trust: 'untrusted', enabled: true,
+          identity_header: { name: 'X-Crew-Bot', value_from: 'profile' }
+        },
         bearer_token: 'tok_secret'
       }
     }])
+    await addAppsServer(h, 'scout', 'http://127.0.0.1:7070/mcp/scout', 'tok_secret', false)
+    expect(rpc.of('mcp.servers.add')[1]?.params.config).toMatchObject({ enabled: false, identity_header: { name: 'X-Crew-Bot', value_from: 'profile' } })
     expect(JSON.stringify(rpc.params('mcp.servers.add')?.config)).not.toContain('tok_secret')
   })
 

@@ -5,6 +5,7 @@ import {
   RELAY_MAX_BYTES, RELAY_TEXT, canonicalMessage, RELAY_TIMEOUT_MS, UPSTREAM_MAX_BYTES,
   filterToolsList, judge, parseBearer, parseUpstream, rpcError
 } from '../connectors/relay.js'
+import { IDENTITY_HEADER } from '../connectors/hermes-mcp.js'
 import type { KeyStore } from '../connectors/key.js'
 import { type ConnectorStore, tokenMatches } from '../connectors/store.js'
 import { log } from '../log.js'
@@ -21,7 +22,9 @@ type Message = Record<string, unknown>
 
 /**
  * `/mcp/:bot`: the only way a bot reaches Composio. Outside the session and CSRF guards; the per-bot
- * bearer token is the credential. After it, every failure is a 200 JSON-RPC error (R4): a 401 would
+ * bearer token is the credential, and the `X-Crew-Bot` header (which Hermes resolves to the calling
+ * profile's own name) must name the same bot: a profile cloned from another bot holds that bot's URL
+ * and token but not its name. After both, every failure is a 200 JSON-RPC error (R4): a 401 would
  * make Hermes tell the user to run `hermes mcp login`.
  */
 export function relayRoutes(deps: RelayDeps | undefined): Hono<CrewEnv> {
@@ -31,7 +34,11 @@ export function relayRoutes(deps: RelayDeps | undefined): Hono<CrewEnv> {
     const bot = c.req.param('bot')
     const record = PROFILE_NAME_RE.test(bot) ? deps.store.record(bot) : undefined
     // The body is never read here; closing keeps the unread rest from being parsed as the next request.
-    if (!record || !tokenMatches(record, parseBearer(c.req.header('authorization')))) {
+    const tokenOk = tokenMatches(record, parseBearer(c.req.header('authorization')))
+    const identityOk = c.req.header(IDENTITY_HEADER) === bot
+    if (!record || !tokenOk || !identityOk) {
+      // One answer for every refusal. The claimed name is never logged: it is the caller's text.
+      if (tokenOk && !identityOk) log.warn('mcp relay', { bot, outcome: 'identity_mismatch' })
       return c.json({ error: 'bad_token' }, 401, { Connection: 'close' })
     }
     const method = c.req.method
