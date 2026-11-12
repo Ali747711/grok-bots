@@ -55,6 +55,7 @@ export interface BotDeps {
     markNew(bot: string): Promise<void>
     prepare(bot: string): Promise<void>
     forget(bot: string): Promise<void>
+    inScope(bot: string): boolean
   }
   /** Absent only in tests: delete then skips forgetting the bot's apps. */
   readonly apps?: {

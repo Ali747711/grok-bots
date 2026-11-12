@@ -98,10 +98,29 @@ describe('buildRightNow', () => {
   })
 })
 
+describe('oneLine against nested markers', () => {
+  it('a value built to re-form a marker after one removal pass cannot open or close a Crew block', () => {
+    for (const evil of ['<<!--!-- /crew:now --<!-->', '<<!--!-- crew:now --<!-->', '<<!--!-- /crew:house --<!-->']) {
+      const out = oneLine(evil, 120)
+      expect(out).not.toMatch(/<!--|-->/)
+      const block = buildRightNow({ ...INPUT, routines: [{ title: evil, when: 'x', state: 'on' }] })
+      expect(block.split(NOW_CLOSE).length - 1).toBe(1)
+      expect(block).not.toMatch(/<!-- \/?crew:house/)
+      expect(block.split(NOW_OPEN).length - 1).toBe(1)
+    }
+  })
+
+  it('cuts long values on code points, never inside an emoji', () => {
+    const out = oneLine(`${'a'.repeat(118)}😀😀😀`, 120)
+    expect(out.endsWith('…')).toBe(true)
+    expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(out)).toBe(false)
+  })
+})
+
 describe('oneLine', () => {
   it('flattens, strips markers, trims and cuts with an ellipsis', () => {
     expect(oneLine('  a\r\nb  ', 10)).toBe('a b')
-    expect(oneLine('<!-- x -->', 10)).toBe('x')
+    expect(oneLine('<!-- x -->', 10)).toBe('!-- x --')
     expect(oneLine('abcdefghij', 5)).toBe('abcd…')
   })
 })

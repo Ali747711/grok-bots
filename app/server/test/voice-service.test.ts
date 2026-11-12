@@ -9,7 +9,7 @@ import { NOW_CLOSE, NOW_OPEN, composeSoul, nowOf, ownerPartOf } from '../src/bot
 import { PLATFORM_HINT } from '../src/voice/copy.js'
 import { createVoiceService, writeRightNow } from '../src/voice/service.js'
 import { VoiceStore } from '../src/voice/voice-store.js'
-import { FakeRest } from './fake-rpc.js'
+import { FakeRest, FakeRpc } from './fake-rpc.js'
 
 const block = (text: string) => `${NOW_OPEN}\n## Right now\n${text}\n${NOW_CLOSE}`
 let rest: FakeRest
@@ -80,7 +80,9 @@ describe('prepare, markNew and forget', () => {
     rest.routes.set('GET /api/tools/toolsets', () => [{ name: 'memory', label: '', description: '', platform: 'cli', enabled: true, configured: true }])
     rest.routes.set('POST /api/memory/reset', () => ({ ok: true }))
     rest.configs.set('scout', {})
-    const bots = { rest: { request: rest.request } } as unknown as BotDeps
+    const rpc = new FakeRpc()
+    rpc.meta('scout', { title: 'Scout' }, 1)
+    const bots = { rpc: rpc.call, rest: { request: rest.request } } as unknown as BotDeps
     const svc = createVoiceService({
       bots, hermesHome: '/h', store, inScope: () => true,
       owner: () => ({ name: 'Ali', timeZone: null }), roster: () => [], groups: () => ({ available: true, seatable: [], rooms: [] }),

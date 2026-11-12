@@ -25,13 +25,17 @@ function withoutOldTemplate(owner: string): string | null {
   const lines = owner.split('\n')
   const kept: string[] = []
   let removed = false
+  // Only blank lines right after a removed sentence are dropped; the owner's own spacing elsewhere stays.
+  let justRemoved = false
   for (const line of lines) {
     if (OLD_TEMPLATE.some(re => re.test(line))) {
       removed = true
+      justRemoved = true
       continue
     }
-    const gap = removed && line === '' && kept.at(-1) === ''
-    if (!gap) kept.push(line)
+    if (line === '' && justRemoved && kept.at(-1) === '') continue
+    if (line !== '') justRemoved = false
+    kept.push(line)
   }
   return removed ? kept.join('\n').replace(/\n+$/, '') : null
 }

@@ -20,10 +20,13 @@ export interface RightNowInput {
 const LEVEL_WORDS: Record<AppLevel, string> = { read: 'read only', change: 'read and change', all: 'full access' }
 const ROUTINE_STATE: Record<'on' | 'paused' | 'triggered', string> = { on: 'on', paused: 'paused', triggered: 'runs when triggered' }
 
-/** One line of user text: no line breaks, no comment markers (it can never open or close a Crew block), cut with '…'. */
+/**
+ * One line of user text, cut with '…' on code points (never inside an emoji). Angle brackets are dropped,
+ * so no value can form a comment marker and open or close a Crew block, however it is nested.
+ */
 export function oneLine(value: string, max: number): string {
-  const flat = value.replace(/<!--|-->/g, '').replace(/\s+/g, ' ').trim()
-  return flat.length <= max ? flat : `${flat.slice(0, max - 1).trimEnd()}…`
+  const flat = [...value.replace(/[<>]/g, '').replace(/\s+/g, ' ').trim()]
+  return flat.length <= max ? flat.join('') : `${flat.slice(0, max - 1).join('').trimEnd()}…`
 }
 
 /** Where the bot keeps its dated work log: local bots share one HOME, so it lives in the profile folder. */

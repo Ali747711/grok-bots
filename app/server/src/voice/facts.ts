@@ -1,4 +1,5 @@
 import type { BotDeps } from '../bots/create.js'
+import { readBotDetail } from '../bots/edit.js'
 import { readRawConfig } from '../bots/sandbox.js'
 import { sandboxStateOf } from '../bots/sandbox-state.js'
 import { toolsetViews } from '../bots/toolsets.js'
@@ -33,16 +34,22 @@ function routineFacts(routines: readonly RoutineView[]): RightNowInput['routines
   }))
 }
 
+async function selfFromHermes(deps: FactsDeps, bot: string): Promise<{ title: string; role: string | null; job: string }> {
+  const detail = await readBotDetail(deps.bots, bot)
+  return { title: detail.title, role: detail.role, job: detail.description }
+}
+
 /** Everything the "Right now" block says about one bot, read fresh (spec 2026-11-12 §4.2). */
 export async function gatherFacts(deps: FactsDeps, bot: string): Promise<RightNowInput> {
   const raw = await readRawConfig(deps.bots, bot)
   const [toolsets, routines] = await Promise.all([enabledToolsets(deps, bot, raw), deps.routines(bot)])
   const roster = deps.roster()
-  const self = roster.find(b => b.name === bot)
+  // A bot made a moment ago may not be in the roster yet: read its title and job from Hermes then.
+  const self = roster.find(b => b.name === bot) ?? await selfFromHermes(deps, bot)
   const sandboxed = sandboxStateOf(raw).state !== 'off'
   return {
     owner: deps.owner(),
-    self: { title: self?.title ?? bot, handle: handleFor(bot), role: self?.role ?? null, job: self?.job ?? '' },
+    self: { title: self.title, handle: handleFor(bot), role: self.role, job: self.job },
     computer: { on: toolsets.has('computer_use'), sandboxed },
     memory: { on: toolsets.has('memory'), worklog: worklogPath(deps.hermesHome, bot, sandboxed) },
     apps: deps.apps(bot),

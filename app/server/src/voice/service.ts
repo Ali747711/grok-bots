@@ -65,6 +65,8 @@ export interface VoiceService {
   prepare(bot: string): Promise<void>
   /** The bot was deleted: drop its record. */
   forget(bot: string): Promise<void>
+  /** Gets voice upkeep: the configured scope, or any bot Crew already prepared (it has a voice record). */
+  inScope(bot: string): boolean
   start(): void
   stop(): void
 }
@@ -82,7 +84,9 @@ async function prepareBot(deps: VoiceServiceDeps, bot: string): Promise<void> {
 /** Keeps every in-scope bot's "Right now" block current; each refresh runs under that bot's lock. */
 export function createVoiceService(deps: VoiceServiceDeps): VoiceService {
   let scheduler: ReturnType<typeof createScheduler> | null = null
+  const inScope = (bot: string): boolean => deps.inScope(bot) || deps.store.get(bot)?.soulVersion !== undefined
   return {
+    inScope,
     changed: bot => scheduler?.schedule(bot),
     markNew: bot => deps.store.set(bot, { resetPending: true }),
     prepare: bot => prepareBot(deps, bot),
@@ -92,7 +96,7 @@ export function createVoiceService(deps: VoiceServiceDeps): VoiceService {
         delayMs: DELAY_MS,
         sweepMs: SWEEP_MS,
         names: () => deps.roster().map(b => b.name),
-        inScope: deps.inScope,
+        inScope,
         run: bot => withBotLock(bot, async () => { await refreshRightNow(deps, bot) }),
         ...(deps.beforeFirstPass ? { beforeFirstPass: deps.beforeFirstPass } : {})
       })

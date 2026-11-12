@@ -76,6 +76,15 @@ describe('house block', () => {
     expect(out).toMatchObject({ status: 'conflict', fields: ['soul'], current: { soul: 'changed outside' } })
   })
 
+  it('saves a bot outside the voice scope without adding a house block', async () => {
+    const voice = { changed: () => undefined, markNew: async () => undefined, prepare: async () => undefined, forget: async () => undefined, inScope: () => false }
+    await updateBot({ ...deps, voice }, 'scout', { soul: 'Mine' })
+    expect(rest.souls.get('scout')).toBe('Mine')
+    rest.soul('scout', composeSoul('Original'))
+    await updateBot({ ...deps, voice }, 'scout', { soul: 'Mine again' })
+    expect(rest.souls.get('scout')).toBe(composeSoul('Mine again'))
+  })
+
   it('a soul with only the house changed is not a conflict', async () => {
     rest.soul('scout', 'Original\n\n<!-- crew:house v1 -->\nolder house text\n<!-- /crew:house -->\n')
     const out = await updateBot(deps, 'scout', { soul: 'Mine', baseline: { soul: 'Original' } })

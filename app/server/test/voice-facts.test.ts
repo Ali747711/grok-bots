@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { BotDeps } from '../src/bots/create.js'
 import { gatherFacts, type FactsDeps } from '../src/voice/facts.js'
 import type { BotView } from '../src/watcher/bot-state.js'
-import { FakeRest } from './fake-rpc.js'
+import { FakeRest, FakeRpc } from './fake-rpc.js'
 
 const bot = (over: Partial<BotView>): BotView =>
   ({ name: 'x', title: 'X', role: null, job: '', hidden: false, isPrimary: false, sandbox: 'off', ...over }) as unknown as BotView
@@ -64,6 +64,17 @@ describe('gatherFacts', () => {
     const facts = await gatherFacts(d.deps, 'default')
     expect(facts.self.handle).toBe('hermes')
     expect(facts.memory.worklog).toBe('/h/worklog.md')
+  })
+
+  it('reads the title and job from Hermes when the roster does not list the new bot yet', async () => {
+    const d = deps({ roster: () => [] })
+    const rpc = new FakeRpc()
+    rpc.meta('scout', { title: 'Scout' }, 1)
+    rpc.rows.get('scout')!.description = 'Find papers'
+    ;(d.deps.bots as { rpc: unknown }).rpc = rpc.call
+    d.rest.soul('scout', '')
+    const facts = await gatherFacts(d.deps, 'scout')
+    expect(facts.self).toMatchObject({ title: 'Scout', job: 'Find papers' })
   })
 
   it('reports no apps when the Composio key is missing', async () => {

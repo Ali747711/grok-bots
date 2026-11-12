@@ -36,6 +36,10 @@ export class VoiceStore {
     return new VoiceStore(file, {})
   }
 
+  names(): readonly string[] {
+    return Object.keys(this.bots)
+  }
+
   get(bot: string): VoiceRecord | undefined {
     return Object.hasOwn(this.bots, bot) ? this.bots[bot] : undefined
   }

@@ -21,6 +21,15 @@ describe('mergeNowBlock', () => {
     expect(mergeNowBlock('', block('x'))).toBe(block('x'))
   })
 
+  it('a lone open marker in the owner text never swallows the text after it', () => {
+    const owner = 'OWNER1 <!-- crew:now --> OWNER2 must survive'
+    const once = mergeNowBlock(owner, block('one'))
+    const twice = mergeNowBlock(once, block('two'))
+    expect(withoutNowBlock(twice)).toBe(owner)
+    expect(twice).toContain('OWNER2 must survive')
+    expect(twice.split(block('two')).length - 1).toBe(1)
+  })
+
   it('replaces a cloned block and never duplicates it', () => {
     const cloned = `Owner text\n\n${block('the primary')}\n\n${block('stale copy')}`
     const merged = mergeNowBlock(cloned, block('mine'))

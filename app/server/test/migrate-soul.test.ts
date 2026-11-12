@@ -45,6 +45,11 @@ describe('migratedOwnerPart', () => {
     expect(migratedOwnerPart('Be kind.\n\n\nTwo blank lines stay.', { title: 'B', job: '' })).toEqual({ owner: 'Be kind.\n\n\nTwo blank lines stay.', reason: 'kept' })
   })
 
+  it('keeps the owner\'s own blank lines after a removed template sentence', () => {
+    const soul = '# B\n\nYou are B, a persistent named agent (profile `b`) on this machine.\n\nRule one.\n\n\nRule two.'
+    expect(migratedOwnerPart(soul, { title: 'B', job: '' }).owner).toBe('# B\n\nRule one.\n\n\nRule two.')
+  })
+
   it.each(HERMES_STOCK_SOULS)('replaces a Hermes stock Soul with a short owner part (%#)', stock => {
     expect(migratedOwnerPart(stock, { title: 'Hermes', job: 'Run my day' })).toEqual({ owner: '# Hermes\n\n**Mission:** Run my day', reason: 'hermes_stock' })
   })

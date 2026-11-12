@@ -44,10 +44,13 @@ function rosterReady(crewState: CrewStateSource): Promise<void> {
 }
 
 /** Before the first refresh: back up and rewrite every in-scope bot once (spec 2026-11-12 §4.6). */
-function firstPass(input: VoiceWiring, deps: () => VoiceServiceDeps): () => Promise<void> {
+function firstPass(input: VoiceWiring, deps: () => VoiceServiceDeps, inScope: (bot: string) => boolean): () => Promise<void> {
   return async () => {
     await rosterReady(input.crewState)
-    const names = input.crewState.state().bots.map(b => b.name).filter(name => deps().inScope(name))
+    const roster = input.crewState.state().bots.map(b => b.name)
+    // A record of a bot that is gone must not reset the memory of a later bot with the same name.
+    for (const stale of deps().store.names().filter(name => !roster.includes(name))) await deps().store.remove(stale)
+    const names = roster.filter(name => inScope(name))
     await migrateAll({
       bots: input.bots, store: deps().store, backupDir: join(input.config.stateDir, 'soul-backups'), now: Date.now,
       refreshNow: bot => refreshRightNow(deps(), bot)
@@ -70,7 +73,9 @@ export async function wireVoice(input: VoiceWiring): Promise<VoiceService> {
     routines: bot => routines.list(bot),
     inScope: bot => config.voiceScope === 'all' || TEST_BOT_RE.test(bot)
   }
-  const service = createVoiceService({ ...deps, beforeFirstPass: firstPass(input, () => deps) })
+  let service: VoiceService | null = null
+  const scoped = (bot: string): boolean => service?.inScope(bot) ?? deps.inScope(bot)
+  service = createVoiceService({ ...deps, beforeFirstPass: firstPass(input, () => deps, scoped) })
   bots.voice = service
   let fingerprint = ''
   crewState.onChange(() => {

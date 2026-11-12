@@ -2,8 +2,10 @@
 export type RightNowCarrier = 'system_prompt' | 'soul'
 export const RIGHT_NOW_CARRIER: RightNowCarrier = 'system_prompt'
 
-const NOW_RE = /<!-- crew:now -->[\s\S]*?<!-- \/crew:now -->/
-const NOW_RE_ALL = /(?:\n\n)?<!-- crew:now -->[\s\S]*?<!-- \/crew:now -->/g
+// Innermost complete block: a lone open marker in the owner's text never swallows what follows it.
+const NOW_BODY = '<!-- crew:now -->(?:(?!<!-- crew:now -->)[\\s\\S])*?<!-- \\/crew:now -->'
+const NOW_RE = new RegExp(NOW_BODY)
+const NOW_RE_ALL = new RegExp(`(?:\\n\\n)?${NOW_BODY}`, 'g')
 
 /** The owner's prompt with Crew's block in it: the first complete block is replaced, other copies dropped. */
 export function mergeNowBlock(prompt: string, block: string): string {
