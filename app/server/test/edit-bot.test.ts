@@ -231,6 +231,8 @@ describe('per-bot write serialization', () => {
     let release!: () => void
     const gate = new Promise<void>(resolve => { release = resolve })
     rpc.handlers.set('profiles.create', () => gate.then(() => { rpc.rows.set('fresh', {}); return { ok: true } }))
+    // The apps step must succeed, or create fails closed and never reaches the chat.
+    rest.routes.set('GET /api/config', () => ({}))
     const created = createBot(deps, { name: 'fresh', title: 'F', mission: '', avatar: { type: 'circle', color: '#111111' } })
     const deleted = deleteBot(deps, 'fresh')
     await new Promise(resolve => setTimeout(resolve, 10))

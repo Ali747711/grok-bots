@@ -1,4 +1,4 @@
-import { removeAppsServer } from '../connectors/hermes-mcp.js'
+import { reloadMcp, removeAppsServer } from '../connectors/hermes-mcp.js'
 import { HermesRpcError, type Rpc } from '../hermes/errors.js'
 import type { HermesRest } from '../hermes/rest-client.js'
 import { log } from '../log.js'
@@ -70,7 +70,11 @@ interface FinishBody {
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 const titleCase = (name: string): string => name.replace(/[-_]+/g, ' ').trim().replace(/\b\w/g, ch => ch.toUpperCase())
 
-/** Run one best-effort step; a failure is recorded and never stops the steps after it. */
+/**
+ * Run one best-effort step; a failure is recorded and never stops the steps after it. The one exception
+ * is the chat, which fails closed on the apps step: a bot still holding the primary's cloned apps entry
+ * gets no Bot Chat, so it cannot run a turn in Crew until Finish setup has removed the entry.
+ */
 class Steps {
   private first: CreateResult['error']
   readonly outcome: Record<FailedStep, StepOutcome> = { apps: 'skipped', sandbox: 'skipped', look: 'skipped', avatar: 'skipped', chat: 'skipped' }
@@ -160,10 +164,13 @@ const APP_GRANT = 'mcp:crew_apps/'
 
 /**
  * The apps strip (§11.6): the cloned server goes, and so do "always" grants for app tools the primary
- * collected; a new bot must ask for each one. Never touches `default`.
+ * collected; a new bot must ask for each one. Never touches `default`. Hermes serves a clone at once,
+ * so the nudge makes it drop a connection opened from the cloned entry now, not on its next 60 s tick
+ * (the relay refuses that connection either way: its identity is the clone's, its URL the primary's).
  */
 async function stripApps(deps: BotDeps, name: string): Promise<void> {
   await removeAppsServer(deps, name)
+  await reloadMcp(deps, name, false)
   const list = rawList((await readRawConfig(deps, name)).command_allowlist)
   const kept = list.filter(e => !(typeof e === 'string' && e.startsWith(APP_GRANT)))
   if (kept.length === list.length) return
@@ -181,7 +188,7 @@ async function runCreate(deps: BotDeps, draft: BotDraft): Promise<CreateResult> 
   await steps.run('look', writeLook(deps, draft, marker))
   if (draft.image) await steps.run('avatar', setAvatar(deps, draft.name, draft.image))
   const needsModel = await runtimeNeedsModel(deps, draft.name)
-  await steps.run('chat', ensureChat(deps, draft.name))
+  if (steps.outcome.apps === 'ok') await steps.run('chat', ensureChat(deps, draft.name))
   deps.sandbox?.onChanged?.(draft.name)
   await refreshQuietly(deps)
   return steps.result(draft.name, needsModel)
@@ -209,7 +216,7 @@ async function runFinish(deps: BotDeps, name: string, body: FinishBody): Promise
     })
   }
   if (body.image) await steps.run('avatar', setAvatar(deps, name, body.image))
-  await steps.run('chat', ensureChat(deps, name))
+  if (steps.outcome.apps === 'ok') await steps.run('chat', ensureChat(deps, name))
   await refreshQuietly(deps)
   return steps.result(name, false)
 }
