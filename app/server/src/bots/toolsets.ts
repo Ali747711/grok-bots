@@ -129,6 +129,7 @@ export function setToolset(deps: BotDeps, name: string, toolset: string, enabled
       if (!list.includes(toolset)) await writeConfig(deps, name, { agent: { disabled_toolsets: [...list, toolset] } })
     }
     if (toolset === 'browser') await claimBrowser(deps, name)
+    deps.voice?.changed(name)
     return readToolsets(deps, name)
   })
 }

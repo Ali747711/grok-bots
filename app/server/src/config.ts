@@ -20,6 +20,8 @@ export interface CrewConfig {
   readonly webDist: string
   readonly allowedHosts: readonly string[]
   readonly allowedOrigins: readonly string[]
+  /** Which bots get Crew's voice upkeep ("Right now" block, settings, migration): only `e2e<digits>` test bots, or all. */
+  readonly voiceScope: 'e2e' | 'all'
 }
 
 const LOOPBACK = '127.0.0.1'
@@ -35,7 +37,8 @@ const envSchema = z.object({
   CREW_HERMES_ENV_FILE: z.string().min(1).optional(),
   CREW_COMPOSIO_KEY_FILE: z.string().min(1).optional(),
   CREW_HERMES_HOME: z.string().min(1).optional(),
-  CREW_WEB_DIST: z.string().min(1).optional()
+  CREW_WEB_DIST: z.string().min(1).optional(),
+  CREW_VOICE_SCOPE: z.enum(['e2e', 'all']).optional()
 })
 
 // This file lives in app/server/{src,dist}, so app/web/dist is two levels up.
@@ -68,6 +71,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): CrewConfig {
     stateDir: expandHome(parsed.CREW_STATE_DIR ?? '~/.config/crew', home),
     webDist: expandHome(parsed.CREW_WEB_DIST ?? DEFAULT_WEB_DIST, home),
     allowedHosts: hosts,
-    allowedOrigins: hosts.map(h => `http://${h}`)
+    allowedOrigins: hosts.map(h => `http://${h}`),
+    voiceScope: parsed.CREW_VOICE_SCOPE ?? 'e2e'
   }
 }

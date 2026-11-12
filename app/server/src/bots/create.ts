@@ -46,6 +46,8 @@ export interface BotDeps {
   now(): number
   /** Absent only in tests: delete then skips the sandbox cleanup. */
   readonly sandbox?: SandboxDeps
+  /** Told when a bot's facts changed (toolsets, sandbox, screen); bound late by `wireVoice`. */
+  voice?: { changed(bot?: string): void }
   /** Absent only in tests: delete then skips forgetting the bot's apps. */
   readonly apps?: {
     forget(bot: string): Promise<void>

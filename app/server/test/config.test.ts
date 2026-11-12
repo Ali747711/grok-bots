@@ -16,6 +16,12 @@ describe('loadConfig', () => {
     expect(c.allowedOrigins).toEqual(['http://127.0.0.1:7070', 'http://localhost:7070'])
   })
 
+  it('voiceScope defaults to e2e and accepts all', () => {
+    expect(loadConfig({ HOME: '/h' }).voiceScope).toBe('e2e')
+    expect(loadConfig({ HOME: '/h', CREW_VOICE_SCOPE: 'all' }).voiceScope).toBe('all')
+    expect(() => loadConfig({ HOME: '/h', CREW_VOICE_SCOPE: 'some' })).toThrow()
+  })
+
   it('applies env overrides and expands ~', () => {
     const c = loadConfig({ HOME: '/h', CREW_PORT: '7171', CREW_STATE_DIR: '~/crew-state' })
     expect(c.port).toBe(7171)

@@ -75,6 +75,7 @@ export function screenRoutes(bots: BotDeps | undefined): Hono<CrewEnv> {
         if (idleStopMinutes !== undefined) await setIdleStop(deps, name, idleStopMinutes)
         if (useScreen !== undefined) await setUseScreen(deps, name, useScreen)
       })
+      deps.voice?.changed(name)
       return c.json(await screenView(deps, name))
     })
   })

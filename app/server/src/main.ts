@@ -32,6 +32,7 @@ import { SettingsStore } from './settings/settings-store.js'
 import { composeCrewState } from './state/crew-state.js'
 import { loadTriggerStore, wireTriggers } from './triggers/wire.js'
 import { createUsageSource } from './usage/openrouter.js'
+import { routinesWithVoice, wireVoice } from './voice/wire.js'
 import { startWatcher } from './watcher/watcher.js'
 
 /** Start the Crew server on loopback and return the Node server (WebSocket upgrades attach to it). */
@@ -129,7 +130,10 @@ export async function start(): Promise<Server> {
     identity = createIdentityBackfill(live)
     setInterval(() => void expirePending(live), 60_000).unref()
   }
-  const app = createApp({ config, secrets, tickets: new TicketStore(), now: Date.now, token, fetchUpstream: fetch, watcher: crewState, groups: { rpc: groupRpc, groups: groupWatcher, roster: () => crewState.state().bots.map(b => ({ name: b.name, title: b.title, displayName: b.displayName })), newId: randomUUID, sleep: ms => new Promise(resolve => setTimeout(resolve, ms)) }, settings, bots: base, ...(connectors ? { connectors: { connectors, keys }, relay: { store: connectorStore!, keys, fetch } } : {}), routines, triggers, usage: createUsageSource({ envFile: config.hermesEnvFile, fetch, now: Date.now }) })
+  const voice = await wireVoice({ config, bots: base, crewState, settings, routines, ...(connectorStore ? { connectors: { store: connectorStore, keys } } : {}) })
+  voice.start()
+  const routinesForApp = routinesWithVoice(routines, voice)
+  const app = createApp({ config, secrets, tickets: new TicketStore(), now: Date.now, token, fetchUpstream: fetch, watcher: crewState, groups: { rpc: groupRpc, groups: groupWatcher, roster: () => crewState.state().bots.map(b => ({ name: b.name, title: b.title, displayName: b.displayName })), newId: randomUUID, sleep: ms => new Promise(resolve => setTimeout(resolve, ms)) }, settings, bots: base, ...(connectors ? { connectors: { connectors, keys }, relay: { store: connectorStore!, keys, fetch } } : {}), routines: routinesForApp, triggers, usage: createUsageSource({ envFile: config.hermesEnvFile, fetch, now: Date.now }) })
   const server = serve({ fetch: app.fetch, hostname: config.host, port: config.port }, info => {
     log.info('crew listening', { host: config.host, port: info.port })
   }) as Server

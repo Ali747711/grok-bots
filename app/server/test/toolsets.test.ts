@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
+import type { BotDeps } from '../src/bots/create.js'
+import { setToolset } from '../src/bots/toolsets.js'
+import { FakeRest, FakeRpc } from './fake-rpc.js'
 import { HIDDEN_TOOLSETS, OFFERED_TOOLSETS, ToolsetShapeError, toolsetViews } from '../src/bots/toolsets.js'
 import { failure } from '../src/http/bot-errors.js'
 
@@ -54,5 +57,18 @@ describe('toolsetViews', () => {
     // The parser's own text never travels: the route answers 502 with no message (final review 3).
     const caught = (() => { try { toolsetViews([{ label: 'x' }], {}) } catch (e) { return e } })()
     expect(failure(caught, 'scout')).toEqual({ status: 502, body: { error: 'hermes_error' } })
+  })
+})
+
+describe('setToolset and the voice service', () => {
+  it('tells the voice service after a toolset write', async () => {
+    const rest = new FakeRest()
+    let memory = true
+    rest.routes.set('GET /api/tools/toolsets', () => [{ name: 'memory', enabled: memory, configured: true, platform: 'cli' }])
+    rest.configs.set('scout', {})
+    const changed: (string | undefined)[] = []
+    const deps = { rpc: new FakeRpc().call, rest: { request: rest.request }, refresh: async () => undefined, now: () => 1, voice: { changed: (bot?: string) => { changed.push(bot); memory = false } } } as unknown as BotDeps
+    await setToolset(deps, 'scout', 'memory', false)
+    expect(changed).toEqual(['scout'])
   })
 })

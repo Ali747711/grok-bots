@@ -33,6 +33,17 @@ describe('ConnectorStore', () => {
     await rm(dir, { recursive: true, force: true })
   })
 
+  it('notifies record changes with the bot name', async () => {
+    const store = await ConnectorStore.load(file, randomUUID)
+    const seen: string[] = []
+    const off = store.onRecordChange(bot => seen.push(bot))
+    await store.setRecord('alpha', record('t1'))
+    await store.deleteRecord('alpha')
+    off()
+    await store.setRecord('beta', record('t2'))
+    expect(seen).toEqual(['alpha', 'alpha'])
+  })
+
   it('creates and persists one userId on first load', async () => {
     const store = await ConnectorStore.load(file, randomUUID)
     expect(store.userId()).toMatch(UUID)

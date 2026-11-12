@@ -131,6 +131,7 @@ export function setSandbox(deps: BotDeps, sb: SandboxDeps, bot: string, on: bool
     }
     if (!on) await removeQuietly(sb, bot)
     await refreshQuietly(deps)
+    deps.voice?.changed(bot)
     return readSandbox(deps, sb, bot)
   })
 }

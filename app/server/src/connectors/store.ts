@@ -91,6 +91,7 @@ function salvageUserId(raw: string): string | undefined {
  */
 export class ConnectorStore {
   private chain: Promise<unknown> = Promise.resolve()
+  private readonly recordListeners = new Set<(bot: string) => void>()
 
   private constructor(private readonly file: string, private state: State) {}
 
@@ -130,11 +131,23 @@ export class ConnectorStore {
   pending(): readonly PendingSignIn[] { return this.state.pending }
 
   setRecord(bot: string, record: BotRecord): Promise<void> {
-    return this.change({ bots: { ...this.state.bots, [bot]: record } })
+    return this.change({ bots: { ...this.state.bots, [bot]: record } }).then(() => this.recordChanged(bot))
   }
 
   deleteRecord(bot: string): Promise<void> {
-    return this.change({ bots: withoutKey(this.state.bots, bot) })
+    return this.change({ bots: withoutKey(this.state.bots, bot) }).then(() => this.recordChanged(bot))
+  }
+
+  /** Called after a bot's record was saved or removed (the "Right now" block lists its apps). */
+  onRecordChange(listener: (bot: string) => void): () => void {
+    this.recordListeners.add(listener)
+    return () => {
+      this.recordListeners.delete(listener)
+    }
+  }
+
+  private recordChanged(bot: string): void {
+    for (const listener of [...this.recordListeners]) listener(bot)
   }
 
   setToolkit(slug: string, entry: ToolkitEntry): Promise<void> {

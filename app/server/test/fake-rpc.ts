@@ -82,6 +82,8 @@ export class FakeRpc {
 /** Scripted Hermes REST: soul files and the roster rows that carry model/provider. */
 export class FakeRest {
   souls = new Map<string, string>()
+  /** Raw per-profile configs for `GET|PUT /api/config` (PUT deep-merges dicts, replaces arrays and scalars, like Hermes). */
+  configs = new Map<string, Record<string, unknown>>()
   models = new Map<string, { provider: string; model: string }>()
   readonly requests: { method: string; path: string; body?: unknown; query?: Record<string, string>; timeoutMs?: number }[] = []
   deleteReply: unknown = { ok: true }
@@ -98,6 +100,12 @@ export class FakeRest {
     this.requests.push({ method, path, ...(opts.body === undefined ? {} : { body: opts.body }), ...(opts.query === undefined ? {} : { query: opts.query }), ...(opts.timeoutMs === undefined ? {} : { timeoutMs: opts.timeoutMs }) })
     const route = this.routes.get(`${method} ${path}`)
     if (route) return route({ ...(opts.body === undefined ? {} : { body: opts.body }), ...(opts.query === undefined ? {} : { query: opts.query }) }) as T
+    if (path === '/api/config' && opts.query?.profile !== undefined && (method === 'GET' || method === 'PUT')) {
+      const profile = opts.query.profile
+      if (method === 'GET') return structuredClone(this.configs.get(profile) ?? {}) as T
+      this.configs.set(profile, deepMerge(this.configs.get(profile) ?? {}, (opts.body as { config: Record<string, unknown> }).config))
+      return { ok: true } as T
+    }
     const soul = /^\/api\/profiles\/([^/]+)\/soul$/.exec(path)
     if (soul && method === 'GET') {
       const name = decodeURIComponent(soul[1]!)
@@ -113,4 +121,15 @@ export class FakeRest {
     if (method === 'DELETE') return this.deleteReply as T
     throw new Error(`unscripted ${method} ${path}`)
   }
+}
+
+const isDict = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v)
+
+/** Hermes's config PUT: dicts merge key by key, everything else replaces. */
+export function deepMerge(base: Record<string, unknown>, patch: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...base }
+  for (const [key, value] of Object.entries(patch)) {
+    out[key] = isDict(value) && isDict(out[key]) ? deepMerge(out[key] as Record<string, unknown>, value) : structuredClone(value)
+  }
+  return out
 }
