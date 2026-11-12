@@ -224,18 +224,18 @@ async function appsStep(deps: BotDeps, steps: Steps, name: string, after?: () =>
 const chatAllowed = (steps: Steps): boolean => steps.outcome.apps === 'ok' && steps.outcome.voice !== 'failed'
 
 /** Empty memory, chat-app settings and the bot's own "Right now" block, before its chat exists. */
-async function voiceStep(deps: BotDeps, steps: Steps, name: string, markNew: boolean): Promise<void> {
+async function voiceStep(deps: BotDeps, steps: Steps, name: string): Promise<void> {
   const voice = deps.voice
-  if (!voice) return
-  await steps.run('voice', async () => {
-    if (markNew) await voice.markNew(name)
-    await voice.prepare(name)
-  })
+  if (!voice || steps.outcome.voice === 'failed') return
+  await steps.run('voice', () => voice.prepare(name))
 }
 
 async function runCreate(deps: BotDeps, draft: BotDraft): Promise<CreateResult> {
   await createProfile(deps, draft)
   const steps = new Steps()
+  // Marked at once, so even a create cut short here gets its cloned memory emptied by Finish setup.
+  const voice = deps.voice
+  if (voice) await steps.run('voice', () => voice.markNew(draft.name))
   await appsStep(deps, steps, draft.name)
   let marker: SandboxMarker | undefined
   await steps.run('sandbox', async () => {
@@ -243,7 +243,7 @@ async function runCreate(deps: BotDeps, draft: BotDraft): Promise<CreateResult> 
   })
   await steps.run('look', writeLook(deps, draft, marker))
   if (draft.image) await steps.run('avatar', setAvatar(deps, draft.name, draft.image))
-  await voiceStep(deps, steps, draft.name, true)
+  await voiceStep(deps, steps, draft.name)
   const needsModel = await runtimeNeedsModel(deps, draft.name)
   if (chatAllowed(steps)) await steps.run('chat', ensureChat(deps, draft.name))
   deps.sandbox?.onChanged?.(draft.name)
@@ -275,7 +275,7 @@ async function runFinish(deps: BotDeps, name: string, body: FinishBody): Promise
     })
   }
   if (body.image) await steps.run('avatar', setAvatar(deps, name, body.image))
-  await voiceStep(deps, steps, name, false)
+  await voiceStep(deps, steps, name)
   if (chatAllowed(steps)) await steps.run('chat', ensureChat(deps, name))
   await refreshQuietly(deps)
   return steps.result(name, false)
