@@ -30,11 +30,11 @@ assert it contains `PLATFORM_HINT`; no extra model turn.
 
 Not a display collision. Root cause: **the primary was switched to the Docker sandbox** at about 10:05 KST today
 (container `hermes-…` labelled `hermes-profile=default`, created 2026-11-12T01:05:41Z; Crew's
-`GET /crew/bots/default/sandbox` says `state: on`). `telegram` has been sandboxed since 2026-11-10.
+`GET /crew/bots/default/sandbox` says `state: on`). Another of the owner's bots has been sandboxed since 2026-11-10.
 - Each sandboxed screen runs its own Xvnc **inside its container**, so both show as `Xvnc :20` in the host's `ps`
   and neither has a socket under the host's `/tmp/.X11-unix`. That is normal (`HA/tools/bot_desktop/placement.py:1-14`:
   placement follows `terminal.backend`).
-- The bot read the host's process list, saw two `:20` servers, and concluded its screen "collides with telegram's".
+- The bot read the host's process list, saw two `:20` servers, and concluded its screen "collides with another bot's".
   It was wrong; nothing collides.
 - Now: `display.status {profile:'default'}` → `running: true, display ':20', placement 'terminal:docker'`.
 - Who switched the primary to the sandbox is not recorded: Crew's log has no sandbox line (Crew does not log sandbox

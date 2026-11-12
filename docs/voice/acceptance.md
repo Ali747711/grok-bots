@@ -7,7 +7,7 @@ Branch `crew-voice` (stacked on `crew-connectors-identity`), local only. Spec:
 ## Model run (2026-11-12, owner-approved, after the real bots were rewritten)
 
 `voice-model.spec.ts` (one e2e bot, 9 turns) — failed on two test mistakes and one real issue; the behaviour itself:
-- First run: "Hi Ali, I'm your new helper for planning your week. To start, tell me what's on your plate: …" (2 sentences, no tools).
+- First run: "Hi <owner>, I'm your new helper for planning your week. To start, tell me what's on your plate: …" (2 sentences, no tools).
 - Apps: "Not yet. No apps are connected right now … If you want me to plan around them, I can connect them. …" — 4 sentences, and it wrongly offered to connect apps itself. Fixed in the note: "Only your owner can connect apps, from Crew's Apps." Not re-run.
 - Computer: "Yes, I have my own computer and can use it …" · Routines: "one routine: a morning digest every day at 08:00, but it's paused" · Teammates: listed by name and role.
 - Memory: remembered the fruit, recalled it after a prompt rebuild, forgot it on request, and said so after the next rebuild.

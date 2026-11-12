@@ -55,7 +55,7 @@
 
 **Safety:**
 - Test bots are `e2e<digits>` only.
-- Never touch the user's bots (default/Hermes, bella, reese, x, telegram) outside the controller-run migration.
+- Never touch the user's bots (the primary and the owner's other bots) outside the controller-run migration.
 - Never restart `hermes-gateway` or `hermes-dashboard`. Never edit anything under `~/.hermes` directly. Config goes through `PUT /api/config?profile=` and Souls through `PUT /api/profiles/{name}/soul`.
 - Never read `app/keys.md`, `.env` files, `~/.config/crew` contents, any real bot's config, Soul or memory. Reading Hermes *source* under `HA/` is allowed.
 - No CSP change (`CS/http/spa.ts`). No push.

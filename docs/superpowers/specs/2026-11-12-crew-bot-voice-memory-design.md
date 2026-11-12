@@ -18,7 +18,7 @@ the owner and to other bots the way a coworker would.
 
 1. Grok Bot style, not companion style: a strong voice, no human backstory or moods, never claims to be human, never says "as an AI".
 2. Memory is managed only in chat, as in Grok: no memory screen. The owner asks, corrects and erases by telling the bot.
-3. All existing bots (the primary, bella, reese, x, telegram) are rewritten into the new style, not only new bots.
+3. All existing bots (the primary and the owner's other bots) are rewritten into the new style, not only new bots.
 4. Bot-to-bot and group behaviour follows Grok: bots know teammates by name and one-line role; group posts are one to three sentences, react to the last message, never speak for another bot, silence is normal; no acknowledgement ping-pong; memory is not shared between bots; only the owner's name and time zone are shared.
 
 Everything else below is my call unless marked otherwise.
