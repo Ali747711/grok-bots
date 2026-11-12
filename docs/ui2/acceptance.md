@@ -2,6 +2,8 @@
 
 Branch `crew-ui2` at `02e9e79` when checked, from main `53334bc`; the plan's code starts at `a20a008`. Checked 2026-11-11 on the VM. The live crew service was last restarted at 18:42:01 KST with the `486eb09` build; `git diff 486eb09..02e9e79 -- app/web app/server` is empty, so the deployed app code equals the branch head (later commits are e2e specs, screenshots and docs).
 
+**Update 2026-11-12 (fix wave):** the final whole-branch review ran and one fix wave landed in `5c6768d`, `3e5ec7b`, `cecada8`, with the screenshots re-shot in `bc7992b`. See "Fix wave (2026-11-12)" at the end; the tables below still show the 2026-11-11 state except where a row says otherwise.
+
 **Overall: not accepted yet.** Unit suites, builds and the visual set are in place. Two e2e failures, one known security defect in Phase 7 code, the light-theme review's findings (reviewed: not ready) and the final whole-branch review are open. See "Open items".
 
 Tests touched only `e2e<digits>` bots and `crew-test`. After the last run no `e2e<digits>` profile is left in `~/.hermes/profiles` (checked by name, 22:50 KST). Nothing was pushed or merged.
@@ -16,10 +18,10 @@ Result words: **pass** (evidence exists), **fail**, **not run**, **partial** (so
 | 2 | Web unit tests | **pass** | `cd app && npm test -w web`, 2026-11-11 22:39 KST, `02e9e79`: **92 files, 1107 tests passed, 0 failed**. Includes `theme-tokens.test.ts`, `contrast.test.ts` (62 checks), `theme.test.ts`, `rail-sections.test.ts`, `rail.test.tsx`, `inline-action.test.tsx`, `run-card.test.tsx`, `profile-page.test.tsx`, `profile-shortcuts.test.tsx`. `grep -rE "sky-[0-9]" app/web/src app/web/test` finds nothing. The known 5-second timeout flakes under load did not fire in this run. |
 | 3 | Playwright against live Hermes: full existing suite green, plus the new specs | **fail** (two failures, some tests not run) | New specs **pass**: `ui2.spec.ts` 5/5 (pin, theme, role and accessories, approvals mode, skills switch) and `idle-stop.spec.ts` 2/2 (incl. the 1-hour sleep) at `adf736e`. Existing suite: see the e2e table below. **Failing:** `connectors.spec.ts` "a level change reaches Hermes as the new tool set" and `groups-model.spec.ts` #5 (handoff). **Not run:** 4 connectors tests behind the failure, `connectors-model.spec.ts`. |
 | 4 | Visual proof | **partial** | 152 files in `docs/ui2/screenshots/`: 38 screens × dark and light × 1440×900 and 1100×800, shot 22:04–22:08 KST and committed in `02e9e79`; `app/e2e/test-results/.last-run.json` (22:09:08) says `passed`, no failed tests. The 38 names equal the screen ids in `app/e2e/visual*.spec.ts` (no stale file). Side by side: [side-by-side.md](side-by-side.md). **Missing:** a live request card, the Needs-you page with a pending request (only its empty state is shot), a thread with messages and so a run card (all need a model turn; brief Step 2 was not done), and the primary bot's Advanced tab (ruled out for privacy, replaced by an asserted browser check in Task 13). The `conversation` shots show an empty thread with the side panel open. |
-| 5 | Light-theme review by a fresh agent | **reviewed — not ready** | A fresh-context agent reviewed the light screenshots at `02e9e79` on 2026-11-11: [light-review.md](light-review.md). **2 Critical, 8 Important, 9 Minor.** Nothing is fixed yet; the findings are listed under "Light-theme review result" below. Ruling: the fixes belong to the final fix wave, which waits for the user's word. |
+| 5 | Light-theme review by a fresh agent | **reviewed — fixes in, not re-reviewed** | Reviewed at `02e9e79` on 2026-11-11: [light-review.md](light-review.md), 2 Critical, 8 Important, 9 Minor. Fix wave 2026-11-12: both Critical and 7 of 8 Important fixed in `3e5ec7b` (I7, the login font, is open); per-finding status and evidence at the top of the review file. No fresh agent has looked at the re-shot light screenshots yet. |
 | 6 | Browser: 0 console errors, 0 CSP violations on every screen | **pass** for the 38 shot screens | The visual harness (`app/e2e/visual.ts`, `watch()`) fails a test on any console error or CSP violation; the 22:04–22:09 run passed. Earlier single-size run in Task 17: 86/86 visual tests passed. Screens not shot (item 4) are not covered. |
 | 7 | Builds and typecheck | **pass** | `npm run build -w web` (`tsc -b && vite build`) exit 0 and `npm run build -w server` (`tsc`) exit 0, 2026-11-11 22:40 KST, `02e9e79`. One Vite warning: the main chunk is 1,228 kB (over the 500 kB hint). |
-| 8 | Final whole-branch review and one fix wave | **not run** | Waits for the user's word (instruction 2026-11-11: stop after Task 18). |
+| 8 | Final whole-branch review and one fix wave | **done; scoped re-review pending** | Review 2026-11-12 over `a20a008..c391099`: no Critical, no clear Important, 7 items; 1–6 fixed in `cecada8`, 7 accepted as is. Fix wave: `5c6768d`, `3e5ec7b`, `cecada8`, `bc7992b`. The wave itself has not been reviewed. |
 
 ### e2e results (item 3)
 
@@ -131,3 +133,37 @@ The 9 Minor findings (M1–M9) are in the file. Ruling (ledger): all light-theme
 - Light-theme review: [light-review.md](light-review.md); its brief: [light-review-brief.md](light-review-brief.md).
 - Pre-flight rulings PF1–PF30 and later: [preflight-rulings.md](preflight-rulings.md).
 - Contrast output: [contrast.md](contrast.md). Tokens: [tokens.md](tokens.md).
+
+## Fix wave (2026-11-12)
+
+Commits (local, not pushed): `5c6768d` ledger items, `3e5ec7b` light review, `cecada8` final review 1–6, `bc7992b` screenshots.
+
+Checks at the end of the wave, on the VM, with the service restarted on the final build:
+
+| Check | Result |
+|---|---|
+| `npm test -w server` | 79 files, 993 tests passed |
+| `npm test -w web` | 92 files, 1155 tests passed (one earlier full run had 1 failure, `profile-tabs.test.tsx` "holds a second pick back…"; it passed alone and in the rerun) |
+| `npm run build -w web`, `npm run build -w server` | exit 0 |
+| Visual specs, both sizes, one command at a time | `visual.spec.ts` 60/60, `visual-profile.spec.ts` 26/26, `visual-profile-2.spec.ts` 16/16, `visual-routines.spec.ts` 16/16, `visual-groups.spec.ts` 16/16, `visual-dialogs.spec.ts` 28/28; 0 console errors and 0 CSP violations (the harness fails on either) |
+| `crew.spec.ts` + `ui2.spec.ts` | 13/13 passed; `ui2.spec.ts` 5/5 again on the final build |
+
+Light review: per-finding status is at the top of [light-review.md](light-review.md). Token changes: the last section of [tokens.md](tokens.md). [contrast.md](contrast.md) is the 2026-11-11 output and is out of date: the check now has 97 pairs.
+
+Final review items 1–6 (`cecada8`), with the test for each:
+
+1. No pin or hide on a half-made bot: `rail.test.tsx` "offers no pin or hide on a half-made bot…", `profile-hide.test.tsx` "holds the switch until setup is finished and writes nothing".
+2. No Hide for the primary, and a hidden primary still counts: `rail-sections.test.ts` "the primary and `hidden`", `profile-tabs.test.tsx` "protects the primary…".
+3. Toolset list of the wrong shape answers 502 with no text: `toolsets.test.ts` "throws on a bad row shape".
+4. Profile delete replaces the history entry (no test).
+5. `d` and `⌘K` by key code: `app.test.tsx` "d also answers to the D key of another layout…", `rail.test.tsx` "⌘K also answers to the K key of another layout…".
+6. Dead code removed after checking for importers.
+
+Open item 5's list, after the wave:
+
+- Fixed: hidden rail actions take no pointer events until hover or focus; the New bot panel stays open while a create is in flight; a photo prepared after Close is dropped; the role is sent again after Finish setup; the request-card test proves the one emphasised choice; the Needs-you summary reveals hidden characters; the routine accordion respects reduced motion; the crown gets room above the preview; `RuleList` folded into `RadioRows`; `StatusPill` moved; one shared dialog note style; the trigger-store flake; the web per-test timeout; the two structural screenshot masks also carry `data-private`.
+- Already done before the wave (confirmed in the code): `⌘\` by key code; bare-key shortcuts ignored in menus, listboxes and dialogs; the save-bar hint; a single error-text mapper; `⌘↵` stands down inside an open list or dialog (`ProfileBody.tsx`).
+- Still open: arrow keys in Approvals write the intermediate mode and the busy fieldset drops focus; ProfileAvatar's two error surfaces; the explicit "checker" choice on an unset bot; the `reload.mcp` nudge param; the remaining `minor (deferred)` lines.
+- Still missing from the visual set: a request card, a thread with messages, a populated Needs-you page (each needs a model turn or a faked state) and the primary's Advanced tab (the harness refuses non-test pages, by design).
+- The login page font (light review I7) waits for a ruling on its content policy.
+

@@ -156,3 +156,28 @@ and 10–13:1 (dark).
  Test Files  1 passed (1)
       Tests  62 passed (62)
 ```
+
+## Fix wave (2026-11-12): values moved by the light-theme review
+
+The tables above are the Task 4 values. The fix wave changed these; `contrast.test.ts` (97 checks) and
+`theme-tokens.test.ts` hold them. Dark values did not move; the four new tokens map back to the old dark colours.
+
+| token | before | after (light) | dark | why (light-review id) |
+|---|---|---|---|---|
+| `--raised` | `oklch(0.965 0 0)` | `oklch(0.945 0 0)` | unchanged | I2: 1.15:1 on shell (was 1.09; the check's floor is 1.15); the ladder is now shell, canvas, raised, control |
+| `--muted-foreground` | `oklch(0.515 0 0)` | `oklch(0.42 0 0)` | unchanged | I4: 1.41:1 against `--faint`, 6.78:1 on control (was 4.50) |
+| `--ring` | `oklch(0.61 0 0)` | `oklch(0.6 0 0)` | unchanged | M9: 3.16:1 on control (was 3.03); also the unchosen radio ring (C1) |
+| `--destructive` | `oklch(0.495 0.245 27.325)` | `oklch(0.45 0.245 27.325)` | unchanged | I5: 4.63:1 on its own 10% tint over control, the lowest of the four surfaces |
+| `--status-waiting` | `oklch(0.65 0.179 58.318)` | `oklch(0.62 0.179 58.318)` | unchanged | I5: 3.07:1 on control |
+| `--status-working` | `oklch(0.596 0.145 163.225)` | `oklch(0.58 0.145 163.225)` | unchanged | I5: 3.12:1 on control |
+| `--sidebar-ring` | `oklch(0.708 0 0)` | `var(--ring)` | unchanged (crew-bots' value; no class uses it) | I5 |
+| `--card`, `--popover` | `oklch(1 0 0)` | `var(--shell)` | unchanged | M4: toasts and menus match the panels |
+| `--lifted` (new) | | `oklch(1 0 0)` | `var(--raised)` | I1: what is lifted off a `bg-background` well (active tab, role tile, key chips, avatar tiles) |
+| `--lifted-shadow` (new) | | `0 1px 2px oklch(0 0 0 / 8%), 0 0 0 1px oklch(0 0 0 / 5%)` | `0 0 #0000` | I1: the edge of a lifted thing; `shadow-lifted` |
+| `--switch-off` (new) | | `oklch(0.78 0 0)` | `var(--control)` | C2: 1.75:1 on the canvas, 1.97:1 on shell |
+| `--field-border` (new) | | `oklch(0 0 0 / 8%)` | `transparent` | I3: a hairline on inputs, textareas and select triggers |
+
+The check now also measures, on all four surfaces where the theme allows it: the status colours, watermelon,
+`destructive` and its 10% tint, `--sidebar-ring`, the off switch, `--lifted` on the canvas, `--raised` on shell and
+the gap between the two text tiers. Pairs that the frozen dark values cannot pass (watermelon, `destructive` and its
+tint on `--control`; `--sidebar-ring`) are measured in light only.
