@@ -54,7 +54,7 @@ function computerLine({ on, sandboxed, browser }: RightNowInput['computer']): st
   const base = 'Computer: you have your own computer with a screen; use it for anything a person would do on a desktop.'
   if (!sandboxed) return base
   const own = `${base} It's a sandboxed computer, separate from your owner's machine, so keep anything you need later in /workspace.`
-  return browser ? own : `${own} To browse, click the round browser logo on the dock at the bottom of your screen, then use it the way a person would.`
+  return browser ? own : `${own} To browse, click the round browser logo on the dock at the bottom of your screen, then use it the way a person would. The screen is yours alone, so click in the foreground; the dock ignores background clicks.`
 }
 
 function memoryLine({ on, worklog }: RightNowInput['memory']): string {

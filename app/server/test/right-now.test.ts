@@ -48,6 +48,7 @@ describe('buildRightNow', () => {
     const line = lineOf(buildRightNow({ ...INPUT, computer: { on: true, sandboxed: true, browser: false } }), 'Computer:')
     expect(line).toContain('separate from your owner')
     expect(line).toContain('click the round browser logo on the dock at the bottom of your screen')
+    expect(line).toContain('foreground')
     expect(lineOf(buildRightNow({ ...INPUT, computer: { on: true, sandboxed: true, browser: true } }), 'Computer:')).not.toContain('dock')
   })
 
