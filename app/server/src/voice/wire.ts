@@ -8,8 +8,9 @@ import type { ConnectorStore } from '../connectors/store.js'
 import type { RoutineService } from '../routines/service.js'
 import type { SettingsStore } from '../settings/settings-store.js'
 import type { CrewStateSource } from '../state/crew-state.js'
+import { migrateAll } from './migrate.js'
 import { rosterFingerprint } from './scheduler.js'
-import { createVoiceService, type VoiceService } from './service.js'
+import { createVoiceService, refreshRightNow, type VoiceService, type VoiceServiceDeps } from './service.js'
 import { VoiceStore } from './voice-store.js'
 
 export interface VoiceWiring {
@@ -29,11 +30,36 @@ function appsOf(connectors: VoiceWiring['connectors'], bot: string): readonly { 
   return Object.entries(apps).map(([slug, level]) => ({ name: connectors.store.name(slug) ?? slug, level }))
 }
 
+/** Resolves once Hermes is connected and the roster has been read (the first pass needs real names). */
+function rosterReady(crewState: CrewStateSource): Promise<void> {
+  return new Promise(resolve => {
+    const check = (): boolean => crewState.state().hermes === 'connected' && crewState.state().bots.length > 0
+    if (check()) return resolve()
+    const off = crewState.onChange(() => {
+      if (!check()) return
+      off()
+      resolve()
+    })
+  })
+}
+
+/** Before the first refresh: back up and rewrite every in-scope bot once (spec 2026-11-12 §4.6). */
+function firstPass(input: VoiceWiring, deps: () => VoiceServiceDeps): () => Promise<void> {
+  return async () => {
+    await rosterReady(input.crewState)
+    const names = input.crewState.state().bots.map(b => b.name).filter(name => deps().inScope(name))
+    await migrateAll({
+      bots: input.bots, store: deps().store, backupDir: join(input.config.stateDir, 'soul-backups'), now: Date.now,
+      refreshNow: bot => refreshRightNow(deps(), bot)
+    }, names)
+  }
+}
+
 /** Builds the voice service, binds it to `bots.voice` and hooks every trigger of spec 2026-11-12 §4.2. */
 export async function wireVoice(input: VoiceWiring): Promise<VoiceService> {
   const { config, bots, crewState, settings, routines, connectors } = input
   const store = await VoiceStore.load(join(config.stateDir, 'voice.json'))
-  const service = createVoiceService({
+  const deps: VoiceServiceDeps = {
     bots,
     store,
     hermesHome: config.hermesHome,
@@ -43,7 +69,8 @@ export async function wireVoice(input: VoiceWiring): Promise<VoiceService> {
     apps: bot => appsOf(connectors, bot),
     routines: bot => routines.list(bot),
     inScope: bot => config.voiceScope === 'all' || TEST_BOT_RE.test(bot)
-  })
+  }
+  const service = createVoiceService({ ...deps, beforeFirstPass: firstPass(input, () => deps) })
   bots.voice = service
   let fingerprint = ''
   crewState.onChange(() => {
