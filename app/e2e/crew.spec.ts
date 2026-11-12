@@ -24,7 +24,8 @@ async function webappOnFixture(browser: Browser): Promise<Page> {
 test('roster shows the primary bot and Fixture with status', async ({ page }) => {
   await page.goto(CREW)
   const sidebar = page.getByRole('complementary')
-  await expect(sidebar.getByText('Primary', { exact: false })).toBeVisible()
+  // The tag on the primary's own row: a loose text match also hits any preview that says "primary".
+  await expect(sidebar.locator('[data-bot="default"]').getByText('Primary', { exact: true })).toBeVisible()
   await expect(sidebar.getByText('Hermes', { exact: true })).toBeVisible()
   await expect(sidebar.getByText('Fixture', { exact: true })).toBeVisible()
   const state = await crewState(page)

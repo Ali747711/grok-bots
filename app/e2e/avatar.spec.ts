@@ -33,7 +33,7 @@ test('an avatar picked in Crew survives a reload and keeps the webapp in sync', 
   await page.getByRole('button', { name: 'Create', exact: true }).click()
   await expect(page).toHaveURL(new RegExp(`/bots/${handle}$`), { timeout: 120_000 })
 
-  await page.goto(`${CREW}/bots/${handle}?panel=profile`)
+  await page.goto(`${CREW}/bots/${handle}?panel=profile&tab=avatar`)
   await page.getByRole('button', { name: 'cat', exact: true }).click()
   await expect(page.getByRole('button', { name: 'cat', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await page.getByRole('button', { name: 'Pink', exact: true }).click()
@@ -52,6 +52,8 @@ test('an avatar picked in Crew survives a reload and keeps the webapp in sync', 
   await expect(webapp.getByRole('button', { name: new RegExp(`^${title} · @${handle}`) })).toBeVisible({ timeout: 30_000 })
   await webapp.context().close()
 
+  // Delete lives on the profile's Advanced tab.
+  await page.goto(`${CREW}/bots/${handle}?panel=profile&tab=advanced`)
   await page.getByRole('button', { name: 'Delete bot', exact: true }).click()
   await page.getByLabel(`Type ${handle} to confirm`).fill(handle)
   await page.getByRole('button', { name: 'Delete', exact: true }).click()

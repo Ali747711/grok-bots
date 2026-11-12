@@ -3,6 +3,7 @@ import { bodyLimit } from 'hono/body-limit'
 import { z } from 'zod'
 
 import { crewAvatarSchema } from '../bots/avatar.js'
+import { botRoleSchema } from '../bots/cosmetics.js'
 import type { BotDeps } from '../bots/create.js'
 import { clearAvatar, deleteBot, readBotDetail, setAvatar, updateBot } from '../bots/edit.js'
 import { PROFILE_NAME_RE } from '../bots/names.js'
@@ -21,6 +22,8 @@ const patchBody = z.object({
     .refine(look => look.shape !== undefined || look.color !== undefined, 'look needs a shape or a color'),
   avatar: crewAvatarSchema,
   hidden: z.boolean(),
+  pinned: z.boolean(),
+  role: botRoleSchema.nullable(),
   description: z.string().max(2000),
   soul: z.string().max(100_000),
   model,

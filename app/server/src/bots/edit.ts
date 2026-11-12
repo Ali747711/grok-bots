@@ -1,6 +1,7 @@
 import { log } from '../log.js'
 import { type CrewAvatar, avatarMetaPatch, readCrewAvatar } from './avatar.js'
 import { withBotLock } from './bot-lock.js'
+import { type BotRole, readPinned, readRole } from './cosmetics.js'
 import type { BotDeps } from './create.js'
 import { refreshQuietly } from './refresh.js'
 import { cleanupBeforeDelete } from './sandbox-cleanup.js'
@@ -22,6 +23,8 @@ export interface BotDetail {
   readonly look: { readonly shape: string | null; readonly color: string | null; readonly imageKind: 'photo' | 'shape' | null }
   readonly avatar: CrewAvatar | null
   readonly hidden: boolean
+  readonly pinned: boolean
+  readonly role: BotRole | null
   readonly description: string
   readonly soul: string
   readonly model: ModelChoice | null
@@ -39,6 +42,8 @@ export interface BotPatch {
   readonly look?: LookPatch
   readonly avatar?: CrewAvatar
   readonly hidden?: boolean
+  readonly pinned?: boolean
+  readonly role?: BotRole | null
   readonly description?: string
   readonly soul?: string
   readonly model?: ModelChoice
@@ -112,6 +117,8 @@ export async function readBotDetail(deps: BotDeps, name: string): Promise<BotDet
     look: { shape: text(meta.shape) || null, color: text(meta.color) || null, imageKind },
     avatar: readCrewAvatar(meta.crewAvatar),
     hidden: meta.hidden === true,
+    pinned: readPinned(meta.pinned),
+    role: readRole(meta.role),
     description: typeof row.description === 'string' ? row.description : '',
     soul: soul.exists === false ? '' : (soul.content ?? ''),
     model: rest?.model && rest.provider ? { provider: rest.provider, model: rest.model } : null,
@@ -140,6 +147,9 @@ function metaPatch(patch: BotPatch): Partial<BotMeta> {
   return {
     ...(patch.title !== undefined ? { title: patch.title } : {}),
     ...(patch.hidden !== undefined ? { hidden: patch.hidden } : {}),
+    // false and null are real values: unpinning must overwrite a stale `true` from another client.
+    ...(patch.pinned !== undefined ? { pinned: patch.pinned } : {}),
+    ...(patch.role !== undefined ? { role: patch.role } : {}),
     ...(patch.look ? { ...(patch.look.shape !== undefined ? { shape: patch.look.shape } : {}), ...(patch.look.color !== undefined ? { color: patch.look.color } : {}), custom: true } : {}),
     ...(patch.avatar ? avatarMetaPatch(patch.avatar) : {})
   }

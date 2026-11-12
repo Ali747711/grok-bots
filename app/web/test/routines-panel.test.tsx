@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const toast = vi.hoisted(() => ({ success: vi.fn() }))
@@ -34,6 +34,8 @@ const callsTo = (fn: ReturnType<typeof stub>, key: string) =>
 const body = (call: unknown[] | undefined) => JSON.parse(String((call?.[1] as RequestInit | undefined)?.body))
 const LIST = 'GET /crew/routines?bot=dev'
 const open = () => render(<RoutinesPanel bot={bot({ name: 'dev', title: 'Dev' })} />)
+/** Open the accordion of the first routine row: the switch, Edit, History, Delete and Triggers live in it. */
+const details = async () => fireEvent.click((await screen.findAllByRole('button', { name: 'Routine details' }))[0]!)
 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
 
@@ -44,16 +46,6 @@ describe('RoutinesPanel list', () => {
     expect(await screen.findByText(/No routines yet/)).toBeInTheDocument()
   })
 
-  it('shows title, schedule text, next run and the last result', async () => {
-    stub({ [LIST]: () => json([routine({ lastStatus: 'delivery_failed', lastError: 'boom' })]) })
-    open()
-    expect(await screen.findByText('Daily digest')).toBeInTheDocument()
-    expect(screen.getByText(/Every day at 9:00\s?AM/)).toBeInTheDocument()
-    expect(screen.queryByText('0 9 * * *')).toBeNull()
-    expect(screen.getByText(/Next · Nov 9, 2026/)).toBeInTheDocument()
-    expect(screen.getByText('Delivery failed')).toBeInTheDocument()
-  })
-
   it('pauses and resumes', async () => {
     let enabled = true
     const fn = stub({
@@ -62,11 +54,13 @@ describe('RoutinesPanel list', () => {
       'POST /crew/routines/r1/resume?bot=dev': () => { enabled = true; return json(routine({ enabled })) }
     })
     open()
-    const toggle = await screen.findByRole('switch', { name: 'Daily digest enabled' })
+    await details()
+    const toggle = screen.getByRole('switch', { name: 'Daily digest enabled' })
     expect(toggle).toBeChecked()
     fireEvent.click(toggle)
     await waitFor(() => expect(screen.getByRole('switch', { name: 'Daily digest enabled' })).not.toBeChecked())
     expect(callsTo(fn, 'POST /crew/routines/r1/pause?bot=dev')).toHaveLength(1)
+    expect(screen.getByText('Paused')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('switch', { name: 'Daily digest enabled' }))
     await waitFor(() => expect(screen.getByRole('switch', { name: 'Daily digest enabled' })).toBeChecked())
     expect(callsTo(fn, 'POST /crew/routines/r1/resume?bot=dev')).toHaveLength(1)
@@ -93,7 +87,8 @@ describe('RoutinesPanel list', () => {
   it('asks before deleting a routine', async () => {
     const fn = stub({ [LIST]: () => json([routine()]), 'DELETE /crew/routines/r1?bot=dev': () => Promise.resolve(new Response(null, { status: 204 })) })
     open()
-    fireEvent.click(await screen.findByRole('button', { name: 'Delete' }))
+    await details()
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
     expect(callsTo(fn, 'DELETE /crew/routines/r1?bot=dev')).toHaveLength(0)
     expect(screen.getByText(/Delete “Daily digest”\?/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
@@ -169,7 +164,8 @@ describe('RoutinesPanel form', () => {
   it('edits a routine with PUT, starting from its values', async () => {
     const fn = stub({ [LIST]: () => json([routine({ deliverToChat: true })]), 'PUT /crew/routines/r1?bot=dev': () => json(routine()) })
     open()
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    await details()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
     expect(screen.getByLabelText('Title')).toHaveValue('Daily digest')
     expect(screen.getByLabelText('Timezone')).toHaveValue('Europe/London')
     expect(screen.getByRole('checkbox', { name: /Also post the result in the chat/ })).toBeChecked()
@@ -215,7 +211,8 @@ describe('RoutinesPanel form', () => {
   it('W9: edit sends timezoneChanged only when the zone or schedule changed', async () => {
     const fn = stub({ [LIST]: () => json([routine()]), 'PUT /crew/routines/r1?bot=dev': () => json(routine()) })
     open()
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    await details()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Digest' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(callsTo(fn, 'PUT /crew/routines/r1?bot=dev')).toHaveLength(1))
@@ -225,7 +222,8 @@ describe('RoutinesPanel form', () => {
   it('W9: a changed zone sends timezoneChanged true', async () => {
     const fn = stub({ [LIST]: () => json([routine()]), 'PUT /crew/routines/r1?bot=dev': () => json(routine()) })
     open()
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    await details()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
     fireEvent.change(screen.getByLabelText('Timezone'), { target: { value: 'Asia/Tokyo' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(callsTo(fn, 'PUT /crew/routines/r1?bot=dev')).toHaveLength(1))
@@ -235,7 +233,8 @@ describe('RoutinesPanel form', () => {
   it('W9: a changed schedule sends timezoneChanged true, and create sends none', async () => {
     const fn = stub({ [LIST]: () => json([routine()]), 'PUT /crew/routines/r1?bot=dev': () => json(routine()), 'POST /crew/routines?bot=dev': () => json(routine(), 201) })
     open()
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    await details()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
     fireEvent.change(screen.getByLabelText('Time'), { target: { value: '10:15' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(callsTo(fn, 'PUT /crew/routines/r1?bot=dev')).toHaveLength(1))
@@ -244,18 +243,6 @@ describe('RoutinesPanel form', () => {
 })
 
 describe('RoutinesPanel finished routines and row errors', () => {
-  it('renders routine rows as cards with a pause switch and result badge', async () => {
-    stub({ [LIST]: () => json([routine({ lastStatus: 'ok' }), routine({ id: 'r2', title: 'Other', lastStatus: 'blocked_config', lastError: 'no key' })]) })
-    open()
-    const rows = await screen.findAllByRole('listitem')
-    expect(rows[0]).toHaveClass('bg-muted', 'rounded-2xl')
-    expect(within(rows[0]!).getByRole('switch', { name: 'Daily digest enabled' })).toBeChecked()
-    expect(within(rows[0]!).getByText('OK')).toHaveClass('bg-ok-soft', 'text-ok-ink', 'ring-1', 'ring-border')
-    for (const name of ['History', 'Edit', 'Delete']) expect(within(rows[0]!).getByRole('button', { name })).toHaveClass('hover:bg-card', 'dark:hover:bg-card')
-    expect(within(rows[1]!).getByText('Config problem')).toHaveClass('bg-warn-soft', 'text-warn-ink')
-    expect(within(rows[0]!).getByText(/^Next/)).toHaveClass('label-mono')
-  })
-
   it('W2: a finished routine shows Done with no switch and no Run now', async () => {
     stub({ [LIST]: () => json([routine({ enabled: false, finished: true, state: 'completed', nextRunAt: null })]) })
     open()
@@ -263,6 +250,8 @@ describe('RoutinesPanel finished routines and row errors', () => {
     expect(screen.queryByRole('switch')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Run now' })).toBeNull()
     expect(screen.queryByText('Paused')).toBeNull()
+    await details()
+    expect(screen.queryByRole('switch')).toBeNull()
     expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument()
   })
@@ -270,14 +259,16 @@ describe('RoutinesPanel finished routines and row errors', () => {
   it("W2: a failed row action shows the server's message", async () => {
     stub({ [LIST]: () => json([routine()]), 'POST /crew/routines/r1/pause?bot=dev': () => json({ error: 'rejected', message: 'Cannot pause: boom' }, 400) })
     open()
-    fireEvent.click(await screen.findByRole('switch', { name: 'Daily digest enabled' }))
+    await details()
+    fireEvent.click(screen.getByRole('switch', { name: 'Daily digest enabled' }))
     expect(await screen.findByText('Cannot pause: boom')).toBeInTheDocument()
   })
 
   it('W2: a failed row action without a message uses the generic text', async () => {
     stub({ [LIST]: () => json([routine()]), 'POST /crew/routines/r1/pause?bot=dev': () => json({}, 502) })
     open()
-    fireEvent.click(await screen.findByRole('switch', { name: 'Daily digest enabled' }))
+    await details()
+    fireEvent.click(screen.getByRole('switch', { name: 'Daily digest enabled' }))
     expect(await screen.findByText('Could not change the routine')).toBeInTheDocument()
   })
 
@@ -313,7 +304,8 @@ describe('RoutinesPanel event-only routines', () => {
   it('always sends runs: schedule for a scheduled routine', async () => {
     const fn = stub({ [LIST]: () => json([routine()]), 'PUT /crew/routines/r1?bot=dev': () => json(routine()) })
     open()
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    await details()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
     expect(screen.getByRole('radio', { name: 'On a schedule' })).toBeChecked()
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(callsTo(fn, 'PUT /crew/routines/r1?bot=dev')).toHaveLength(1))
@@ -327,7 +319,8 @@ describe('RoutinesPanel event-only routines', () => {
   it('edits an event-only routine starting in Only when triggered, and never pre-fills the yearly placeholder', async () => {
     const fn = stub({ [LIST]: () => json([triggerOnly()]), [PUT]: () => json(triggerOnly()) })
     open()
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    await details()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
     expect(screen.getByRole('radio', { name: 'Only when triggered' })).toBeChecked()
     expect(screen.queryByRole('combobox', { name: 'When' })).toBeNull()
     fireEvent.click(screen.getByRole('radio', { name: 'On a schedule' }))
@@ -340,7 +333,8 @@ describe('RoutinesPanel event-only routines', () => {
   it('an edit that stays in Only when triggered sends runs and no timezoneChanged', async () => {
     const fn = stub({ [LIST]: () => json([triggerOnly()]), [PUT]: () => json(triggerOnly()) })
     open()
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    await details()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(callsTo(fn, PUT)).toHaveLength(1))
     const sent = body(callsTo(fn, PUT)[0])
@@ -361,15 +355,55 @@ describe('RoutinesPanel event-only routines', () => {
     const { RoutineRow } = await import('@/features/routines/RoutineRow')
     const props = { routine: routine(), onChanged: () => {}, onEdit: () => {}, historyOpen: false, onToggleHistory: () => {} }
     const { unmount } = render(<ul><RoutineRow {...props} triggerCount={2} /></ul>)
+    await details()
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
     expect(screen.getByText('This routine has 2 triggers; they will stop working.')).toBeInTheDocument()
     unmount()
     const one = render(<ul><RoutineRow {...props} triggerCount={1} /></ul>)
+    await details()
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
     expect(screen.getByText('This routine has 1 trigger; it will stop working.')).toBeInTheDocument()
     one.unmount()
     render(<ul><RoutineRow {...props} /></ul>)
+    await details()
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
     expect(screen.queryByText(/This routine has/)).toBeNull()
+  })
+
+})
+
+describe('RoutinesPanel form look', () => {
+  const newForm = async () => {
+    stub({ [LIST]: () => json([]) })
+    open()
+    fireEvent.click(await screen.findByRole('button', { name: 'New routine' }))
+  }
+
+  it('keeps the real Runs radios over their rows, so the e2e check() on a radio lands on it', async () => {
+    await newForm()
+    const runs = screen.getByRole('radiogroup', { name: 'Runs' })
+    expect(screen.getByRole('group', { name: 'Runs' })).toContainElement(runs)
+    for (const radio of screen.getAllByRole('radio')) {
+      expect(radio).not.toHaveClass('sr-only')
+      expect(radio).toHaveClass('absolute', 'inset-0')
+    }
+  })
+
+  it('labels the fields in the row-label type and sets the next runs on a well', async () => {
+    await newForm()
+    for (const label of ['Title', 'What should it do?', 'When', 'Timezone']) expect(screen.getByText(label)).toHaveClass('text-[13px]', 'font-semibold')
+    expect((await screen.findByText('Next runs')).parentElement).toHaveClass('rounded-2xl', 'bg-background')
+  })
+
+  it("shows the server's rejection as red text on a well, never on a red tint", async () => {
+    stub({ [LIST]: () => json([]), 'POST /crew/routines?bot=dev': () => json({ error: 'rejected', message: 'Blocked: prompt injection' }, 400) })
+    open()
+    fireEvent.click(await screen.findByRole('button', { name: 'New routine' }))
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Morning brief' } })
+    fireEvent.change(screen.getByLabelText('What should it do?'), { target: { value: 'Say hello' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    const alert = (await screen.findByText('Blocked: prompt injection')).closest('[role="alert"]')
+    expect(alert).toHaveClass('bg-background')
+    expect(alert!.className).not.toMatch(/bg-destructive|bg-card/)
   })
 })

@@ -79,3 +79,8 @@ export const startScreen = <T = unknown>(name: string): Promise<T> => screenJson
 export const getScreenConfig = (name: string): Promise<ScreenConfigView> => screenJson(screenPath(name, 'config'), 'GET')
 
 export const setUseScreen = (name: string, useScreen: boolean): Promise<ScreenConfigView> => screenJson(screenPath(name, 'config'), 'PUT', { useScreen })
+
+/** The three idle-stop choices Crew writes; 0 means the screen is never stopped (R3). */
+export type IdleStopMinutes = 15 | 60 | 0
+
+export const setIdleStop = (name: string, idleStopMinutes: IdleStopMinutes): Promise<ScreenConfigView> => screenJson(screenPath(name, 'config'), 'PUT', { idleStopMinutes })

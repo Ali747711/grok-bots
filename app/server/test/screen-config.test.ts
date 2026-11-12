@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import type { BotDeps } from '../src/bots/create.js'
-import { readScreenConfig, ensureIdleStop, setUseScreen } from '../src/bots/screen-config.js'
+import { readScreenConfig, ensureIdleStop, setIdleStop, setUseScreen } from '../src/bots/screen-config.js'
 import { setLogSink } from '../src/log.js'
 
 type Cfg = Record<string, unknown>
@@ -87,5 +87,30 @@ describe('screen config', () => {
     } finally {
       restore()
     }
+  })
+
+  it.each([15, 60, 0])('ensureIdleStop keeps %i', async minutes => {
+    config = { bot_desktop: { idle_stop_minutes: minutes } }
+    await ensureIdleStop(deps, 'scout')
+    expect(puts()).toHaveLength(0)
+  })
+
+  it.each([null, 30, 5, -1])('ensureIdleStop writes 15 over %j', async value => {
+    config = { bot_desktop: { idle_stop_minutes: value } }
+    await ensureIdleStop(deps, 'scout')
+    expect(puts()).toHaveLength(1)
+    expect(puts()[0]!.body).toEqual({ config: { bot_desktop: { idle_stop_minutes: 15 } } })
+  })
+
+  it('setUseScreen keeps a 60-minute choice', async () => {
+    config = { bot_desktop: { idle_stop_minutes: 60 } }
+    await setUseScreen(deps, 'scout', true)
+    expect(puts()).toHaveLength(1)
+    expect(puts()[0]!.body).toEqual({ config: { browser: { headed: true }, bot_desktop: { auto_start: true } } })
+  })
+
+  it('setIdleStop writes a sparse idle_stop_minutes only', async () => {
+    await setIdleStop(deps, 'scout', 60)
+    expect(puts().map(p => p.body)).toEqual([{ config: { bot_desktop: { idle_stop_minutes: 60 } } }])
   })
 })

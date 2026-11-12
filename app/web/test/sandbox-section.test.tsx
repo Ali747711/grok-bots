@@ -75,7 +75,7 @@ describe('SandboxSection', () => {
     stub({ get: () => reply(view({ docker: 'down', imagePresent: false })) })
     open()
     expect(await screen.findByText("Docker isn't available on this computer")).toBeTruthy()
-    expect((await sw()).hasAttribute('data-disabled')).toBe(true)
+    expect(await sw()).toBeDisabled()
   })
 
   it('offers the download when the image is missing and reloads when it is ready', async () => {
@@ -87,7 +87,7 @@ describe('SandboxSection', () => {
     })
     open()
     expect(await screen.findByText("The sandbox image isn't downloaded")).toBeTruthy()
-    expect((await sw()).hasAttribute('data-disabled')).toBe(true)
+    expect(await sw()).toBeDisabled()
     fireEvent.click(await screen.findByRole('button', { name: 'Download (about 1.2 GB)' }))
     expect(await screen.findByText('Sandbox ready')).toBeTruthy()
     expect(calls(fn, 'GET', '/crew/bots/dev/sandbox').length).toBe(2)
@@ -213,5 +213,17 @@ describe('SandboxSection', () => {
     open()
     expect(await screen.findByText("Couldn't check the sandbox: Hermes is offline")).toBeTruthy()
     expect(screen.getByRole('status').textContent).toContain("Couldn't check")
+  })
+
+  it('is drawn as a console section: a 13 px semibold heading, the console switch and notes without bullets (light review I6)', async () => {
+    stub({ get: () => reply(view()) })
+    open()
+    const toggle = await sw()
+    expect(screen.getByRole('heading', { level: 3, name: 'Sandbox' })).toHaveClass('text-[13px]', 'font-semibold')
+    // The console switch is a plain button; the old one was a Base UI switch with data-slot.
+    expect(toggle.tagName).toBe('BUTTON')
+    expect(toggle).not.toHaveAttribute('data-slot')
+    expect(document.querySelector('.list-disc')).toBeNull()
+    expect(screen.getAllByRole('status')).toHaveLength(1)
   })
 })

@@ -1,5 +1,6 @@
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import { DIALOG_DESCRIPTION, DIALOG_TITLE } from '@/components/console/dialog-styles'
 
 interface ConfirmActionProps {
   open: boolean
@@ -16,13 +17,13 @@ interface ConfirmActionProps {
 export function ConfirmAction({ open, title, description, confirm, destructive = false, busy, onConfirm, onOpenChange }: ConfirmActionProps) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
+      <AlertDialogContent className="gap-5">
         <AlertDialogHeader>
-          <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription>{description}</AlertDialogDescription>
+          <AlertDialogTitle className={DIALOG_TITLE}>{title}</AlertDialogTitle>
+          <AlertDialogDescription className={DIALOG_DESCRIPTION}>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button type="button" variant={destructive ? 'destructive' : 'default'} disabled={busy} onClick={onConfirm}>{confirm}</Button>
         </AlertDialogFooter>
       </AlertDialogContent>

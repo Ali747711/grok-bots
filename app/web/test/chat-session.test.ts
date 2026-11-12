@@ -97,6 +97,32 @@ describe('ChatSession', () => {
     expect(texts(session.items)).toContain('user:later')
   })
 
+  it('marks a queued submission and clears it when the next turn starts', async () => {
+    const { client, session } = setup()
+    await session.open()
+    const queued = () => session.items.filter(i => i.kind === 'user' && i.queued).map(i => (i as { text: string }).text)
+    client.emit(frame('message.start', {}))
+    client.handlers['prompt.submit'] = () => ({ status: 'queued' })
+    await session.send('later')
+    await session.send('and then')
+    expect(queued()).toEqual(['later', 'and then'])
+    // The running turn's own frames and its end leave the caption alone.
+    client.emit(frame('message.delta', { text: 'One', turn_id: 't', segment: 0, offset: 0 }))
+    client.emit(frame('message.complete', { text: 'One', status: 'complete' }))
+    expect(queued()).toEqual(['later', 'and then'])
+    client.emit(frame('message.start', {}, { execution_generation: 5 }))
+    expect(queued()).toEqual([])
+    expect(texts(session.items)).toEqual(expect.arrayContaining(['user:later', 'user:and then']))
+    expect(session.items.some(i => 'queued' in i)).toBe(false)
+  })
+
+  it('does not mark a submission that started at once', async () => {
+    const { session } = setup()
+    await session.open()
+    await session.send('now')
+    expect(session.items.some(i => i.kind === 'user' && i.queued)).toBe(false)
+  })
+
   it('replaces the local message with a notice when the submit is rejected', async () => {
     const { client, session } = setup()
     await session.open()

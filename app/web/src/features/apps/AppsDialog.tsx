@@ -1,6 +1,8 @@
 import { useState } from 'react'
 
+import { DIALOG_DESCRIPTION, DIALOG_TITLE, ERROR_TEXT, NOTE, WELL } from '@/components/console/dialog-styles'
 import { Button } from '@/components/ui/button'
+import { type PillTone, StatusPill } from '@/components/console/status-pill'
 import type { BotView } from '@/state/types'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
@@ -11,13 +13,15 @@ import { DisconnectApp } from './DisconnectApp'
 import { openDialog } from './open-dialog'
 import { useApps } from './use-apps'
 
-const STATUS_TEXT: Record<ConnectedApp['status'], string> = {
-  connected: 'Connected', pending: 'Waiting for sign-in…', failed: 'Not connected'
+const STATUS: Record<ConnectedApp['status'], { text: string; tone: PillTone }> = {
+  connected: { text: 'Connected', tone: 'ok' },
+  pending: { text: 'Waiting for sign-in…', tone: 'warn' },
+  failed: { text: 'Not connected', tone: 'error' }
 }
 
 function KeyProblem({ error, onSettings }: { error: string; onSettings: () => void }) {
   return (
-    <div className="flex flex-col items-start gap-2 text-sm">
+    <div className={`${WELL} flex flex-col items-start gap-3 p-4 text-[13px] font-medium`}>
       <p>{error === 'no_key' ? 'No Composio key yet.' : 'Key not accepted'}</p>
       <Button type="button" size="sm" variant="outline" onClick={onSettings}>Set the key in Settings</Button>
     </div>
@@ -30,10 +34,10 @@ export function AppsDialog({ open, onOpenChange, bots = [] }: AppsDialogProps) {
   // Mounted only while open, so the list is read fresh each time.
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-h-[85vh] gap-5 overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Apps</DialogTitle>
-          <DialogDescription>Apps your bots can use, through Composio.</DialogDescription>
+          <DialogTitle className={DIALOG_TITLE}>Apps</DialogTitle>
+          <DialogDescription className={DIALOG_DESCRIPTION}>Apps your bots can use, through Composio.</DialogDescription>
         </DialogHeader>
         {open && <AppsBody bots={bots} onClose={() => onOpenChange(false)} />}
       </DialogContent>
@@ -50,17 +54,18 @@ function AppsBody({ bots, onClose }: { bots: readonly BotView[]; onClose: () => 
   const [connecting, setConnecting] = useState(false)
   if (error === 'no_key' || error === 'key_rejected') // Apps closes first, so Settings never stacks on top of it.
     return <KeyProblem error={error} onSettings={() => { onClose(); openDialog('settings') }} />
-  if (error) return <p role="alert" className="text-sm">{error}</p>
-  if (!list) return <p className="text-sm text-muted-foreground">Loading apps…</p>
+  if (error) return <p role="alert" className={ERROR_TEXT}>{error}</p>
+  if (!list) return <p className={NOTE}>Loading apps…</p>
   return (
-    <div className="flex flex-col gap-3">
-      {list.apps.length === 0 && <p className="text-sm text-muted-foreground">No apps connected yet.</p>}
-      <ul className="flex flex-col gap-2">
+    <div className="flex flex-col gap-4">
+      {list.apps.length === 0 && <p className={`${WELL} px-4 py-6 text-center text-[13px] font-medium text-muted-foreground`}>No apps connected yet.</p>}
+      <ul className="m-0 flex list-none flex-col gap-1 p-0 empty:hidden">
         {list.apps.map(app => (
-          <li key={app.id} className="flex items-center gap-2">
+          // `data-app` covers the whole row: the visual check masks it, because the list is the user's own apps.
+          <li key={app.id} data-app={app.toolkit} className="flex min-h-12 items-center gap-2.5 rounded-3xl bg-background py-1.5 pr-1.5 pl-2">
             <AppTile name={app.name} />
-            <span className="min-w-0 flex-1 truncate text-sm">{app.name}</span>
-            <span className="text-xs text-muted-foreground">{STATUS_TEXT[app.status]}</span>
+            <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{app.name}</span>
+            <StatusPill tone={STATUS[app.status].tone}>{STATUS[app.status].text}</StatusPill>
             <DisconnectApp app={app} bots={(sibling(list.apps, app) ? [] : list.usage[app.toolkit] ?? []).map(name => bots.find(b => b.name === name)?.title ?? name)} onDone={() => void reload()} />
           </li>
         ))}

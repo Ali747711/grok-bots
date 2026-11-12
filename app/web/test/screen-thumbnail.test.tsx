@@ -20,7 +20,7 @@ const setVisibility = (value: 'visible' | 'hidden') => {
   Object.defineProperty(document, 'visibilityState', { value, configurable: true })
   act(() => { document.dispatchEvent(new Event('visibilitychange')) })
 }
-const header = (panel: 'computer' | null = null, onPanel: (t: string) => void = () => undefined) =>
+const header = (panel: 'computer' | 'routines' | null = null, onPanel: (t: string | null) => void = () => undefined) =>
   <ChatHeader bot={dev} stale={false} panel={panel} onPanel={onPanel} />
 
 beforeEach(() => {
@@ -64,6 +64,17 @@ describe('header thumbnail', () => {
     rerender(header('computer'))
     await flush(12_000)
     expect(thumbCalls()).toHaveLength(3)
+    expect(screen.queryByRole('img', { name: "Dev's screen" })).toBeNull()
+  })
+
+  it('steps aside while the side panel shows Routines too', async () => {
+    const { rerender } = render(header())
+    await flush()
+    expect(screen.getByRole('img', { name: "Dev's screen" })).toBeInTheDocument()
+    const before = thumbCalls().length
+    rerender(header('routines'))
+    await flush(12_000)
+    expect(thumbCalls()).toHaveLength(before)
     expect(screen.queryByRole('img', { name: "Dev's screen" })).toBeNull()
   })
 

@@ -7,6 +7,28 @@ export const AVATAR_TYPES = [
 ] as const
 
 export type AvatarType = (typeof AVATAR_TYPES)[number]
+/** Accessory values of `bot-avatars` 0.2.2; copies of the server's lists. */
+export type AvatarFace = 'eyes' | 'mouth'
+export type AvatarHat = 'none' | 'beret' | 'beanie' | 'party' | 'crown'
+export type AvatarGlasses = 'none' | 'round' | 'square' | 'shades'
+
+/** What a shape avatar wears. Every key is optional: a missing one is the library's default. */
+export interface AvatarWear {
+  readonly face?: AvatarFace
+  readonly hat?: AvatarHat
+  readonly glasses?: AvatarGlasses
+  readonly headphones?: boolean
+  readonly bowTie?: boolean
+}
+
+const WEAR_KEYS = ['face', 'hat', 'glasses', 'headphones', 'bowTie'] as const
+
+/** The accessories that were chosen, with no key for one that was not. */
+export function avatarWear(avatar: AvatarWear | null | undefined): AvatarWear {
+  if (!avatar) return {}
+  return Object.fromEntries(WEAR_KEYS.flatMap(key => (avatar[key] === undefined ? [] : [[key, avatar[key]]])))
+}
+
 export type AvatarState = 'default' | 'working' | 'sleeping'
 
 const DAY_MS = 86_400_000

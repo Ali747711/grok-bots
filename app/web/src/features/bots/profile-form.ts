@@ -1,3 +1,4 @@
+import type { BotRole } from './roles'
 import type { BotDetail, BotPatch, ModelChoice } from './types'
 
 export interface ProfileForm {
@@ -6,6 +7,8 @@ export interface ProfileForm {
   readonly soul: string
   /** null = the default model (nothing pinned). */
   readonly model: ModelChoice | null
+  /** null = no role. Saved with the text fields, but not guarded: it is Crew's own cosmetic. */
+  readonly role: BotRole | null
 }
 
 /** What the user edits (`form`) next to the values it started from (`loaded`); a field is dirty when they differ. */
@@ -15,7 +18,7 @@ export interface FormSync {
 }
 
 export const fromDetail = (d: BotDetail): ProfileForm => ({
-  name: d.title, description: d.description, soul: d.soul, model: d.model
+  name: d.title, description: d.description, soul: d.soul, model: d.model, role: d.role
 })
 
 export const freshSync = (d: BotDetail): FormSync => ({ form: fromDetail(d), loaded: fromDetail(d) })
@@ -27,7 +30,8 @@ const same: { [K in Field]: (a: ProfileForm[K], b: ProfileForm[K]) => boolean } 
   name: (a, b) => a === b,
   description: (a, b) => a === b,
   soul: (a, b) => a === b,
-  model: sameModel
+  model: sameModel,
+  role: (a, b) => a === b
 }
 const FIELDS = Object.keys(same) as Field[]
 
@@ -52,6 +56,9 @@ export function mergeFresh(sync: FormSync, detail: BotDetail): FormSync {
   return { form, loaded }
 }
 
+/** True when any field differs from its start value, including edits a patch would not send yet (a blank name). */
+export const isDirty = (sync: FormSync): boolean => FIELDS.some(key => !(same[key] as (a: unknown, b: unknown) => boolean)(sync.form[key], sync.loaded[key]))
+
 /** Only what differs from `loaded`, plus `baseline` (from `loaded`) for each guarded field it contains. */
 export function buildPatch(form: ProfileForm, loaded: ProfileForm): BotPatch {
   const title = form.name.trim()
@@ -66,6 +73,7 @@ export function buildPatch(form: ProfileForm, loaded: ProfileForm): BotPatch {
     ...(form.description !== loaded.description ? { description: form.description } : {}),
     ...(form.soul !== loaded.soul ? { soul: form.soul } : {}),
     ...(modelChanged && form.model ? { model: form.model } : {}),
+    ...(form.role !== loaded.role ? { role: form.role } : {}),
     ...(Object.keys(guarded).length > 0 ? { baseline: guarded } : {})
   }
 }

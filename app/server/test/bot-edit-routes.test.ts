@@ -89,6 +89,19 @@ describe('PATCH /crew/bots/:name', () => {
     expect(rpc.of('profiles.configure')).toHaveLength(0)
   })
 
+  it('accepts pinned and role alone and refuses a bad role or a non-boolean pin', async () => {
+    expect((await send('PATCH', '/crew/bots/scout', { pinned: false })).status).toBe(200)
+    expect((await send('PATCH', '/crew/bots/scout', { role: 'engineer' })).status).toBe(200)
+    expect((await send('PATCH', '/crew/bots/scout', { role: null })).status).toBe(200)
+    const before = rpc.of('profiles.configure').length
+    for (const payload of [{ role: 'chef' }, { pinned: 'yes' }, { role: 3 }]) {
+      const res = await send('PATCH', '/crew/bots/scout', payload)
+      expect(res.status).toBe(400)
+      expect(await res.json()).toMatchObject({ error: 'bad_body' })
+    }
+    expect(rpc.of('profiles.configure')).toHaveLength(before)
+  })
+
   it('requires a baseline for soul, description and model, naming the missing one', async () => {
     for (const [patch, field] of [
       [{ soul: 'S' }, 'soul'],

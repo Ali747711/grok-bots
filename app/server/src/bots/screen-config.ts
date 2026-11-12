@@ -1,7 +1,9 @@
 import type { BotDeps } from './create.js'
 
 const CONFIG_PATH = '/api/config'
-export const IDLE_STOP_MINUTES = 15
+export const IDLE_STOP_CHOICES = [15, 60, 0] as const
+export type IdleStopMinutes = (typeof IDLE_STOP_CHOICES)[number]
+export const DEFAULT_IDLE_STOP: IdleStopMinutes = 15
 
 export interface ScreenConfig {
   readonly idleStopMinutes: number | null
@@ -33,10 +35,14 @@ export async function readScreenConfig(deps: BotDeps, name: string): Promise<Scr
 const writeSparse = (deps: BotDeps, name: string, config: Section): Promise<unknown> =>
   deps.rest.request('PUT', CONFIG_PATH, { query: { profile: name }, body: { config } })
 
-/** Make the bot's idle stop `minutes`, writing only when it differs. The caller holds the bot lock. */
-export async function ensureIdleStop(deps: BotDeps, name: string, minutes = IDLE_STOP_MINUTES): Promise<void> {
-  const current = await readScreenConfig(deps, name)
-  if (current.idleStopMinutes === minutes) return
+/** Keep a 15, 60 or 0 (never) choice; anything else (unset, Hermes's 30) becomes 15. The caller holds the bot lock. */
+export async function ensureIdleStop(deps: BotDeps, name: string): Promise<void> {
+  const { idleStopMinutes } = await readScreenConfig(deps, name)
+  if (idleStopMinutes !== null && (IDLE_STOP_CHOICES as readonly number[]).includes(idleStopMinutes)) return
+  await setIdleStop(deps, name, DEFAULT_IDLE_STOP)
+}
+
+export async function setIdleStop(deps: BotDeps, name: string, minutes: IdleStopMinutes): Promise<void> {
   await writeSparse(deps, name, { bot_desktop: { idle_stop_minutes: minutes } })
 }
 

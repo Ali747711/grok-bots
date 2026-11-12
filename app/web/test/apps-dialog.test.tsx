@@ -212,4 +212,37 @@ describe('AppsDialog', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Connect' }))
     expect(await screen.findByText("Crew can't connect Weird yet.")).toBeInTheDocument()
   })
+
+  it('marks each connected app row for the screenshot mask and shows its status as a neutral pill with a dot', async () => {
+    stub(url => (url === '/crew/connectors/apps' ? json(LIST) : undefined))
+    open()
+    await screen.findByText('GitHub')
+    const rows = [...document.querySelectorAll('li[data-app]')]
+    expect(rows.map(r => r.getAttribute('data-app'))).toEqual(['github', 'notion'])
+    // The whole row is inside the mark: the tile, the name, the status and the Disconnect button that names the app.
+    expect(rows[0]).toHaveTextContent('GitHub')
+    expect(rows[0]).toContainElement(screen.getByText('G'))
+    expect(rows[0]).toContainElement(screen.getByRole('button', { name: 'Disconnect GitHub' }))
+    const connected = screen.getByText('Connected')
+    expect(connected).toHaveClass('rounded-full', 'bg-raised', 'text-foreground')
+    expect(connected.querySelector('[aria-hidden="true"]')).toHaveClass('bg-status-working')
+    expect(screen.getByText('Waiting for sign-in…').querySelector('[aria-hidden="true"]')).toHaveClass('bg-status-waiting')
+  })
+
+  it('titles the dialog in the panel-title size and sets the rows on wells', async () => {
+    stub(url => (url === '/crew/connectors/apps' ? json(LIST) : undefined))
+    open()
+    await screen.findByText('GitHub')
+    expect(screen.getByRole('heading', { name: 'Apps' })).toHaveClass('text-[15px]', 'font-semibold')
+    for (const row of document.querySelectorAll('li[data-app]')) expect(row).toHaveClass('bg-background')
+  })
+
+  it('shows a failed load as plain red text, never on a red tint', async () => {
+    stub(url => (url === '/crew/connectors/apps' ? json({ error: 'composio_unavailable' }, 502) : undefined))
+    open()
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent("Couldn't reach Composio")
+    expect(alert).toHaveClass('text-destructive')
+    expect(alert.className).not.toMatch(/bg-destructive/)
+  })
 })

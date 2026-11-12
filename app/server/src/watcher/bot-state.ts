@@ -1,4 +1,5 @@
 import { type CrewAvatar, readCrewAvatar } from '../bots/avatar.js'
+import { type BotRole, readPinned, readRole } from '../bots/cosmetics.js'
 import type { SandboxState } from '../bots/sandbox-state.js'
 import type { GroupsState } from '../groups/types.js'
 import type { CrewSettings } from '../settings/settings-store.js'
@@ -25,6 +26,11 @@ export interface BotView {
   readonly lastActive: number | null
   readonly status: BotStatus
   readonly hidden: boolean
+  /** Pinned in the rail; only boolean `true` in `ui_meta` counts. */
+  readonly pinned: boolean
+  readonly role: BotRole | null
+  /** The profile `description` (trimmed): what the bot is for; '' when absent. */
+  readonly job: string
   /** A non-primary bot whose look was never written (create stopped half-way); finish it. */
   readonly setupIncomplete: boolean
   readonly created: number | null
@@ -54,6 +60,7 @@ export type WatcherState = Omit<CrewState, 'groups'>
 export interface ProfileInput {
   readonly name: string
   readonly display_name?: string
+  readonly description?: string | null
   readonly model?: string | null
   readonly has_avatar?: boolean
   readonly ui_meta?: Record<string, unknown> | null
@@ -144,6 +151,9 @@ export class BotStateTracker {
         lastActive: num(chat?.last_active) ?? null,
         status,
         hidden: meta.hidden === true,
+        pinned: readPinned(meta.pinned),
+        role: readRole(meta.role),
+        job: typeof row.description === 'string' ? row.description.trim() : '',
         setupIncomplete: !isPrimary && !(num(row.ui_meta_revisions?.['hermes-bots']) ?? 0),
         created: num(meta.created) ?? null,
         sandbox: this.sandboxes.get(row.name) ?? 'off'

@@ -1,3 +1,4 @@
+import { Plus } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 
@@ -12,6 +13,8 @@ import { RoutineForm } from './RoutineForm'
 import { RoutineRow } from './RoutineRow'
 import type { RoutineView } from './types'
 import { useRoutines } from './use-routines'
+
+const NOTE = 'px-3 text-xs font-medium text-muted-foreground'
 
 type Editing = { kind: 'new' } | { kind: 'edit'; routine: RoutineView } | null
 
@@ -40,15 +43,18 @@ export function RoutinesPanel({ bot }: { bot: BotView }) {
   }
 
   return (
-    <div className="flex flex-col gap-3 p-4">
-      <Button type="button" size="sm" className="self-start rounded-full" onClick={() => setEditing({ kind: 'new' })}>New routine</Button>
-      {triggers === null && triggersError !== null && <p className="text-xs text-muted-foreground">{triggerErrorText(triggersError)}</p>}
-      {routines === null && <p className="text-sm text-muted-foreground">{error ? 'Could not load routines.' : 'Loading…'}</p>}
+    <div className="flex flex-col gap-2 px-2 pb-2">
+      <div className="flex items-center justify-between gap-2 py-1 pr-1 pl-3">
+        <h2 className="text-[13px] font-semibold">{`${bot.title}'s routines`}</h2>
+        <Button type="button" size="sm" onClick={() => setEditing({ kind: 'new' })}><Plus aria-hidden="true" />New routine</Button>
+      </div>
+      {triggers === null && triggersError !== null && <p role="status" className={NOTE}>{triggerErrorText(triggersError)}</p>}
+      {routines === null && <p className={NOTE}>{error ? 'Could not load routines.' : 'Loading…'}</p>}
       {routines?.length === 0 && (
-        <p className="text-sm text-muted-foreground">No routines yet. Routines run on a schedule and keep their results in run history.</p>
+        <p className="rounded-2xl bg-background px-4 py-6 text-center text-[13px] font-medium text-muted-foreground">No routines yet. Routines run on a schedule and keep their results in run history.</p>
       )}
       {routines && routines.length > 0 && (
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col gap-0.5">
           {routines.map(r => <RoutineRow
               key={r.id} routine={r} onChanged={changed} onEdit={() => setEditing({ kind: 'edit', routine: r })}
               sandboxed={bot.sandbox === 'on'} triggers={of(r.id)} triggerCount={of(r.id)?.length ?? 0}

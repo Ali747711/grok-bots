@@ -6,29 +6,31 @@ export const LOGIN_PAGE_HTML = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Crew · Sign in</title>
 <style>
+  /* Crew UI 2 tokens, copied as literals from docs/ui2/tokens.md: this page loads no stylesheet, font or script file. */
+  :root { color-scheme: light dark; --canvas: oklch(0.955 0 0); --card: oklch(0.995 0 0); --text: oklch(0.145 0 0);
+          --muted: oklch(0.42 0 0); --chip: oklch(0.945 0 0);
+          --panel-shadow: 0 1px 2px oklch(0 0 0 / 5%), 0 8px 24px -8px oklch(0 0 0 / 10%); }
   * { box-sizing: border-box; }
-  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; display: grid; place-items: center;
-         min-height: 100vh; margin: 0; padding: 16px; color: #0d0d0d;
-         background: radial-gradient(180px 60px at 18% 94%, rgba(255,255,255,.85), transparent 70%),
-                     radial-gradient(240px 75px at 55% 100%, rgba(255,255,255,.8), transparent 70%),
-                     radial-gradient(200px 68px at 88% 92%, rgba(255,255,255,.75), transparent 70%),
-                     linear-gradient(180deg, #2a8af0 0%, #4ea4f6 55%, #bcdcfb 100%); }
-  @media (prefers-color-scheme: dark) { body { background: #050505; } }
-  main { width: 100%; max-width: 380px; padding: 32px 28px; text-align: center; background: rgba(255,255,255,.95); border-radius: 24px;
-         box-shadow: 0 12px 40px rgba(13,13,13,.18); }
-  @media (prefers-color-scheme: dark) { main { background: #131416; color: #f3f4f6; } }
-  h1 { margin: 0 0 8px; font-size: 26px; letter-spacing: -.01em; }
-  p { margin: 0; color: #6b7280; }
-  @media (prefers-color-scheme: dark) { p { color: #9ca3af; } }
-  .pill { display: inline-block; margin-bottom: 16px; padding: 3px 12px; border-radius: 999px; background: #d6f55a; color: #0d0d0d;
-          font: 600 10px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; text-transform: uppercase; }
-  code { background: #f2f4f6; color: #0d0d0d; padding: 2px 6px; border-radius: 6px; }
-  @media (prefers-color-scheme: dark) { code { background: #1d1f22; color: #f3f4f6; } }
+  /* Inter only where it is already installed: this page loads no font file (its CSP is default-src 'none'). */
+  body { font: 14px/1.5 "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; display: grid; place-items: center;
+         min-height: 100vh; margin: 0; padding: 16px; color: var(--text); background: var(--canvas); }
+  main { width: 100%; max-width: 380px; padding: 32px 28px; text-align: center; background: var(--card); border-radius: 24px;
+         box-shadow: var(--panel-shadow); }
+  h1 { margin: 0 0 8px; font-size: 24px; font-weight: 600; letter-spacing: -.02em; }
+  p { margin: 0; color: var(--muted); font-weight: 500; }
+  .kicker { margin-bottom: 6px; font-size: 12px; }
+  code { padding: 2px 6px; border-radius: 6px; background: var(--chip); color: var(--text);
+         font: 12px/1.5 ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; }
+  @media (prefers-color-scheme: dark) {
+    :root { --canvas: oklch(0.145 0 0); --card: oklch(0.205 0 0); --text: oklch(0.985 0 0);
+            --muted: oklch(0.74 0 0); --chip: oklch(0.269 0 0); }
+    main { box-shadow: none; }
+  }
 </style>
 </head>
 <body>
 <main>
-  <span class="pill">Sign in</span>
+  <p class="kicker">Sign in</p>
   <h1>Crew</h1>
   <p id="msg">Signing you in…</p>
 </main>

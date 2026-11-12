@@ -28,9 +28,9 @@ export function ResetSandbox({ bot, title, onDone }: Props) {
     }
   }
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1 px-1">
       <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => setOpen(true)}>Reset sandbox</Button>
-      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      {error && <p role="alert" className="text-xs font-medium text-destructive">{error}</p>}
       <ConfirmAction
         open={open} onOpenChange={setOpen} busy={busy} confirm="Reset sandbox" title="Reset the sandbox?"
         description={`This removes ${title}'s container, so the next command starts fresh. Installed packages and running processes are lost. Files in the bot's working folder are kept; anything else resets.`}

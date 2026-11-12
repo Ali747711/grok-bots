@@ -1,5 +1,7 @@
 import { useState } from 'react'
 
+import { FIELD, FIELD_LABEL, HINT } from '@/components/console/dialog-styles'
+import { RadioRows } from '@/components/console/radio-rows'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -19,10 +21,9 @@ interface RoutineFormProps {
   onCancel: () => void
 }
 
-// Native select for the long zone list (type-ahead): styled like the shadcn trigger, with dark counterparts for its dark: classes.
-const SELECT = 'h-8 w-full rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30'
-const FIELD = 'flex flex-col gap-1.5'
-const LABEL = 'text-sm font-medium'
+// Native select for the long zone list (type-ahead): styled like the luma Input.
+const SELECT = 'h-9 w-full rounded-3xl border border-transparent bg-input/50 px-3 text-sm outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring'
+const LABEL = FIELD_LABEL
 const browserZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone
 const RUNS_HINT = 'Runs only when one of its triggers gets an event. Add triggers after saving.'
 const DEFAULT_SCHEDULE: ScheduleSpec = { kind: 'daily', time: '09:00' }
@@ -34,33 +35,15 @@ function saveError(e: unknown): string {
 }
 
 type Runs = 'schedule' | 'triggered'
-
-/** "Runs" radio pair: native radios like the group-routing rule in ReplyRule. */
-function RunsChoice({ runs, onChange }: { runs: Runs; onChange: (runs: Runs) => void }) {
-  const options: { value: Runs; label: string }[] = [{ value: 'schedule', label: 'On a schedule' }, { value: 'triggered', label: 'Only when triggered' }]
-  return (
-    <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
-      <legend className="mb-1 text-sm font-medium">Runs</legend>
-      <div role="radiogroup" aria-label="Runs" className="flex flex-col gap-1.5">
-        {options.map(o => (
-          <label key={o.value} className="flex cursor-pointer items-center gap-2 text-sm">
-            <input type="radio" name="routine-runs" value={o.value} checked={runs === o.value} onChange={() => onChange(o.value)} className="accent-foreground" />
-            <span>{o.label}</span>
-          </label>
-        ))}
-      </div>
-      {runs === 'triggered' && <p className="text-xs text-muted-foreground">{RUNS_HINT}</p>}
-    </fieldset>
-  )
-}
+const RUNS: readonly { value: Runs; label: string }[] = [{ value: 'schedule', label: 'On a schedule' }, { value: 'triggered', label: 'Only when triggered' }]
 
 function NextRuns({ schedule, timezone }: { schedule: ScheduleSpec; timezone: string }) {
   const { next, error } = useSchedulePreview(schedule, timezone, scheduleReady(schedule))
   return (
-    <div className="flex flex-col gap-1 rounded-xl bg-muted p-3">
-      <div className="label-mono">Next runs</div>
-      {error && <p className="text-xs text-muted-foreground">{error}</p>}
-      {next?.map(ms => <p key={ms} className="font-mono text-xs">{formatInZone(ms, timezone)}</p>)}
+    <div className="flex flex-col gap-1 rounded-2xl bg-background px-3.5 py-3">
+      <div className="text-xs font-medium text-muted-foreground">Next runs</div>
+      {error && <p className="text-xs font-medium text-muted-foreground">{error}</p>}
+      {next?.map(ms => <p key={ms} className="font-mono text-xs tabular-nums">{formatInZone(ms, timezone)}</p>)}
     </div>
   )
 }
@@ -109,7 +92,7 @@ export function RoutineForm({ onCancel, ...props }: RoutineFormProps) {
   const options = zones.includes(timezone) ? zones : [timezone, ...zones]
 
   return (
-    <div className="flex flex-col gap-4 p-4">
+    <div className="flex flex-col gap-4 px-3 pt-1 pb-3">
       <div className={FIELD}>
         <label htmlFor="routine-title" className={LABEL}>Title</label>
         <Input id="routine-title" value={title} maxLength={80} onChange={e => setTitle(e.target.value)} />
@@ -118,7 +101,9 @@ export function RoutineForm({ onCancel, ...props }: RoutineFormProps) {
         <label htmlFor="routine-instruction" className={LABEL}>What should it do?</label>
         <Textarea id="routine-instruction" value={instruction} maxLength={4000} onChange={e => setInstruction(e.target.value)} />
       </div>
-      <RunsChoice runs={runs} onChange={setRuns} />
+      <RadioRows legend="Runs" value={runs} options={RUNS} onChange={setRuns}>
+        {triggered && <p className={HINT}>{RUNS_HINT}</p>}
+      </RadioRows>
       {!triggered && <SchedulePicker value={schedule} onChange={setSchedule} />}
       {!triggered && (
         <div className={FIELD}>
@@ -128,18 +113,14 @@ export function RoutineForm({ onCancel, ...props }: RoutineFormProps) {
           </select>
         </div>
       )}
-      <label className="flex items-start gap-2 text-sm">
-        <Checkbox
-          checked={deliverToChat}
-          onCheckedChange={setDeliverToChat}
-          className="mt-0.5 border-muted-foreground data-checked:border-foreground data-checked:bg-foreground data-checked:text-background dark:data-checked:bg-foreground"
-        />
+      <label className="flex cursor-pointer items-start gap-2.5 rounded-2xl bg-background px-3.5 py-3 text-[13px] font-medium has-focus-visible:ring-3 has-focus-visible:ring-ring">
+        <Checkbox checked={deliverToChat} onCheckedChange={setDeliverToChat} className="mt-0.5 border-ring bg-shell focus-visible:ring-0" />
         <span>Also post the result in the chat (one extra turn per run)</span>
       </label>
       {!triggered && <NextRuns schedule={schedule} timezone={timezone} />}
-      {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+      {error && <Alert variant="destructive" className="rounded-2xl border-0 bg-background px-3.5 py-3"><AlertDescription className="text-xs font-medium">{error}</AlertDescription></Alert>}
       <div className="flex justify-end gap-2">
-        <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
+        <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
         <Button type="button" disabled={busy || title.trim() === '' || instruction.trim() === '' || (!triggered && !scheduleReady(schedule))} onClick={() => void save()}>Save</Button>
       </div>
     </div>

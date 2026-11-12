@@ -38,6 +38,16 @@ describe('BotStateTracker', () => {
     ])
   })
 
+  it('exposes pinned, role and job on BotView', () => {
+    const t = new BotStateTracker()
+    t.applyProfiles([
+      { name: 'a', description: '  Find papers ', ui_meta: { 'hermes-bots': { pinned: true, role: 'researcher' } } },
+      { name: 'b', ui_meta: { 'hermes-bots': { pinned: 'true', role: 'chef' } } },
+      { name: 'c', description: 5 as unknown as string }
+    ])
+    expect(t.view([]).map(b => [b.pinned, b.role, b.job])).toEqual([[true, 'researcher', 'Find papers'], [false, null, ''], [false, null, '']])
+  })
+
   it('falls back to display_name, then the profile name, for the title', () => {
     const t = new BotStateTracker()
     t.applyProfiles([{ name: 'a', display_name: 'Alpha' }, { name: 'b' }])

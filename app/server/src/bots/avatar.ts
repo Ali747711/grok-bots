@@ -30,10 +30,24 @@ export const AVATAR_DEFAULT_COLORS: Readonly<Record<AvatarType, string>> = {
   puddle: '#EE8BDB'
 }
 
+/** Accessory values of `bot-avatars` 0.2.2 (BotAvatarFace / Hat / Glasses). */
+export const AVATAR_FACES = ['eyes', 'mouth'] as const
+export const AVATAR_HATS = ['none', 'beret', 'beanie', 'party', 'crown'] as const
+export const AVATAR_GLASSES = ['none', 'round', 'square', 'shades'] as const
+
+export type AvatarFace = (typeof AVATAR_FACES)[number]
+export type AvatarHat = (typeof AVATAR_HATS)[number]
+export type AvatarGlasses = (typeof AVATAR_GLASSES)[number]
+
 export interface CrewAvatar {
   readonly type: AvatarType
   /** `#rrggbb`; the type's default colour when absent. */
   readonly color?: string
+  readonly face?: AvatarFace
+  readonly hat?: AvatarHat
+  readonly glasses?: AvatarGlasses
+  readonly headphones?: boolean
+  readonly bowTie?: boolean
 }
 
 const COLOR_RE = /^#[0-9a-fA-F]{6}$/
@@ -41,7 +55,12 @@ const COLOR_RE = /^#[0-9a-fA-F]{6}$/
 /** Request-body schema for an avatar. */
 export const crewAvatarSchema = z.object({
   type: z.enum(AVATAR_TYPES),
-  color: z.string().regex(COLOR_RE).optional()
+  color: z.string().regex(COLOR_RE).optional(),
+  face: z.enum(AVATAR_FACES).optional(),
+  hat: z.enum(AVATAR_HATS).optional(),
+  glasses: z.enum(AVATAR_GLASSES).optional(),
+  headphones: z.boolean().optional(),
+  bowTie: z.boolean().optional()
 })
 
 /** FNV-1a 32-bit over the UTF-16 code units, modulo the type count. Copied verbatim by the web. */
@@ -72,11 +91,29 @@ export function avatarMetaPatch(avatar: CrewAvatar): { crewAvatar: CrewAvatar; s
   }
 }
 
+const oneOf = <T extends string>(list: readonly T[], value: unknown): T | undefined =>
+  typeof value === 'string' && (list as readonly string[]).includes(value) ? (value as T) : undefined
+
+/** The valid accessories among the stored keys; an invalid one is dropped, never the whole avatar. */
+function readAccessories(raw: Record<string, unknown>): Omit<CrewAvatar, 'type' | 'color'> {
+  const face = oneOf(AVATAR_FACES, raw.face)
+  const hat = oneOf(AVATAR_HATS, raw.hat)
+  const glasses = oneOf(AVATAR_GLASSES, raw.glasses)
+  return {
+    ...(face ? { face } : {}),
+    ...(hat ? { hat } : {}),
+    ...(glasses ? { glasses } : {}),
+    ...(typeof raw.headphones === 'boolean' ? { headphones: raw.headphones } : {}),
+    ...(typeof raw.bowTie === 'boolean' ? { bowTie: raw.bowTie } : {})
+  }
+}
+
 /** A stored `crewAvatar` when valid, else null. Never throws. */
 export function readCrewAvatar(value: unknown): CrewAvatar | null {
   if (!value || typeof value !== 'object') return null
-  const { type, color } = value as Record<string, unknown>
+  const raw = value as Record<string, unknown>
+  const { type, color } = raw
   if (typeof type !== 'string' || !(AVATAR_TYPES as readonly string[]).includes(type)) return null
-  if (color === undefined) return { type: type as AvatarType }
-  return typeof color === 'string' && COLOR_RE.test(color) ? { type: type as AvatarType, color } : null
+  if (color !== undefined && !(typeof color === 'string' && COLOR_RE.test(color))) return null
+  return { type: type as AvatarType, ...(color !== undefined ? { color: color as string } : {}), ...readAccessories(raw) }
 }

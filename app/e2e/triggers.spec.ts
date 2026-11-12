@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 
 import { type Page, expect, test } from '@playwright/test'
 
-import { CREW, crewApi, genericHeaders, githubHeaders, hmacHex, postHook, vm } from './helpers.js'
+import { CREW, crewApi, expandRoutine, genericHeaders, githubHeaders, hmacHex, postHook, vm } from './helpers.js'
 import { cronJobsOf, deleteTestRoutines, deleteTriggerJobs } from './hermes-rpc.js'
 
 // NO MODEL CALLS (R1). The routine's instruction trips Hermes's own safety scan ("ignore all previous
@@ -70,6 +70,7 @@ test.afterAll(async () => {
 const row = () => page.getByRole('listitem').filter({ hasText: TITLE }).first()
 const openRoutines = () => page.goto(`${CREW}/bots/${BOT}?panel=routines`)
 async function openTriggers(): Promise<void> {
+  await expandRoutine(row())
   const toggle = row().getByRole('button', { name: /^Triggers \(/ })
   await expect(toggle).toBeVisible()
   if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click()
@@ -102,6 +103,7 @@ test('an event-only routine and a GitHub trigger; the secret is shown once', asy
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(row()).toBeVisible()
   await expect(row().getByText('Only when triggered')).toBeVisible()
+  await expandRoutine(row())
   await expect(row().getByRole('switch')).toHaveCount(0)
 
   const job = (await cronJobsOf(BOT)).find(j => j.name === `[bot:${BOT}] ${TITLE}`)
@@ -272,6 +274,7 @@ test('a Generic trigger: timestamps, signatures and the curl example', async () 
 
 test('deleting the routine: the warning, a 410 and the orphan list', async () => {
   await openRoutines()
+  await expandRoutine(row())
   await row().getByRole('button', { name: 'Delete', exact: true }).click()
   await expect(page.getByText('This routine has 2 triggers; they will stop working.')).toBeVisible()
   await page.getByRole('button', { name: 'Yes, delete' }).click()

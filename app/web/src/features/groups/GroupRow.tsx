@@ -1,3 +1,6 @@
+import { motion } from 'motion/react'
+
+import { slide } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 import type { BotView, GroupView } from '@/state/types'
 
@@ -23,29 +26,35 @@ function previewText(group: GroupView, bots: readonly BotView[], stale: boolean)
   return group.members.map(m => memberTitle(group, bots, m.memberId)).join(', ')
 }
 
-/** One group in the sidebar: stacked member avatars, name, one-line preview. Matches RosterRow. */
+/** One group in the rail: stacked member avatars, name, one-line preview. A 48 px pill like the bot rows. */
 export function GroupRow({ group, bots, active, stale, onSelect }: GroupRowProps) {
   const members = group.members.map(m => {
     const bot = bots.find(b => b.name === m.profile) ?? null
-    // A stale sidebar must not show live status.
+    // A stale rail must not show live status.
     return bot && stale ? { ...bot, status: 'idle' as const } : bot
   })
   return (
     <button
       type="button"
       data-group={group.id}
-      data-selected={active ? 'true' : undefined}
+      data-rail-row=""
       aria-current={active ? 'page' : undefined}
       onClick={() => onSelect(group.id)}
       className={cn(
-        'flex w-full items-center gap-2.5 rounded-2xl p-2 text-left transition-colors hover:bg-muted',
-        active && 'bg-sky-soft shadow-[inset_3px_0_0_var(--sky)] hover:bg-sky-soft'
+        'relative flex h-12 w-full items-center gap-2.5 rounded-full py-1.5 pr-3 pl-2 text-left transition-[background-color,opacity] outline-none focus-visible:ring-3 focus-visible:ring-ring',
+        // The avatars' cut-out follows the surface behind the row.
+        active ? '[--stack-ring:var(--raised)]' : 'hover:bg-hover hover:[--stack-ring:var(--hover)]',
+        stale && 'opacity-50'
       )}
     >
-      <StackedAvatars bots={members} size={30} />
-      <span className="min-w-0 flex-1">
-        <span className={cn('block truncate text-sm font-semibold', active && 'text-sky-ink')}>{group.name}</span>
-        <span className="block truncate text-xs text-muted-foreground">{previewText(group, bots, stale)}</span>
+      {/* The same pill as the bot rows, so it slides between a bot and a group. */}
+      {active && <motion.span layoutId="rail-active" transition={slide} className="absolute inset-0 rounded-full bg-raised" />}
+      <span className="relative flex shrink-0">
+        <StackedAvatars bots={members} size={30} />
+      </span>
+      <span className="relative min-w-0 flex-1">
+        <span className="block truncate text-[13px] leading-[18px] font-semibold">{group.name}</span>
+        <span className="block truncate text-xs leading-4 font-medium text-muted-foreground">{previewText(group, bots, stale)}</span>
       </span>
     </button>
   )

@@ -7,13 +7,16 @@ export const hasHidden = (text: string | undefined): boolean => text !== undefin
 
 const token = (ch: string) => `⟨U+${ch.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}⟩`
 
-/** Text with every hidden character replaced by a visible, distinctly styled marker (display only). */
+/**
+ * Text with every hidden character replaced by a visible, distinctly styled marker (display only).
+ * The marker is an outlined chip on its own raised fill, so it reads the same on any surface.
+ */
 export function RevealHidden({ text }: { text: string }) {
   return (
     <>
       {text.split(HIDDEN_SPLIT).map((part, i) =>
         HIDDEN_ONE.test(part) ? (
-          <span key={i} className="rounded bg-contrast-danger px-0.5 font-mono text-contrast">{token(part)}</span>
+          <span key={i} className="rounded border border-destructive bg-raised px-0.5 font-mono text-destructive">{token(part)}</span>
         ) : (
           part
         )

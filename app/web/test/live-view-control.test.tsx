@@ -46,6 +46,7 @@ class FakeSocket {
 import { createDialBudget } from '@/features/computer/dial-budget'
 import { ControlBar } from '@/features/computer/ControlBar'
 import { LiveView } from '@/features/computer/LiveView'
+import { LinkChip } from '@/features/side-panel/LinkChip'
 import { useComputer } from '@/features/computer/use-live-view'
 
 interface FakeRfbShape { focusOnClick: boolean; blurs: number; log: string[]; options: unknown; viewOnly: boolean; disconnects: number; pastes: string[]; target: HTMLElement; socket: FakeSocket; emit(type: string, detail?: unknown): void }
@@ -81,6 +82,9 @@ function script() {
 
 let budget = createDialBudget({ max: 50, windowMs: 10_000, mountDelayMs: 0 })
 
+// `view.control`, spelled out. The app says it in the side panel's link chip (R11); here it is only a probe.
+const WHO = { bot: 'Bot is in control', you: "You're in control", someone: 'Someone is in control' } as const
+
 function Owner({ where = 'panel', ask = true }: { where?: 'panel' | 'expand'; ask?: boolean }) {
   const { screen: s, live } = useComputer('scout', { budget })
   return (
@@ -88,6 +92,7 @@ function Owner({ where = 'panel', ask = true }: { where?: 'panel' | 'expand'; as
       <span data-testid="link">{live.link}</span>
       <span data-testid="error">{live.error ?? ''}</span>
       <span data-testid="notice">{live.notice ?? ''}</span>
+      <span data-testid="control">{WHO[s.view.control]}</span>
       <div data-testid="panel">{ask && where === 'panel' && <LiveView live={live} />}</div>
       <div data-testid="expand">{ask && where === 'expand' && <LiveView live={live} />}</div>
       <ControlBar connected={live.link === 'live'} control={s.view.control} botTitle="Scout" onTake={() => void live.takeControl()} onHandBack={() => void live.handBack()} onForce={() => void live.forceHandBack()} />
@@ -143,11 +148,14 @@ describe('live view control', () => {
     expect(lastRfb().focusOnClick).toBe(false)
     expect(lastRfb().blurs).toBeGreaterThan(0)
   })
-  it('draws the you-are-in-control chip text in the readable destructive colour', async () => {
-    render(<Owner />)
-    await connect()
-    await take()
-    expect(screen.getByText("You're in control")).toHaveClass('text-destructive')
+  it('draws the you-are-in-control chip with a watermelon dot and readable text', () => {
+    // R11: the chip is the side panel's link chip now; the accent is its dot, never the text.
+    render(<LinkChip kind="live" link="live" control="you" />)
+    const chip = screen.getByRole('status')
+    expect(chip).toHaveTextContent("You're in control")
+    expect(chip).toHaveClass('text-muted-foreground')
+    expect(chip.querySelector('[data-accent="true"]')).toHaveClass('bg-watermelon')
+    expect(chip.innerHTML).not.toMatch(/text-destructive|text-watermelon/)
   })
   it('takes control and hands back on the same gateway socket', async () => {
     render(<Owner />)
@@ -236,12 +244,21 @@ describe('live view control', () => {
     act(() => lastRfb().emit('connect'))
     await waitFor(() => expect(screen.getByRole('button', { name: 'Take control' })).toBeEnabled())
   })
-  it('announces who is in control as a polite status', async () => {
+  it('announces who is in control as a polite status', () => {
+    const { rerender } = render(<LinkChip kind="live" link="live" control="bot" />)
+    const chip = screen.getByRole('status')
+    expect(chip).toHaveTextContent('Live')
+    expect(chip).toHaveAttribute('aria-live', 'polite')
+    rerender(<LinkChip kind="live" link="live" control="someone" />)
+    expect(screen.getByRole('status')).toBe(chip)
+    expect(chip).toHaveTextContent('Someone is in control')
+  })
+  it('has no status badge of its own in the control bar', async () => {
     render(<Owner />)
     await connect()
-    const chip = screen.getByText('Bot is in control')
-    expect(chip).toHaveAttribute('role', 'status')
-    expect(chip).toHaveAttribute('aria-live', 'polite')
+    expect(screen.queryByRole('status')).toBeNull()
+    await take()
+    expect(screen.getAllByText("You're in control")).toHaveLength(1) // the probe only
   })
   it('still hands back when the view unmounted in an earlier commit and then the owner leaves', async () => {
     const { rerender, unmount } = render(<Owner ask />)
@@ -347,5 +364,18 @@ describe('live view paste keys', () => {
     lastRfb().target.dispatchEvent(ctrlV())
     await waitFor(() => expect(screen.getByTestId('notice')).toHaveTextContent('256 KiB'))
     expect(lastRfb().log).toEqual([])
+  })
+})
+
+describe('live control mark', () => {
+  it('marks control as held while ours and releases the mark on unmount', async () => {
+    const { liveControlHeld } = await import('@/lib/live-control')
+    const view = render(<Owner />)
+    await connect()
+    expect(liveControlHeld()).toBe(false)
+    await take()
+    await waitFor(() => expect(liveControlHeld()).toBe(true))
+    view.unmount()
+    expect(liveControlHeld()).toBe(false)
   })
 })

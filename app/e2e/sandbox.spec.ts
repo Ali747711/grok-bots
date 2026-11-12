@@ -41,7 +41,7 @@ const section = (page: Page) => page.locator('section').filter({ has: page.getBy
 const sandboxSwitch = (page: Page, title: string) => section(page).getByRole('switch', { name: `Run ${title}'s tools in a sandbox` })
 
 async function openProfile(page: Page, bot: string, title: string): Promise<void> {
-  await page.goto(`${CREW}/bots/${bot}?panel=profile`)
+  await page.goto(`${CREW}/bots/${bot}?panel=profile&tab=advanced`)
   await expect(sandboxSwitch(page, title)).toBeVisible()
   // The switch stays disabled until the section has read the state.
   await expect(sandboxSwitch(page, title)).toBeEnabled()
@@ -159,7 +159,7 @@ test('switching off removes the container and keeps the sandbox folder', async (
 
 test('deleting a bot removes its sandbox files, container and profile', async ({ page }) => {
   for (const bot of [A, B]) {
-    await page.goto(`${CREW}/bots/${bot}?panel=profile`)
+    await page.goto(`${CREW}/bots/${bot}?panel=profile&tab=advanced`)
     await page.getByRole('button', { name: 'Delete bot', exact: true }).click()
     await page.getByLabel(`Type ${bot} to confirm`).fill(bot)
     await page.getByRole('alertdialog').getByRole('button', { name: 'Delete', exact: true }).click()

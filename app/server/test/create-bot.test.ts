@@ -77,6 +77,16 @@ describe('createBot', () => {
     expect(result.steps.avatar).toBe('ok')
   })
 
+  it('writes a chosen role with the look and nothing for null or absent', async () => {
+    await createBot(deps, { ...draft, role: 'ops' })
+    expect(((rpc.configures[0]!.ui_meta as Obj)['hermes-bots'] as Obj).role).toBe('ops')
+    for (const role of [null, undefined]) {
+      rpc = new FakeRpc(); rpc.meta('default', {}, 1); deps = { ...deps, rpc: rpc.call }
+      await createBot(deps, { ...draft, name: 'other', ...(role === null ? { role } : {}) })
+      expect(((rpc.configures[0]!.ui_meta as Obj)['hermes-bots'] as Obj)).not.toHaveProperty('role')
+    }
+  })
+
   it('never sends a kickoff prompt', async () => {
     await createBot(deps, { ...draft, image: 'data:image/png;base64,AAAA' })
     await finishBot(deps, 'scout', {})

@@ -8,13 +8,12 @@ import type { ChatItem } from '@/chat/types'
 const hasClasses = (el: Element, ...classes: string[]) => classes.every(c => el.classList.contains(c))
 
 describe('layout: only the transcript scrolls', () => {
-  it('shell fills the viewport and clips overflow, with min-h-0 columns', () => {
-    const { container } = render(<Shell sidebar={<i />} main={<i />} panel={<i />} panelOpen />)
-    expect(hasClasses(container.firstElementChild!, 'h-dvh', 'overflow-hidden')).toBe(true)
-    expect(container.firstElementChild!.className).toContain('grid-rows-[minmax(0,1fr)]')
+  it('shell fills the viewport and clips overflow, with min-h-0 panels', () => {
+    const { container } = render(<Shell rail={<i />} main={<i />} side={<i />} />)
+    expect(hasClasses(container.firstElementChild!, 'flex', 'h-dvh', 'overflow-hidden')).toBe(true)
     expect(hasClasses(screen.getByRole('complementary'), 'min-h-0', 'overflow-y-auto')).toBe(true)
-    expect(hasClasses(screen.getByRole('main'), 'min-h-0', 'overflow-hidden')).toBe(true)
-    expect(hasClasses(screen.getByRole('region', { name: 'Panel' }), 'min-h-0', 'overflow-y-auto')).toBe(true)
+    expect(hasClasses(screen.getByRole('main'), 'min-h-0', 'min-w-0', 'overflow-hidden')).toBe(true)
+    expect(hasClasses(screen.getByRole('region', { name: 'Panel' }), 'min-h-0', 'min-w-0', 'overflow-y-auto')).toBe(true)
   })
 
   it('the transcript is the scroll container', () => {

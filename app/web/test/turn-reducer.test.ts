@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import { applyFrame, initialTurnState, type TurnFrame, type TurnState } from '@/chat/turn-reducer'
+import { applyToolFrame, markInterrupted, type ToolPayload } from '@/chat/turn-steps'
+import type { ChatItem } from '@/chat/types'
 
 import captured from './fixtures/turn-frames.json'
 
@@ -86,6 +88,29 @@ describe('turn reducer (captured fixture turn)', () => {
     expect(state.items.at(-1)).toMatchObject({ kind: 'notice', text: 'Stopped' })
     const work = state.items.find(i => i.kind === 'work')
     expect(work).toMatchObject({ steps: [{ running: false }] })
+  })
+
+  it('marks the work block interrupted when the turn ends interrupted', () => {
+    const complete = withPayload(find('message.complete'), { interrupted: true, status: 'interrupted', outcome: 'interrupted' })
+    const stopped = play(initialTurnState, [find('message.start'), find('tool.start'), complete])
+    expect(stopped.items.find(i => i.kind === 'work')).toMatchObject({ interrupted: true, steps: [{ running: false }] })
+    // A turn that finishes, or fails, is not "stopped".
+    const done = play(initialTurnState, frames)
+    expect(done.items.find(i => i.kind === 'work')).not.toHaveProperty('interrupted')
+    const failed = play(initialTurnState, [find('message.start'), find('tool.start'), withPayload(find('message.complete'), { status: 'error', error: 'boom' })])
+    expect(failed.items.find(i => i.kind === 'work')).not.toHaveProperty('interrupted')
+  })
+
+  it('markInterrupted changes only the named work block and never mutates', () => {
+    const items: ChatItem[] = [
+      { kind: 'work', id: 'work-1', steps: [] },
+      { kind: 'assistant', id: 'a', text: 'hi' },
+      { kind: 'work', id: 'work-2', steps: [] }
+    ]
+    const next = markInterrupted(items, 'work-2')
+    expect(next).toEqual([items[0], items[1], { kind: 'work', id: 'work-2', steps: [], interrupted: true }])
+    expect(items[2]).not.toHaveProperty('interrupted')
+    expect(markInterrupted(items, 'work-9')).toEqual(items)
   })
 
   it('upserts tool steps by tool_id and keeps them in order', () => {
@@ -174,5 +199,30 @@ describe('turn reducer (captured fixture turn)', () => {
     expect(assistantText(state)).toEqual(['One', 'Two'])
     const ids = state.items.map(i => i.id)
     expect(new Set(ids).size).toBe(ids.length)
+  })
+})
+
+describe('step times', () => {
+  const start = find('tool.start')
+  const complete = find('tool.complete')
+  const stepsOf = (items: readonly ChatItem[]) => items.flatMap(i => (i.kind === 'work' ? i.steps : []))
+
+  it('stamps a live step with the client clock at its first frame', () => {
+    const first = applyToolFrame([], 'work-1', 'tool.start', start.payload as ToolPayload, 5000)
+    expect(stepsOf(first)).toMatchObject([{ running: true, at: 5000 }])
+    // Later frames of the same step keep the first time.
+    const progressed = applyToolFrame(first, 'work-1', 'tool.progress', start.payload as ToolPayload, 6000)
+    const done = applyToolFrame(progressed, 'work-1', 'tool.complete', complete.payload as ToolPayload, 9000)
+    expect(stepsOf(done)).toMatchObject([{ running: false, at: 5000 }])
+    // A step first seen at its completion (a resumed turn) takes that time.
+    expect(stepsOf(applyToolFrame([], 'work-1', 'tool.complete', complete.payload as ToolPayload, 9000))).toMatchObject([{ at: 9000 }])
+  })
+
+  it('uses the real clock when the reducer plays a frame', () => {
+    const before = Date.now()
+    const state = play(initialTurnState, [find('message.start'), start])
+    const at = stepsOf(state.items)[0]?.at
+    expect(at).toBeGreaterThanOrEqual(before)
+    expect(at).toBeLessThanOrEqual(Date.now())
   })
 })

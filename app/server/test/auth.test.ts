@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { mkdtemp, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -141,13 +142,54 @@ describe('ensureSecret', () => {
 })
 
 describe('login page style', () => {
-  it('serves the sky style with the ticket script and the unchanged CSP', async () => {
-    const app = createApp(makeDeps())
-    const res = await app.request('/login', { headers: { Host: HOST } })
-    const html = await res.text()
-    for (const stop of ['#2a8af0', '#4ea4f6', '#bcdcfb', '#d6f55a']) expect(html).toContain(stop)
+  const CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'"
+  const page = async () => {
+    const res = await createApp(makeDeps()).request('/login', { headers: { Host: HOST } })
+    return { res, html: await res.text() }
+  }
+  /** The rules inside the one `@media (prefers-color-scheme: dark)` block. */
+  const darkBlock = (html: string): string => {
+    const open = html.indexOf('@media (prefers-color-scheme: dark) {')
+    expect(open).toBeGreaterThan(-1)
+    return html.slice(open, html.indexOf('</style>'))
+  }
+
+  it('serves the new tokens in both schemes with the ticket script and the unchanged CSP', async () => {
+    const { res, html } = await page()
+    // Light: canvas, card and text, with the panel shadow copied from docs/ui2/tokens.md.
+    for (const value of ['oklch(0.955 0 0)', 'oklch(0.995 0 0)', 'oklch(0.145 0 0)', 'border-radius: 24px']) expect(html).toContain(value)
+    expect(html).toContain('0 1px 2px oklch(0 0 0 / 5%), 0 8px 24px -8px oklch(0 0 0 / 10%)')
+    // Dark: its own canvas, card and text, and no shadow.
+    const dark = darkBlock(html)
+    for (const value of ['oklch(0.145 0 0)', 'oklch(0.205 0 0)', 'oklch(0.985 0 0)', 'box-shadow: none']) expect(dark).toContain(value)
+    // Nothing of the Sky style is left: no hex or rgb colour, no gradient, no lime pill.
+    for (const old of ['#d6f55a', '#2a8af0', '#4ea4f6', '#bcdcfb', 'gradient(', 'rgba(', 'class="pill"']) expect(html).not.toContain(old)
+    expect(html).not.toMatch(/#[0-9a-fA-F]{3,8}\b/)
+    expect(res.headers.get('Content-Security-Policy')).toBe(CSP)
+  })
+
+  it('keeps the ticket script byte for byte and adds no other script', async () => {
+    const { html } = await page()
+    const scripts = html.match(/<script>[\s\S]*?<\/script>/g) ?? []
+    expect(scripts).toHaveLength(1)
+    expect(createHash('sha256').update(scripts[0]!).digest('hex')).toBe('4198d05cd1a09965367f70dd399d21c9fa016a95ea7782a98a78885617618f3d')
     expect(html).toContain("fetch('/crew/login'")
     expect(html).toContain("new URLSearchParams(location.hash.slice(1)).get('ticket')")
-    expect(res.headers.get('Content-Security-Policy')).toBe("default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'")
+    expect(html).not.toMatch(/<script[^>]+src=|\son[a-z]+=/)
+  })
+
+  it('loads nothing: a system font stack, no font file, no image and no link', async () => {
+    const { html } = await page()
+    expect(html).toContain('-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif')
+    for (const load of ['@font-face', '@import', 'url(', '<link', '<img', 'http://', 'https://']) expect(html).not.toContain(load)
+  })
+
+  it('shows a plain 12 px "Sign in" line above the title and the message the script fills', async () => {
+    const { html } = await page()
+    expect(html).toContain('<p class="kicker">Sign in</p>')
+    expect(html).toMatch(/\.kicker \{[^}]*font-size: 12px/)
+    expect(html).not.toMatch(/text-transform:\s*uppercase/)
+    expect(html).toContain('<h1>Crew</h1>')
+    expect(html).toContain('<p id="msg">Signing you in…</p>')
   })
 })

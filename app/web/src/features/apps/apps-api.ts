@@ -24,14 +24,23 @@ export const codeOf = (e: unknown): string | undefined => {
   return typeof code === 'string' ? code : undefined
 }
 
+/** The refusals of the apps routes that need no app name, in plain words. */
+const APPS_REASONS: Readonly<Record<string, string>> = {
+  no_key: 'Set the key in Settings',
+  key_rejected: 'Key not accepted',
+  composio_unavailable: "Couldn't reach Composio",
+  level_unavailable: "This bot doesn't ask before actions, so it can only read in apps."
+}
+
+/** The sentence for an apps refusal code, or undefined for a code that is not one. */
+export const appsReason = (code: string | null | undefined): string | undefined => (code ? APPS_REASONS[code] : undefined)
+
 /** Why an apps call failed. */
 export function appsErrorText(e: unknown, appName = 'this app'): string {
   const code = codeOf(e)
   if (code === 'app_unsupported') return `Crew can't connect ${appName} yet.`
-  if (code === 'no_key') return 'Set the key in Settings'
-  if (code === 'key_rejected') return 'Key not accepted'
-  if (code === 'composio_unavailable') return "Couldn't reach Composio"
-  if (code === 'level_unavailable') return "This bot doesn't ask before actions, so it can only read in apps."
+  const reason = appsReason(code)
+  if (reason) return reason
   if (e instanceof CrewApiError && e.status === 503) return 'Hermes is offline'
   return "Couldn't change the apps. Try again."
 }

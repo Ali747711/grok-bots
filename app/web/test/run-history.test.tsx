@@ -100,7 +100,7 @@ describe('RunHistory', () => {
     expect(screen.queryByText(/Blocked by policy/)).toBeNull()
     // Muted pills and blocks inside must stay visible, so the area itself is the card colour with an edge.
     const area = screen.getByTestId('transcript').parentElement
-    expect(area).toHaveClass('bg-card', 'border')
+    expect(area).toHaveClass('bg-shell', 'rounded-xl')
     expect(area).not.toHaveClass('bg-muted')
   })
 
@@ -135,7 +135,7 @@ describe('RunHistory', () => {
 })
 
 describe('status badges', () => {
-  it('colours each status with theme tokens', async () => {
+  it('shows each status as a neutral pill with a status dot', async () => {
     stub({
       [RUNS]: () => json([
         run({ id: 'a' }), run({ id: 'b', status: 'running', endedAt: null }), run({ id: 'c', status: 'failed', sessionId: null, error: 'x' }),
@@ -143,11 +143,26 @@ describe('status badges', () => {
       ])
     })
     open()
-    expect(await screen.findByText('Running')).toHaveClass('bg-sky-soft', 'text-sky-ink')
-    expect(screen.getByText('Done')).toHaveClass('bg-muted', 'text-foreground')
-    expect(screen.getByText('Failed')).toHaveClass('bg-danger-soft', 'text-danger-ink')
-    expect(screen.getByText('Cancelled')).toHaveClass('bg-muted', 'text-muted-foreground')
-    expect(screen.getByText('Missed')).toHaveClass('bg-muted', 'text-muted-foreground')
+    const dotOf = (pill: HTMLElement) => pill.querySelector('[aria-hidden="true"]')
+    const expected = [
+      ['Running', 'text-foreground', 'bg-status-working'], ['Done', 'text-foreground', 'bg-status-working'], ['Failed', 'text-foreground', 'bg-status-error'],
+      ['Cancelled', 'text-muted-foreground', 'bg-status-idle'], ['Missed', 'text-muted-foreground', 'bg-status-idle']
+    ] as const
+    await screen.findByText('Running')
+    for (const [word, text, dot] of expected) {
+      const pill = screen.getByText(word)
+      expect(pill).toHaveClass('rounded-full', 'bg-raised', text)
+      expect(pill.className).not.toMatch(/destructive/)
+      expect(dotOf(pill)).toHaveClass(dot)
+    }
+  })
+
+  it('draws run rows on the shell and the error as plain destructive text', async () => {
+    stub({ [RUNS]: () => json([run({ status: 'failed', sessionId: null, error: 'Model unavailable' })]) })
+    open()
+    const error = await screen.findByText('Model unavailable')
+    expect(error).toHaveClass('text-destructive')
+    expect(error.closest('li')).toHaveClass('bg-shell', 'rounded-xl')
   })
 })
 
@@ -199,7 +214,8 @@ describe('History in the routines panel', () => {
   it('expands the history under the routine and collapses it again', async () => {
     const fn = stub({ 'GET /crew/routines?bot=scout': () => json([routine]), [RUNS]: () => json([run()]) })
     panel()
-    fireEvent.click(await screen.findByRole('button', { name: 'History' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Routine details' }))
+    fireEvent.click(screen.getByRole('button', { name: 'History' }))
     expect(await screen.findByText('Done')).toBeInTheDocument()
     expect(callsTo(fn, RUNS)).toHaveLength(1)
     fireEvent.click(screen.getByRole('button', { name: 'History' }))
@@ -213,7 +229,8 @@ describe('History in the routines panel', () => {
       'POST /crew/routines/r1/run?bot=scout': () => json({ status: 'started' }, 202)
     })
     panel()
-    fireEvent.click(await screen.findByRole('button', { name: 'History' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Routine details' }))
+    fireEvent.click(screen.getByRole('button', { name: 'History' }))
     await screen.findByText('Done')
     fireEvent.click(screen.getByRole('button', { name: 'Run now' }))
     await waitFor(() => expect(callsTo(fn, RUNS)).toHaveLength(2))

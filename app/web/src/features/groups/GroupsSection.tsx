@@ -14,15 +14,15 @@ interface GroupsSectionProps {
   onNewGroup?: () => void
 }
 
-/** The sidebar's Groups block: newest activity first, or a hint when empty or when Hermes has no group engine. */
+/** The rail's Groups block: newest activity first, or a hint when empty or when Hermes has no group engine. */
 export function GroupsSection({ state, selectedGroupId, stale, onSelect, onNewGroup }: GroupsSectionProps) {
   const groups = state.groups
   if (!groups) return null
   const rooms = [...groups.rooms].sort((a, b) => b.updatedAt - a.updatedAt)
   return (
-    <section role="group" aria-label="Groups" className="flex flex-col gap-1">
-      <div className="flex items-center justify-between pt-3.5 pr-1 pb-1 pl-2">
-        <span className="label-mono">Groups</span>
+    <section role="group" aria-label="Groups" className="flex flex-col gap-0.5">
+      <div className="flex h-7 items-center justify-between pr-1 pl-2">
+        <span className="text-xs font-semibold text-faint">Groups</span>
         {groups.available && onNewGroup && (
           <Button type="button" variant="ghost" size="icon-xs" aria-label="New group" onClick={onNewGroup}>
             <PlusIcon />

@@ -2,16 +2,16 @@ import { type ReactNode, useEffect, useState } from 'react'
 
 import { cn } from '@/lib/utils'
 
-import { SkyCanvas } from './SkyCanvas'
-
 interface ShellProps {
-  sidebar: ReactNode
+  /** The crew rail. */
+  rail: ReactNode
+  /** The work area: a conversation, or a page that replaces it (profile, Needs you). */
   main: ReactNode
-  panel: ReactNode
-  panelOpen: boolean
+  /** The side panel beside the conversation, or null for none. */
+  side: ReactNode | null
 }
 
-// Below 1280 px the chat would drop under ~560 px with the panel open, squeezing the header, so the panel overlays.
+// Below 1280 px there is no room for the conversation and a useful side panel side by side, so the panel overlays.
 const NARROW = '(max-width: 1279px)'
 
 /** True while the window is narrower than 1280 px (false where matchMedia is missing). */
@@ -28,35 +28,36 @@ function useNarrow(): boolean {
   return narrow
 }
 
-const BLOCK = 'min-h-0 min-w-0 rounded-block bg-card/95 shadow-sm'
+const PANEL = 'min-h-0 min-w-0 rounded-3xl bg-shell'
+// tailwind-merge does not know `shadow-panel` is a box shadow, so a panel takes exactly one of the two.
+const FLOAT = 'shadow-panel'
 
-/** Three rounded blocks on the sky canvas: roster, chat, and the panel (an overlay on narrow windows). */
-export function Shell({ sidebar, main, panel, panelOpen }: ShellProps) {
-  const overlay = useNarrow() && panelOpen
-  const threeColumns = panelOpen && !overlay
+/**
+ * Three floating panels on the page canvas: the rail, the work area and the side panel. Beside a side
+ * panel the conversation keeps a narrow column and the panel takes the rest; on narrow windows the
+ * panel overlays the conversation instead.
+ */
+export function Shell({ rail, main, side }: ShellProps) {
+  const narrow = useNarrow()
+  const overlay = narrow && side !== null
+  const beside = side !== null && !overlay
   return (
-    <div
-      className={cn(
-        'relative isolate grid h-dvh grid-rows-[minmax(0,1fr)] gap-3 overflow-hidden p-3 text-foreground',
-        threeColumns ? 'grid-cols-[272px_minmax(0,1fr)_400px]' : 'grid-cols-[272px_minmax(0,1fr)]'
-      )}
-    >
-      <SkyCanvas />
-      <aside aria-label="Sidebar" className={cn(BLOCK, 'flex flex-col overflow-y-auto px-2.5 py-3.5')}>
-        {sidebar}
+    <div className="relative isolate flex h-dvh gap-2 overflow-hidden bg-background p-2 text-foreground">
+      <aside aria-label="Sidebar" className={cn(PANEL, FLOAT, 'flex w-[272px] flex-none flex-col overflow-y-auto px-2.5 py-3.5')}>
+        {rail}
       </aside>
-      <main className={cn(BLOCK, 'flex flex-col overflow-hidden')}>{main}</main>
-      {panelOpen && (
+      <main className={cn(PANEL, FLOAT, 'flex flex-col overflow-hidden', beside ? 'w-[clamp(380px,32vw,480px)] flex-none' : 'flex-1')}>{main}</main>
+      {side !== null && (
         <section
           aria-label="Panel"
           data-overlay={overlay ? 'true' : undefined}
           className={cn(
-            BLOCK,
+            PANEL,
             'flex flex-col overflow-y-auto',
-            overlay && 'absolute inset-y-3 right-3 z-20 w-[min(400px,calc(100%-24px))] bg-card shadow-2xl'
+            overlay ? 'absolute inset-y-2 right-2 z-20 w-[min(480px,calc(100%-16px))] shadow-2xl' : cn(FLOAT, 'flex-1')
           )}
         >
-          {panel}
+          {side}
         </section>
       )}
     </div>

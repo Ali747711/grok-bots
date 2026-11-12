@@ -1,5 +1,7 @@
 import { useState } from 'react'
 
+import { DIALOG_DESCRIPTION, DIALOG_TITLE, FIELD, FIELD_LABEL, HINT } from '@/components/console/dialog-styles'
+import { RadioRows } from '@/components/console/radio-rows'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -21,8 +23,11 @@ interface AddTriggerDialogProps {
   sandboxed: boolean
 }
 
-const FIELD = 'flex flex-col gap-1.5'
-const LABEL = 'text-sm font-medium'
+const LABEL = FIELD_LABEL
+/** A warning or a failure as a well on the shell: its text carries the colour, never a tint (PF31). */
+const NOTICE = 'rounded-2xl border-0 bg-background px-3.5 py-3'
+const NOTICE_TEXT = 'text-xs font-medium'
+const SOURCES: readonly { value: TriggerSource; label: string }[] = [{ value: 'github', label: 'GitHub' }, { value: 'generic', label: 'Generic' }]
 const WARNING = "Runs started by events use this routine's tools. Outside text could try to steer the bot; it is marked as data, and risky actions are refused because nobody is there to approve them."
 
 /** A comma list as a de-duplicated array of non-empty words. */
@@ -49,16 +54,11 @@ function SourceFields({ form, set }: { form: FormState; set: (patch: Partial<For
   const toggle = (event: string, on: boolean) => set({ checked: on ? [...form.checked, event] : form.checked.filter(e => e !== event) })
   return (
     <>
-      <fieldset className="m-0 flex min-w-0 flex-wrap gap-x-4 gap-y-1.5 border-0 p-0">
-        <legend className={`${LABEL} mb-1`}>Events</legend>
+      <fieldset className="m-0 flex min-w-0 flex-wrap gap-1 border-0 p-0">
+        <legend className={`${LABEL} mb-2`}>Events</legend>
         {GITHUB_EVENTS.map(event => (
-          <label key={event} className="flex items-center gap-2 text-sm">
-            <Checkbox
-              checked={form.checked.includes(event)}
-              onCheckedChange={v => toggle(event, v)}
-              aria-label={event}
-              className="border-muted-foreground data-checked:border-foreground data-checked:bg-foreground data-checked:text-background dark:data-checked:bg-foreground"
-            />
+          <label key={event} className="flex h-8 cursor-pointer items-center gap-2 rounded-full bg-background pr-3 pl-2.5 text-[13px] font-medium transition-colors has-focus-visible:ring-3 has-focus-visible:ring-ring">
+            <Checkbox checked={form.checked.includes(event)} onCheckedChange={v => toggle(event, v)} aria-label={event} className="border-ring bg-shell focus-visible:ring-0" />
             <span>{event}</span>
           </label>
         ))}
@@ -108,31 +108,23 @@ function AddTriggerBody({ bot, routine, onCreated, sandboxed }: Omit<AddTriggerD
 
   if (made) return <SecretView source={form.source} url={made.result.url} secret={made.result.secret} events={made.events} />
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
       <DialogHeader>
-        <DialogTitle>Add trigger</DialogTitle>
-        <DialogDescription>{`Start “${routine.title}” when an event arrives.`}</DialogDescription>
+        <DialogTitle className={DIALOG_TITLE}>Add trigger</DialogTitle>
+        <DialogDescription className={DIALOG_DESCRIPTION}>{`Start “${routine.title}” when an event arrives.`}</DialogDescription>
       </DialogHeader>
       <div className={FIELD}>
         <label htmlFor="trigger-name" className={LABEL}>Name</label>
         <Input id="trigger-name" value={form.name} maxLength={80} onChange={e => set({ name: e.target.value })} />
       </div>
-      <fieldset className="m-0 flex min-w-0 flex-col gap-1.5 border-0 p-0">
-        <legend className={`${LABEL} mb-1`}>Source</legend>
-        <div role="radiogroup" aria-label="Source" className="flex gap-4">
-          {(['github', 'generic'] as const).map(source => (
-            <label key={source} className="flex cursor-pointer items-center gap-2 text-sm">
-              <input type="radio" name="trigger-source" value={source} checked={form.source === source} onChange={() => set({ source })} className="accent-foreground" />
-              <span>{source === 'github' ? 'GitHub' : 'Generic'}</span>
-            </label>
-          ))}
-        </div>
-      </fieldset>
+      <RadioRows legend="Source" value={form.source} options={SOURCES} onChange={source => set({ source })} />
       <SourceFields form={form} set={set} />
-      <p className="text-xs text-muted-foreground">Leave empty to accept every event.</p>
-      {!sandboxed && <p className="text-xs text-muted-foreground">Tip: turn on the sandbox for bots that act on outside events</p>}
-      <Alert><AlertDescription>{WARNING}</AlertDescription></Alert>
-      {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+      <div>
+        <p className={HINT}>Leave empty to accept every event.</p>
+        {!sandboxed && <p className={HINT}>Tip: turn on the sandbox for bots that act on outside events</p>}
+      </div>
+      <Alert className={NOTICE}><AlertDescription className={NOTICE_TEXT}>{WARNING}</AlertDescription></Alert>
+      {error && <Alert variant="destructive" className={NOTICE}><AlertDescription className={NOTICE_TEXT}>{error}</AlertDescription></Alert>}
       <div className="flex justify-end">
         <Button type="button" disabled={busy || form.name.trim() === ''} onClick={() => void create()}>Create</Button>
       </div>
@@ -143,7 +135,7 @@ function AddTriggerBody({ bot, routine, onCreated, sandboxed }: Omit<AddTriggerD
 export function AddTriggerDialog({ open, onOpenChange, ...rest }: AddTriggerDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[85vh] gap-5 overflow-y-auto sm:max-w-lg">
         {/* Mounted only while open, so the secret and the draft are dropped on close. */}
         {open && <AddTriggerBody {...rest} />}
       </DialogContent>

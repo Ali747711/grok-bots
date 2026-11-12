@@ -157,4 +157,32 @@ describe('Composio key row', () => {
     fireEvent.click(buttons[buttons.length - 1]!)
     expect(await screen.findByText("Couldn't remove the key. Try again.")).toBeInTheDocument()
   })
+
+  it('marks the whole key row for the screenshot mask and shows the key state as a neutral pill', async () => {
+    stubFetch(() => json({}), () => json({ configured: true }))
+    open()
+    const state = await screen.findByText('Saved')
+    const row = document.querySelector('[data-private="composio-key"]')
+    expect(row).not.toBeNull()
+    expect(row).toContainElement(keyInput())
+    expect(row).toContainElement(state)
+    expect(row).toContainElement(screen.getByRole('button', { name: 'Remove key' }))
+    expect(state).toHaveClass('rounded-full', 'bg-raised')
+    expect(state.querySelector('[aria-hidden="true"]')).toHaveClass('bg-status-working')
+  })
+
+  it('shows Not set with a quiet dot', async () => {
+    stubFetch(() => json({}))
+    open()
+    expect((await screen.findByText('Not set')).querySelector('[aria-hidden="true"]')).toHaveClass('bg-status-idle')
+  })
+})
+
+describe('SettingsDialog look', () => {
+  it('titles the dialog in the panel-title size and labels the limit as a row label', () => {
+    stubFetch(() => json({}))
+    open()
+    expect(screen.getByRole('heading', { name: 'Settings' })).toHaveClass('text-[15px]', 'font-semibold')
+    expect(screen.getByText('Bots working at the same time')).toHaveClass('text-[13px]', 'font-semibold')
+  })
 })

@@ -122,6 +122,16 @@ describe('markers and patches', () => {
     expect(rawToolsetList(undefined)).toEqual([])
   })
 
+  it('browser turned off by the user survives sandbox on and off', () => {
+    const raw = { agent: { disabled_toolsets: ['browser', 'tts'] } }
+    const on = onPatch(raw, OFF_MARKER)
+    expect(on.marker.addedBrowserDisable).toBe(false)
+    const after = { terminal: { backend: 'docker' }, agent: { disabled_toolsets: ['browser', 'tts'] } }
+    const off = offPatch(after, on.marker)
+    expect(off.config).not.toHaveProperty('agent')
+    expect(off.marker).toEqual(OFF_MARKER)
+  })
+
   it('onPatch adds browser to the full list and records it', () => {
     const patch = onPatch({ agent: { disabled_toolsets: ['tts'] } }, OFF_MARKER)
     expect(patch.config).toEqual({

@@ -1,5 +1,5 @@
 import type { ChatItem } from './types'
-import { applyToolFrame, finishWork, type ToolPayload } from './turn-steps'
+import { applyToolFrame, finishWork, markInterrupted, type ToolPayload } from './turn-steps'
 
 /** A gateway event as the vendored client delivers it (structural subset of `GatewayEvent`). */
 export interface TurnFrame {
@@ -109,6 +109,7 @@ function applyComplete(state: TurnState, payload: CompletePayload): TurnState {
   items = items.filter(i => !(i.kind === 'assistant' && i.id.startsWith(assistantPrefix(g)) && i.text.trim() === ''))
   const interrupted = payload.interrupted === true || payload.status === 'interrupted' || payload.outcome === 'interrupted'
   const failed = payload.status === 'error'
+  if (interrupted) items = markInterrupted(items, workId(g))
   if (interrupted || failed) {
     const text = interrupted ? 'Stopped' : errorText(payload)
     items = [...items, { kind: 'notice', id: noticeId(items, g), text }]

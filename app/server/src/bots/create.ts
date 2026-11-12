@@ -4,6 +4,7 @@ import type { HermesRest } from '../hermes/rest-client.js'
 import { log } from '../log.js'
 import { type CrewAvatar, avatarMetaPatch, deriveAvatarType } from './avatar.js'
 import { withBotLock } from './bot-lock.js'
+import type { BotRole } from './cosmetics.js'
 import { refreshQuietly } from './refresh.js'
 import { applyCreateSandbox } from './sandbox-create.js'
 import { readRawConfig, writeConfig, type SandboxDeps } from './sandbox.js'
@@ -20,6 +21,8 @@ export interface BotDraft {
   readonly mission: string
   readonly avatar: CrewAvatar
   readonly image?: string
+  /** Written with the look only when non-null. */
+  readonly role?: BotRole | null
   readonly model?: { readonly provider: string; readonly model: string }
   /** Run the bot's tools in a sandbox; absent means off. */
   readonly sandbox?: boolean
@@ -44,7 +47,7 @@ export interface BotDeps {
   /** Absent only in tests: delete then skips the sandbox cleanup. */
   readonly sandbox?: SandboxDeps
   /** Absent only in tests: delete then skips forgetting the bot's apps. */
-  readonly apps?: { forget(bot: string): Promise<void> }
+  readonly apps?: { forget(bot: string): Promise<void>; clamp?(bot: string, raw: unknown): void }
 }
 
 /** `profiles.create` refused the name: it exists, or Hermes rejected it (message from Hermes). */
@@ -148,6 +151,7 @@ const writeLook = (deps: BotDeps, draft: BotDraft, marker: SandboxMarker | undef
     imageKind: draft.image ? 'photo' : 'shape',
     title: draft.title,
     created: deps.now(),
+    ...(draft.role ? { role: draft.role } : {}),
     ...(marker ? { sandbox: marker } : {})
   })
 }

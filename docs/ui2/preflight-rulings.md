@@ -1,0 +1,35 @@
+# Pre-flight rulings (bind like the plan; table in preflight.md). PF<n> = scan item n.
+- PF1 (all tasks) Ruling: commit trailer = `Co-Authored-By: <the model doing the commit> <noreply@anthropic.com>` (e.g. Claude Sonnet 5.5) — matches this repo's history — cost if wrong: trailer wording only.
+- PF2 (T3) Ruling: the controller runs the live GET-only toolsets check and hands the implementer the recorded row shape in a file; the implementer loads no config/token — keeps secrets out of subagents — cost: none.
+- PF3/PF4 (T4) Ruling: visual harness defines `Ctx = {page, theme, size}`, `shoot(ctx, name)` with optional per-screen `setup`/`teardown` hooks, a size parameter, and calls `page.emulateMedia({colorScheme})` as well as setting localStorage — cost: harness rework.
+- PF5 (T4,T16) Ruling: T4 records the literal `--panel-shadow` value in docs/ui2/tokens.md; T16 copies that literal into the login page.
+- PF6 (T4) Ruling: T4 also modifies `layout/Shell.tsx` to drop the `SkyCanvas` import/use.
+- PF7 (T4) Ruling: "32 files" → every file the grep finds.
+- PF8 (T5) Ruling: `IconButton` extends `ButtonHTMLAttributes<HTMLButtonElement>` (rest props incl. aria-expanded/aria-haspopup) and forwards its ref.
+- PF9 (T5) Ruling: console `Kbd({children, className?})` wraps `components/ui/kbd`.
+- PF10 (T12) Ruling: the routine enabled control is the console `Switch` with `label="<routine> enabled"`.
+- PF11 (T13) Ruling: T13 modifies (not creates) `ProfilePage.tsx` made in T6.
+- PF12 (T8) Ruling: T8 also modifies `Rail.tsx`; `onNewBot` is removed; `onCreated(handle)` navigates via `onSelect`.
+- PF13 (T8) Ruling: the panel has a `Close` icon button (resets the draft, Esc does the same) and `Create`; no separate Cancel.
+- PF14 (T6) Ruling: T6 defines `ChatHeader` props `panel: Panel | null`, `onPanel(next: Panel | null)` and `Composer` prop `draftKey: string` (`bot:<handle>` / `group:<roomId>`), value from the draft store.
+- PF15 (T13) Ruling: avatar.spec navigates to `?panel=profile&tab=advanced` before clicking `Delete bot`.
+- PF16 Ruling: Deviation 1 reads "Tasks 12 and 13".
+- PF17 Ruling: `Finish setup` is in the preserved-names list.
+- PF18 (T11,T12,T16) Ruling: `RoutineForm`, trigger dialogs and `ExpandDialog` are restyled only in T16; T11/T12 leave them working as is.
+- PF19 (T6,T15) Ruling: the group-draft test lives in T6; T15 drops it.
+- PF20 (T13) Ruling: the narrow-summary-card test asserts the container-query class on the card; layout is checked in the 1100×800 screenshot.
+- PF21 (T13,T14) Ruling: T13 adds shared `useRowAction` (pending, error text via `profileErrorText`, re-read) in features/profile; T14 reuses it; one error-to-text mapper.
+- PF22 (T13,T14) Ruling: one wording everywhere: "Off while <title> runs in a sandbox".
+- PF23 (T3) Ruling: add server test `GET toolsets works for the primary (read-only)`; only PUT is refused.
+- PF24 (T13) Ruling: `sleepChoice` lives in `features/profile/profile-api.ts`, tested in `profile-api.test.ts`.
+- PF25 Ruling: link chip says "<holder> is in control" when Hermes names the holder, else "Someone is in control" (spec §7.3).
+- PF26 Ruling (R15): smart-approvals copy follows hermes-facts Q4 where it differs from the spec's wording — the facts are newer — cost: copy only.
+- PF27 (T6) Ruling: the unmount test also asserts control is handed back (or cites the existing live-view-control test that proves it and asserts the unmount path calls it).
+- PF28 (T1) Ruling: types are `AvatarFace = 'eyes'|'mouth'`, `AvatarHat = 'none'|'beret'|'beanie'|'party'|'crown'`, `AvatarGlasses = 'none'|'round'|'square'|'shades'`.
+- PF29 (T4) Ruling: if a dark `--destructive` or `--primary-foreground` pair fails contrast, stop and report; do not change it.
+- PF30 (T2) Ruling: T2 consumes `clampIfNoApprovals` from CS/connectors/levels.ts.
+- PF31 (T9,T10,T13,T16; from Task 4) Ruling: no destructive text on a translucent destructive fill and no `text-background` on `bg-destructive` (both fail 4.5:1 in light). Error badges are a neutral `bg-raised`/`bg-control` pill with a `--status-error` dot and `text-foreground` (or `text-destructive` on shell/raised only); the hidden-character marker is an outlined `text-destructive` chip — fits the "status = soft pill + dot" ideology — cost if wrong: restyle a few badges.
+- PF32 (all UI tasks; from Task 4) Ruling: visual harness API is `prepare(ctx)` then async `watch()`/`shoot(ctx, name)` as built in app/e2e/visual.spec.ts; `currentThemePreference()` exists in lib/theme.ts; panels use `shadow-panel`.
+- PF33 (from Task 6) Ruling: phase2.spec's delete/limit tests depend on the skipped model test's routine, so implementers run phase2 only where their task touches it and report the dependency failure as expected; the controller runs phase2 whole (with the model test) in Task 17 — cost if wrong: a phase2 regression found late.
+- PF34 (from Task 6) Interfaces now in the tree: routes in app/web/src/app/routes.tsx; `useChatSession` returns `{name, snapshot}`; draft store exports incl. `clearDrafts`; `isSidePanelTab`; `EMPTY_CHAT`, `OwnedChat`. Extra e2e names to preserve: copy `Advanced` (phase2 clicks it before Persona — Task 13 updates that spec line), test ids `chat-skeleton`, `credit-pill`, `[data-group]`, menuitem `Show events` (full list in task-6-report.md "Step 0").
+- PF35 (from Task 11) Ruling: app/e2e/visual.spec.ts is at the 400-line limit — later UI tasks put their `@task<N>` screens in a new file `app/e2e/visual-<area>.spec.ts` that imports the harness from app/e2e/visual.ts (run with `npx playwright test visual-<area>.spec.ts --grep @task<N>`) — cost if wrong: file layout only.

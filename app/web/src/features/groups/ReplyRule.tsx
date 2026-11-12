@@ -1,14 +1,17 @@
+import { Section } from '@/components/console/fields'
+import { RadioRows } from '@/components/console/radio-rows'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import type { GroupView, Routing } from '@/state/types'
+import type { BotView, GroupView, Routing } from '@/state/types'
 
 import { memberTitle } from './group-titles'
-import type { BotView } from '@/state/types'
 
 const RULES: readonly { value: Routing; label: string; hint: string }[] = [
   { value: 'auto', label: 'Auto', hint: 'A quick check picks who answers' },
   { value: 'everyone', label: 'Everyone', hint: 'Every bot answers' },
   { value: 'lead', label: 'Lead', hint: 'A lead bot decides who answers' }
 ]
+
+const TITLE = 'Who answers when nobody is @mentioned'
 
 interface ReplyRuleProps {
   group: GroupView
@@ -23,19 +26,8 @@ interface ReplyRuleProps {
 export function ReplyRule({ group, bots, routing, lead, onRouting, onLead }: ReplyRuleProps) {
   const items = group.members.map(m => ({ value: m.memberId, label: memberTitle(group, bots, m.memberId) }))
   return (
-    <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
-      <legend className="mb-1 text-sm font-medium">Who answers when nobody is @mentioned</legend>
-      <div role="radiogroup" aria-label="Who answers when nobody is @mentioned" className="flex flex-col gap-1.5">
-        {RULES.map(rule => (
-          <label key={rule.value} className="flex cursor-pointer items-start gap-2 text-sm">
-            <input type="radio" name="group-routing" value={rule.value} checked={routing === rule.value} onChange={() => onRouting(rule.value)} className="mt-1 accent-foreground" />
-            <span className="flex flex-col">
-              <span className="font-medium">{rule.label}</span>
-              <span className="text-xs text-muted-foreground">{rule.hint}</span>
-            </span>
-          </label>
-        ))}
-      </div>
+    <Section title={TITLE} hint="@mentions always go straight to the bots you name.">
+      <RadioRows legend={TITLE} showLegend={false} value={routing} options={RULES} onChange={onRouting} />
       {routing === 'lead' && (
         <Select value={lead || null} onValueChange={v => v !== null && onLead(String(v))} items={items}>
           <SelectTrigger aria-label="Lead bot" className="w-full">
@@ -46,7 +38,6 @@ export function ReplyRule({ group, bots, routing, lead, onRouting, onLead }: Rep
           </SelectContent>
         </Select>
       )}
-      <p className="text-xs text-muted-foreground">@mentions always go straight to the bots you name.</p>
-    </fieldset>
+    </Section>
   )
 }

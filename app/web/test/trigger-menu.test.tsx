@@ -98,7 +98,11 @@ describe('TriggerMenu', () => {
     expect(screen.getByText('The old secret stops working at once. Give the sender the new one.')).toBeInTheDocument()
     fireEvent.click(dialog().getByRole('button', { name: 'Make new secret' }))
     expect(await screen.findByText('fresh-secret')).toBeInTheDocument()
+    expect(screen.getByText('fresh-secret')).toHaveClass('rounded-xl', 'bg-raised', 'font-mono')
     expect(screen.getByText('The secret is shown once.')).toBeInTheDocument()
+    // Shown in its panel only: no toast ever carries the secret.
+    const toasted = [toast.success, toast.error, toast.warning, toast.info].flatMap(t => t.mock.calls.flat())
+    expect(JSON.stringify(toasted)).not.toContain('fresh-secret')
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
     await waitFor(() => expect(screen.queryByText('fresh-secret')).toBeNull())
   })

@@ -64,4 +64,27 @@ describe('historyToItems (captured rows)', () => {
     const ids = items.map(i => i.id)
     expect(new Set(ids).size).toBe(ids.length)
   })
+
+  it('stamps history steps from the tool result row, falling back to the assistant row', () => {
+    const call = (id: string) => ({ id, function: { name: 'terminal', arguments: '{"command":"ls"}' } })
+    const stamped: HistoryRow[] = [
+      { id: 1, role: 'assistant', content: '', tool_calls: [call('t1'), call('t2')], timestamp: 1700000000.25 },
+      { id: 2, role: 'tool', tool_call_id: 't1', tool_name: 'terminal', content: '{"exit_code":0}', timestamp: 1700000000.5 },
+      { id: 3, role: 'tool', tool_call_id: 't2', tool_name: 'terminal', content: '{"exit_code":0}' },
+      { id: 4, role: 'tool', tool_call_id: 't3', tool_name: 'terminal', content: '{"exit_code":0}', timestamp: 1700000002 }
+    ]
+    const [work] = historyToItems(stamped)
+    if (work?.kind !== 'work') throw new Error('expected one work item')
+    // Seconds as a float become whole milliseconds.
+    expect(work.steps.map(s => s.at)).toEqual([1700000000500, 1700000000250, 1700000002000])
+  })
+
+  it('leaves a history step without a time when no row carries one', () => {
+    const [work] = historyToItems([
+      { id: 1, role: 'assistant', content: '', tool_calls: [{ id: 't1', function: { name: 'terminal', arguments: '{}' } }] },
+      { id: 2, role: 'tool', tool_call_id: 't1', tool_name: 'terminal', content: 'ok' }
+    ])
+    if (work?.kind !== 'work') throw new Error('expected one work item')
+    expect(work.steps[0]).not.toHaveProperty('at')
+  })
 })

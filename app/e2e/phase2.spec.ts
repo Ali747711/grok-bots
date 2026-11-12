@@ -1,6 +1,6 @@
 import { type Browser, type Page, expect, test } from '@playwright/test'
 
-import { CREW, crewState, deleteTestBots, webappLoginUrl } from './helpers.js'
+import { CREW, crewState, deleteTestBots, expandRoutine, webappLoginUrl } from './helpers.js'
 import { hermesRest, pinFromOtherUi, profileRow, profileRows } from './hermes-rpc.js'
 
 test.describe.configure({ mode: 'serial' })
@@ -84,7 +84,10 @@ test('concurrent edits keep both changes', async ({ page }) => {
   await page.goto(`${CREW}/bots/${handle}?panel=profile`)
   const name = page.getByLabel('Name', { exact: true })
   await expect(name).toHaveValue(title)
+  // The persona lives on the Soul tab; the rename stays on Identity.
+  await page.getByRole('tab', { name: 'Soul' }).click()
   await expect(page.getByLabel('Persona (SOUL.md)')).not.toHaveValue('')
+  await page.getByRole('tab', { name: 'Identity' }).click()
 
   // The other UI pins the bot (whole-object compare-and-swap write, as the Webapp does).
   await pinFromOtherUi(handle)
@@ -98,7 +101,7 @@ test('concurrent edits keep both changes', async ({ page }) => {
   // Another app rewrites the persona; Crew's stale baseline must produce a conflict, not an overwrite.
   const theirs = `Their persona ${run}`
   expect((await hermesRest('PUT', `/api/profiles/${handle}/soul`, { content: theirs })).status).toBeLessThan(300)
-  await page.getByText('Advanced').click()
+  await page.getByRole('tab', { name: 'Soul' }).click()
   const ours = `Our persona ${run}`
   await page.getByLabel('Persona (SOUL.md)').fill(ours)
   await page.getByRole('button', { name: 'Save', exact: true }).click()
@@ -161,6 +164,7 @@ test('a routine runs on schedule and via Run now, shows in history and in Hermes
 
   // A completed run appears within 180 s, and the bot's reply (not just the instruction) holds the marker.
   const ping = routineRow(page, pingTitle)
+  await expandRoutine(ping)
   await ping.getByRole('button', { name: 'History' }).click()
   // A finished one-time routine also reads "Done" in its row, so look inside the run history list.
   await expect(ping.locator('ul').getByText('Done')).toBeVisible({ timeout: 180_000 })
@@ -175,6 +179,7 @@ test('a routine runs on schedule and via Run now, shows in history and in Hermes
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   const daily = routineRow(page, dailyTitle)
   await expect(daily).toBeVisible({ timeout: 60_000 })
+  await expandRoutine(daily)
   await daily.getByRole('button', { name: 'History' }).click()
   await daily.getByRole('button', { name: 'Run now' }).click()
   await expect(daily.locator('ul').getByText('Done')).toBeVisible({ timeout: 120_000 })
@@ -184,7 +189,7 @@ test('a routine runs on schedule and via Run now, shows in history and in Hermes
 test('deleting the bot removes it everywhere', async ({ page }) => {
   // Sanity first: the all-profiles list does show this bot's routines, so the check after delete can fail.
   expect((await cronAll()).some(n => n.startsWith(`[bot:${handle}]`))).toBe(true)
-  await page.goto(`${CREW}/bots/${handle}?panel=profile`)
+  await page.goto(`${CREW}/bots/${handle}?panel=profile&tab=advanced`)
   await page.getByRole('button', { name: 'Delete bot', exact: true }).click()
   await page.getByLabel(`Type ${handle} to confirm`).fill(handle)
   await page.getByRole('button', { name: 'Delete', exact: true }).click()

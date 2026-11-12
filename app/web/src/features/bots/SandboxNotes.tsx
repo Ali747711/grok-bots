@@ -21,22 +21,22 @@ interface Props { title: string; groups: SandboxView['groups'] }
 export function SandboxNotes({ title, groups }: Props) {
   const [open, setOpen] = useState(false)
   return (
-    <div className="flex flex-col gap-2 text-xs text-muted-foreground">
-      <ul className="flex list-disc flex-col gap-1 pl-4">
+    <div className="flex flex-col gap-2 px-1 text-xs font-medium text-muted-foreground">
+      <ul className="flex list-none flex-col gap-1.5">
         {NOTES.map(note => <li key={note}>{note}</li>)}
       </ul>
       {groups.length > 0 && (
         <Alert>
           <AlertDescription>
             {groupsSentence(title)}
-            <ul className="mt-1 list-disc pl-4">
+            <ul className="mt-1 flex list-none flex-col gap-0.5">
               {groups.map(g => <li key={g.id}>{g.name}</li>)}
             </ul>
           </AlertDescription>
         </Alert>
       )}
       <button
-        type="button" className="self-start underline underline-offset-2" aria-expanded={open} aria-controls="sandbox-outside"
+        type="button" className="self-start rounded-full underline underline-offset-2 outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring" aria-expanded={open} aria-controls="sandbox-outside"
         onClick={() => setOpen(o => !o)}
       >
         What stays outside

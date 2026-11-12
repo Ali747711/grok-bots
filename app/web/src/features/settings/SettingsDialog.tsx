@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
+import { DIALOG_DESCRIPTION, DIALOG_TITLE, ERROR_TEXT, FIELD, FIELD_LABEL, HINT } from '@/components/console/dialog-styles'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -75,19 +76,22 @@ export function SettingsDialog({ open, onOpenChange, maxWorkingBots, usage }: Se
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-h-[85vh] gap-5 overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Settings</DialogTitle>
-          <DialogDescription>How many bots may work at once.</DialogDescription>
+          <DialogTitle className={DIALOG_TITLE}>Settings</DialogTitle>
+          <DialogDescription className={DIALOG_DESCRIPTION}>How many bots may work at once.</DialogDescription>
         </DialogHeader>
-        <div className="flex flex-col gap-1.5">
-          <span id={LABEL_ID} className="text-sm font-medium">Bots working at the same time</span>
+        <div className={FIELD}>
+          <span id={LABEL_ID} className={FIELD_LABEL}>Bots working at the same time</span>
           <LimitSelect value={value} onChange={setValue} saved={maxWorkingBots} />
-          <p className="text-xs text-muted-foreground">Each working bot spends credit.</p>
-          <p className="text-xs text-muted-foreground">{creditText(usage)}</p>
+          <div className="flex flex-col gap-1">
+            <p className={HINT}>Each working bot spends credit.</p>
+            {/* The balance is private: the visual check masks it, like the credit pill. */}
+            <p data-private="credit" className={HINT}>{creditText(usage)}</p>
+          </div>
         </div>
         <ComposioKeyRow />
-        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+        {error && <p role="alert" className={ERROR_TEXT}>{error}</p>}
         <DialogFooter showCloseButton>
           <Button onClick={() => void save()} disabled={saving}>Save</Button>
         </DialogFooter>

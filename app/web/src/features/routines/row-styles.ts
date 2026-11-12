@@ -1,6 +1,3 @@
-/** Ghost buttons on the muted row card need their own visible hover and open states. */
-// dark:hover:bg-card is needed because the ghost variant's own dark:hover:bg-muted/50 would otherwise win in dark.
-export const GHOST = 'hover:bg-card dark:hover:bg-card aria-expanded:bg-card'
-
-/** Switch classes shared by the routine and trigger rows. */
-export const SWITCH = 'data-checked:bg-foreground data-unchecked:border-muted-foreground'
+/** Ghost buttons on a routine row's well (`bg-background`) lift to the shell on hover and while open. */
+// dark:hover:bg-shell is needed because the ghost variant's own dark:hover:bg-muted/50 would otherwise win in dark.
+export const GHOST = 'hover:bg-shell dark:hover:bg-shell aria-expanded:bg-shell'

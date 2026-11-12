@@ -115,6 +115,40 @@ describe('GroupComposer mentions', () => {
   })
 })
 
+describe('GroupComposer shortcuts and actions', () => {
+  it('puts the caret in the message box on / from outside a field, and types / inside it', () => {
+    setup()
+    expect(box()).not.toHaveFocus()
+    fireEvent.keyDown(document.body, { key: '/' })
+    expect(box()).toHaveFocus()
+    // Inside the box the key is text: the shortcut stands down (not prevented).
+    expect(fireEvent.keyDown(box(), { key: '/' })).toBe(true)
+  })
+
+  it('leaves / alone while sending is blocked', () => {
+    setup({ disabledReason: 'Hermes is offline' })
+    expect(fireEvent.keyDown(document.body, { key: '/' })).toBe(true)
+    expect(box()).not.toHaveFocus()
+  })
+
+  it('sends with the Send button, which is off while the box is empty', () => {
+    const { onSend } = setup()
+    type('')
+    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
+    type('by button')
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    expect(onSend).toHaveBeenCalledWith('by button', { newTopic: false })
+    expect(box()).toHaveValue('')
+  })
+
+  it('keeps the reason and the who-will-answer line in one caption under the box', () => {
+    setup({ disabledReason: 'Hermes is offline' })
+    const reason = screen.getByRole('status')
+    expect(reason).toHaveTextContent('Hermes is offline')
+    expect(reason.parentElement).toBe(screen.getByTestId('who-will-answer').parentElement)
+  })
+})
+
 describe('GroupComposer line', () => {
   it('shows who will answer for a mention, two mentions, a trailing dot, a first message and a follow-up', () => {
     const { rerender } = render(<GroupComposer view={view} members={members} titleOf={titleOf} firstInTopic running={false} disabledReason={null} onSend={vi.fn()} onStop={vi.fn()} />)

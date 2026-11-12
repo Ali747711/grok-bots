@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { GroupsSection } from '@/features/groups/GroupsSection'
-import { Sidebar } from '@/features/roster/Sidebar'
+import { Rail } from '@/features/rail/Rail'
 import type { GroupsState, GroupView } from '@/state/types'
 
 import { bot, crewState, gm, group } from './fixtures'
@@ -48,9 +48,20 @@ describe('GroupsSection', () => {
     expect(screen.getByRole('img', { name: 'Deleted bot' })).toBeInTheDocument()
   })
 
-  it('makes avatars status-neutral while stale', () => {
+  it('makes avatars status-neutral and dims the row while stale', () => {
     renderSection(withGroups([room()]), true)
     for (const s of screen.getAllByTestId('stub')) expect(s).not.toHaveAttribute('data-state', 'working')
+    expect(screen.getByRole('button', { name: /Launch/ })).toHaveClass('opacity-50')
+  })
+
+  it('marks the open group as the current page and every row as a rail row', () => {
+    render(<GroupsSection state={withGroups([room(), room({ id: 'r2', name: 'Two' })])} selectedGroupId="r2" stale={false} onSelect={vi.fn()} />)
+    const open = screen.getByRole('button', { name: /Two/ })
+    expect(open).toHaveAttribute('aria-current', 'page')
+    expect(open).toHaveAttribute('data-group', 'r2')
+    expect(open).not.toHaveClass('opacity-50')
+    expect(screen.getByRole('button', { name: /Launch/ })).not.toHaveAttribute('aria-current')
+    expect(document.querySelectorAll('[data-group][data-rail-row]')).toHaveLength(2)
   })
 
   it('shows an empty line and the New group button', () => {
@@ -67,15 +78,21 @@ describe('GroupsSection', () => {
   })
 })
 
-describe('Sidebar', () => {
-  it('mounts Groups after Bots and before Hidden, and skips it on an older server', () => {
+describe('Rail', () => {
+  const noop = () => undefined
+  const rail = (state: ReturnType<typeof crewState>) => (
+    <Rail state={state} crewConnected selected={null} selectedGroupId={null} needsYouActive={false} onSelect={noop} onSelectGroup={noop} onNeedsYou={noop} onNewGroup={noop} />
+  )
+
+  it('mounts Groups after Crew and before Hidden, and skips it on an older server', () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response('{}'))))
     const state = withGroups([room()])
-    const { unmount } = render(<Sidebar state={{ ...state, bots: [...bots, bot({ name: 'h', title: 'Hid', hidden: true })] }} selected={null} onSelect={vi.fn()} />)
+    const { unmount } = render(rail({ ...state, bots: [...bots, bot({ name: 'h', title: 'Hid', hidden: true })] }))
     const groups = screen.getAllByRole('group').map(g => g.getAttribute('aria-label'))
-    expect(groups).toEqual(['Primary', 'Bots', 'Groups'])
-    expect(screen.getByText('Hidden (1)').compareDocumentPosition(screen.getByRole('group', { name: 'Groups' })) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy()
+    expect(groups).toEqual(['Pinned', 'Crew', 'Groups', 'Hidden (1)'])
     unmount()
-    render(<Sidebar state={crewState({ bots })} selected={null} onSelect={vi.fn()} />)
+    render(rail(crewState({ bots })))
     expect(screen.queryByRole('group', { name: 'Groups' })).toBeNull()
+    vi.unstubAllGlobals()
   })
 })

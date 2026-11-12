@@ -1,13 +1,15 @@
+import type { BotPanel } from '@/app/panel-params'
 import { Skeleton } from '@/components/ui/skeleton'
-import type { PanelTab } from '@/features/panel/BotPanel'
 import { submitAnswer } from '@/features/requests/answer-request'
 import { RequestCard } from '@/features/requests/RequestCard'
-import { useChatSession } from '@/features/chat/use-chat-session'
 import type { BotView, CrewState } from '@/state/types'
 
+import { useBotChat } from './chat-session-context'
 import { ChatHeader } from './ChatHeader'
 import { Composer } from './Composer'
 import { composerDisabledReason, DEFAULT_MAX_WORKING_BOTS } from './disabled-reason'
+import { draftKey } from './draft-store'
+import { EmptyThread } from './EmptyThread'
 import { MessageList } from './MessageList'
 
 interface ChatViewProps {
@@ -15,8 +17,9 @@ interface ChatViewProps {
   state: CrewState
   /** Browser-to-Crew stream is up. */
   crewConnected: boolean
-  panel?: PanelTab | null
-  onPanel?: (tab: PanelTab) => void
+  panel?: BotPanel | null
+  /** A header button was clicked: the panel to show next, or null to close the open one. */
+  onPanel?: (next: BotPanel | null) => void
 }
 
 function ChatSkeleton() {
@@ -29,9 +32,9 @@ function ChatSkeleton() {
   )
 }
 
-/** One bot's chat: header, transcript, composer. */
-export function ChatView({ bot, state, crewConnected, panel, onPanel }: ChatViewProps) {
-  const { session, items, canSend, connected, running, loaded, notice } = useChatSession(bot)
+/** One bot's chat: header, transcript, composer. The session itself is opened above the shell (ChatSessionProvider). */
+export function ChatView({ bot, state, crewConnected, panel = null, onPanel }: ChatViewProps) {
+  const { session, items, canSend, connected, running, loaded, notice } = useBotChat(bot.name)
   const stale = state.hermes !== 'connected' || !crewConnected
   const othersWorking = state.bots.filter(b => b.name !== bot.name && b.status === 'working').length
   // Oldest first; they leave when Hermes settles them (they drop out of state.pending).
@@ -44,17 +47,28 @@ export function ChatView({ bot, state, crewConnected, panel, onPanel }: ChatView
   return (
     <>
       <ChatHeader bot={bot} stale={stale} panel={panel} onPanel={onPanel} />
-      {!loaded && items.length === 0 && !stale ? <ChatSkeleton /> : <MessageList items={items} onRetry={id => void session?.retry(id).catch(() => undefined)} />}
-      {notice && <p role="status" className="px-6 text-center text-xs text-muted-foreground">{notice}</p>}
+      {!loaded && items.length === 0 && !stale ? <ChatSkeleton /> : (
+        <MessageList
+          items={items}
+          onRetry={id => void session?.retry(id).catch(() => undefined)}
+          // Only once the chat has loaded: before that, "no messages" is not known yet.
+          empty={loaded && onPanel ? <EmptyThread bot={bot} onProfile={() => onPanel('profile')} /> : undefined}
+        />
+      )}
+      {notice && <p role="status" className="px-6 text-center text-xs font-medium text-faint">{notice}</p>}
       {requests.length > 0 && (
-        <div className="max-h-[40vh] flex-none overflow-y-auto px-6 pt-2">
+        <div className="max-h-[40vh] flex-none scroll-thin overflow-y-auto px-4 pt-2 pb-3">
           <div className="mx-auto flex max-w-[720px] flex-col gap-2">
             {requests.map(entry => <RequestCard key={entry.id} entry={entry} botTitle={bot.title} onAnswer={(e, body) => submitAnswer(e.id, body)} />)}
           </div>
         </div>
       )}
       <Composer
+        draftKey={draftKey.bot(bot.name)}
         disabledReason={reason}
+        waitingAbove={requests.length > 0}
+        // A message Hermes holds behind the running turn; a failed delivery has its own caption on the bubble.
+        queued={items.some(item => item.kind === 'user' && item.queued === true && !item.delivery)}
         running={running}
         stopDisabled={!connected}
         // A rejected send already shows a "Not sent" notice in the transcript.

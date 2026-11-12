@@ -1,4 +1,6 @@
-import type { AvatarType } from '@/features/avatars/avatar-model'
+import type { AvatarFace, AvatarGlasses, AvatarHat, AvatarType } from '@/features/avatars/avatar-model'
+
+import type { BotRole } from './roles'
 
 // Copies of the server shapes (bots/create.ts, bots/edit.ts); the web never imports server code.
 
@@ -11,6 +13,11 @@ export interface ModelChoice {
 export interface AvatarChoice {
   readonly type: AvatarType
   readonly color?: string
+  readonly face?: AvatarFace
+  readonly hat?: AvatarHat
+  readonly glasses?: AvatarGlasses
+  readonly headphones?: boolean
+  readonly bowTie?: boolean
 }
 
 export interface BotDraft {
@@ -19,6 +26,7 @@ export interface BotDraft {
   readonly mission: string
   readonly avatar: AvatarChoice
   readonly image?: string
+  readonly role?: BotRole | null
   readonly model?: ModelChoice
   readonly sandbox: boolean
 }
@@ -47,6 +55,8 @@ export interface BotDetail {
   /** The chosen avatar; null when never set. */
   readonly avatar: AvatarChoice | null
   readonly hidden: boolean
+  readonly pinned: boolean
+  readonly role: BotRole | null
   readonly description: string
   readonly soul: string
   readonly model: ModelChoice | null
@@ -58,6 +68,8 @@ export interface BotPatch {
   /** Saved at once when the user picks one; not a guarded field. */
   readonly avatar?: AvatarChoice
   readonly hidden?: boolean
+  readonly pinned?: boolean
+  readonly role?: BotRole | null
   readonly description?: string
   readonly soul?: string
   readonly model?: ModelChoice

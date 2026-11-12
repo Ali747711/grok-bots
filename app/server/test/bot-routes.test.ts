@@ -99,6 +99,17 @@ describe('POST /crew/bots', () => {
     expect(await res.json()).toMatchObject({ error: 'bad_body' })
   })
 
+  it('writes a chosen role, accepts null, and refuses an unknown role before profiles.create', async () => {
+    expect((await post('/crew/bots', { ...body, role: 'analyst' })).status).toBe(201)
+    expect((rpc.configures[0]!.ui_meta as Record<string, Record<string, unknown>>)['hermes-bots']!.role).toBe('analyst')
+    expect((await post('/crew/bots', { ...body, name: 'other', role: null })).status).toBe(201)
+    const creates = rpc.of('profiles.create').length
+    const res = await post('/crew/bots', { ...body, name: 'third', role: 'chef' })
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ error: 'bad_body' })
+    expect(rpc.of('profiles.create')).toHaveLength(creates)
+  })
+
   it('rejects a reserved or malformed name before calling hermes', async () => {
     for (const name of ['default', 'Scout', '-a', '']) {
       const res = await post('/crew/bots', { ...body, name })

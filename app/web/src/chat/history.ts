@@ -15,6 +15,8 @@ export interface HistoryRow {
   tool_call_id?: string | null
   tool_name?: string | null
   tool_calls?: readonly { id?: string; function?: { name?: string; arguments?: string } }[] | null
+  /** When the row was stored: Unix seconds as a float (hermes-facts Q7). */
+  timestamp?: number | null
 }
 
 const HIDDEN_KINDS = new Set(['hidden'])
@@ -60,6 +62,10 @@ const submissionOf = (row: HistoryRow): { submissionId?: string } => {
   return typeof id === 'string' && id ? { submissionId: id } : {}
 }
 
+/** The row's time as `{ at }` in whole milliseconds, or nothing when the row carries none. */
+const atOf = (row: HistoryRow): { at?: number } =>
+  typeof row.timestamp === 'number' && Number.isFinite(row.timestamp) ? { at: Math.round(row.timestamp * 1000) } : {}
+
 const textOf = (row: HistoryRow): string => (row.display_content ?? row.content ?? '').trim()
 
 /** Stored rows → chat items: user/assistant text, consecutive tool rows as one work block, scaffolding dropped. */
@@ -85,8 +91,9 @@ export function historyToItems(rows: readonly HistoryRow[]): ChatItem[] {
       const detail = row.content ?? undefined
       const isError = resultIsError(row.content ?? '')
       const existing = w.steps[at]
-      if (existing) w.steps[at] = { ...existing, ...(detail ? { detail } : {}), isError, running: false }
-      else w.steps.push({ id: row.tool_call_id ?? id, name: row.tool_name ?? 'tool', summary: row.tool_name ?? 'tool', ...(detail ? { detail } : {}), isError, running: false })
+      // The result row is stamped after the tool ran, so its time replaces the assistant row's.
+      if (existing) w.steps[at] = { ...existing, ...(detail ? { detail } : {}), isError, running: false, ...atOf(row) }
+      else w.steps.push({ id: row.tool_call_id ?? id, name: row.tool_name ?? 'tool', summary: row.tool_name ?? 'tool', ...(detail ? { detail } : {}), isError, running: false, ...atOf(row) })
       continue
     }
     if (row.role === 'assistant' && row.tool_calls?.length) {
@@ -97,7 +104,7 @@ export function historyToItems(rows: readonly HistoryRow[]): ChatItem[] {
       const w = openWork(row.id)
       for (const call of row.tool_calls) {
         const name = call.function?.name ?? 'tool'
-        w.steps.push({ id: call.id ?? `${id}-${w.steps.length}`, name, summary: summarizeArguments(name, call.function?.arguments), running: false })
+        w.steps.push({ id: call.id ?? `${id}-${w.steps.length}`, name, summary: summarizeArguments(name, call.function?.arguments), running: false, ...atOf(row) })
       }
       continue
     }

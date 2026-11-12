@@ -48,8 +48,9 @@ describe('GroupChatView', () => {
     api.fetchGroupEvents.mockResolvedValue({ events: [ev(1, { text: 'ask @x and @ghost, also @x.' })], cursor: 1, latestSeq: 1, hasMore: false, epoch: 1 })
     mount(state(room()))
     const reply = await screen.findByTestId('member-message')
-    const marks = [...reply.querySelectorAll('.bg-sky-soft')].map(n => n.textContent)
-    expect(marks).toEqual(['@x'])
+    const marks = [...reply.querySelectorAll('mark')]
+    expect(marks.map(n => n.textContent)).toEqual(['@x'])
+    expect(marks[0]).toHaveClass('bg-raised', 'text-foreground')
     expect(reply.textContent).toContain('@ghost')
   })
 
@@ -185,6 +186,83 @@ describe('GroupChatView', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), { target: { value: 'go' } })
     fireEvent.keyDown(screen.getByRole('textbox', { name: 'Message' }), { key: 'Enter' })
     await waitFor(() => expect(api.sendGroupMessage).toHaveBeenCalledWith('r1', expect.objectContaining({ text: 'go', threadId: 't1' })))
+  })
+
+  it('names the transcript as the Messages log, like a bot conversation', async () => {
+    mount(state(room()))
+    await screen.findByTestId('member-message')
+    expect(screen.getByRole('log', { name: 'Messages' })).toBe(screen.getByTestId('transcript'))
+  })
+
+  it('shows who is in the group while it has no messages, and not before the log has loaded', async () => {
+    let deliver: (log: unknown) => void = () => undefined
+    api.fetchGroupEvents.mockReturnValue(new Promise(resolve => { deliver = resolve }))
+    mount(state(room({ latestSeq: 0 })))
+    expect(screen.queryByText('Start with Launch')).toBeNull()
+    await act(async () => { deliver({ events: [], cursor: 0, latestSeq: 0, hasMore: false, epoch: 1 }) })
+    expect(await screen.findByText('Start with Launch')).toBeInTheDocument()
+    expect(screen.getByText('Reese and X are here. Type @ to ask one of them.')).toBeInTheDocument()
+  })
+
+  it('keeps showing who is in the group while the log holds only notices (a new group starts with one)', async () => {
+    api.fetchGroupEvents.mockResolvedValue({ events: [ev(1, { kind: 'room.context_set', routing: 'auto', text: undefined, memberId: undefined })], cursor: 1, latestSeq: 1, hasMore: false, epoch: 1 })
+    mount(state(room({ latestSeq: 1 })))
+    expect(await screen.findByText('Replies set to Auto')).toBeInTheDocument()
+    expect(screen.getByText('Start with Launch')).toBeInTheDocument()
+  })
+
+  it('does not call the group empty when its log failed to load, and shows the error', async () => {
+    api.fetchGroupEvents.mockRejectedValue(new Error('Hermes did not answer'))
+    mount(state(room({ latestSeq: 5 })))
+    expect(await screen.findByTestId('room-error')).toHaveTextContent('Hermes did not answer')
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+    expect(screen.queryByText('Start with Launch')).toBeNull()
+  })
+
+  it('does not call the group empty when older messages were cut and only notices are loaded', async () => {
+    api.fetchGroupEvents.mockResolvedValue({ events: [ev(301, { kind: 'room.context_set', routing: 'auto', text: undefined, memberId: undefined })], cursor: 301, latestSeq: 301, hasMore: false, epoch: 1 })
+    mount(state(room({ latestSeq: 301 })))
+    expect(await screen.findByText('Replies set to Auto')).toBeInTheDocument()
+    expect(screen.getByText('Older messages are in Hermes.')).toBeInTheDocument()
+    expect(screen.queryByText('Start with Launch')).toBeNull()
+  })
+
+  it('opens the details from the header button, which says whether they are open', async () => {
+    const onPanel = vi.fn()
+    const { rerender } = render(<MemoryRouter><GroupChatView state={state(room())} crewConnected roomId="r1" panelOpen={false} onPanel={onPanel} /></MemoryRouter>)
+    await screen.findByTestId('member-message')
+    const header = screen.getByRole('heading', { name: 'Launch' }).closest('header')!
+    const details = within(header).getByRole('button', { name: 'Details' })
+    expect(details).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(details)
+    expect(onPanel).toHaveBeenCalledTimes(1)
+    rerender(<MemoryRouter><GroupChatView state={state(room())} crewConnected roomId="r1" panelOpen onPanel={onPanel} /></MemoryRouter>)
+    expect(within(header).getByRole('button', { name: 'Details' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('shows a Working chip in the header only while the group works and the status is current', async () => {
+    const chip = (): HTMLElement | null => within(screen.getByRole('heading', { name: 'Launch' }).closest('header')!).queryByText('Working')
+    const shown = async (st: CrewState, crewConnected = true): Promise<boolean> => {
+      const { unmount } = mount(st, crewConnected)
+      await screen.findByTestId('member-message')
+      const found = chip() !== null
+      unmount()
+      return found
+    }
+    expect(await shown(state(room({ working: true })))).toBe(true)
+    expect(await shown(state(room({ working: true })), false)).toBe(false)
+    expect(await shown(state(room()))).toBe(false)
+  })
+
+  it('never puts destructive text on a tinted fill: a failed reply and the stuck banner are neutral with an error dot', async () => {
+    api.fetchGroupEvents.mockResolvedValue({ events: [ev(1, { kind: 'turn.failed', text: undefined, error: 'no credit' })], cursor: 1, latestSeq: 1, hasMore: false, epoch: 1 })
+    mount(state(room({ stuck: true, stuckReason: 'topic_limit' })))
+    const notice = (await screen.findByText(/couldn't reply: no credit/)).closest('p')!
+    const banner = screen.getByRole('alert')
+    for (const el of [notice, banner]) {
+      expect(el).not.toHaveClass('text-destructive')
+      expect(el.querySelector('.bg-status-error')).not.toBeNull()
+    }
   })
 
   it('goes to the not-found pattern when the group disappears', async () => {

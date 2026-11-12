@@ -1,24 +1,10 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import { describe, expect, it } from 'vitest'
 
 import { Shell } from '@/layout/Shell'
 
-const parts = { sidebar: <div>side</div>, main: <div>chat</div>, panel: <div>right</div> }
-
-describe('Shell', () => {
-  it('renders sidebar and main without the panel when closed', () => {
-    render(<Shell {...parts} panelOpen={false} />)
-    expect(screen.getByRole('complementary', { name: 'Sidebar' })).toHaveTextContent('side')
-    expect(screen.getByRole('main')).toHaveTextContent('chat')
-    expect(screen.queryByRole('region', { name: 'Panel' })).toBeNull()
-    expect(screen.queryByText('right')).toBeNull()
-  })
-
-  it('renders the panel when open', () => {
-    render(<Shell {...parts} panelOpen />)
-    expect(screen.getByRole('region', { name: 'Panel' })).toHaveTextContent('right')
-  })
-})
+const parts = { rail: <div>crew</div>, main: <div>chat</div> }
+const side = <div>right</div>
 
 /** A window `width` px wide: only the max-width queries that include it match. */
 const mockMedia = (width: number) => {
@@ -29,50 +15,76 @@ const mockMedia = (width: number) => {
   })) as typeof window.matchMedia
 }
 
-describe('Shell blocks and canvas', () => {
-  afterEach(() => { delete document.documentElement.dataset.theme })
+const rail = () => screen.getByRole('complementary', { name: 'Sidebar' })
+const main = () => screen.getByRole('main')
+const panel = () => screen.getByRole('region', { name: 'Panel' })
 
-  it('renders three rounded blocks on the sky canvas', () => {
-    mockMedia(1440)
-    const { container } = render(<Shell {...parts} panelOpen />)
-    for (const el of [screen.getByRole('complementary', { name: 'Sidebar' }), screen.getByRole('main'), screen.getByRole('region', { name: 'Panel' })]) {
-      expect(el).toHaveClass('rounded-block')
-      expect(el.className).toMatch(/\bbg-card(\/95)?\b/)
-    }
-    const canvas = container.querySelector('[data-canvas]')
-    expect(canvas).toHaveAttribute('aria-hidden', 'true')
-    expect(container.firstElementChild!.className).toContain('grid-cols-[272px_minmax(0,1fr)_400px]')
+describe('Shell', () => {
+  it('renders the rail and main without the side panel when there is none', () => {
+    render(<Shell {...parts} side={null} />)
+    expect(rail()).toHaveTextContent('crew')
+    expect(main()).toHaveTextContent('chat')
+    expect(screen.queryByRole('region', { name: 'Panel' })).toBeNull()
+    expect(screen.queryByText('right')).toBeNull()
   })
 
-  it.each([1000, 1100, 1200, 1279])('opens the panel as an overlay below 1280 px (%i px)', width => {
+  it('renders the side panel when given one', () => {
+    render(<Shell {...parts} side={side} />)
+    expect(panel()).toHaveTextContent('right')
+  })
+})
+
+describe('Shell panels', () => {
+  it('renders three rounded shell panels straight on the page canvas', () => {
+    mockMedia(1440)
+    const { container } = render(<Shell {...parts} side={side} />)
+    for (const el of [rail(), main(), panel()]) expect(el).toHaveClass('rounded-3xl', 'bg-shell', 'shadow-panel')
+    expect(container.firstElementChild).toHaveClass('flex', 'h-dvh', 'gap-2', 'bg-background', 'p-2')
+    // The canvas is the root's own background; there is no decorative layer.
+    expect(container.querySelector('[aria-hidden="true"]')).toBeNull()
+    expect(rail()).toHaveClass('w-[272px]', 'flex-none')
+  })
+
+  it('gives the conversation the clamp width beside a side panel, which takes the rest', () => {
+    mockMedia(1440)
+    render(<Shell {...parts} side={side} />)
+    expect(main()).toHaveClass('w-[clamp(380px,32vw,480px)]', 'flex-none')
+    expect(main()).not.toHaveClass('flex-1')
+    expect(panel()).toHaveClass('flex-1')
+  })
+
+  it('lets main take the remaining width with no side panel', () => {
+    mockMedia(1440)
+    render(<Shell {...parts} side={null} />)
+    expect(main()).toHaveClass('flex-1')
+    expect(main().className).not.toContain('clamp')
+  })
+
+  it.each([1000, 1100, 1200, 1279])('lays the side panel over main below 1280 px (%i px)', width => {
     mockMedia(width)
-    const { container } = render(<Shell {...parts} panelOpen />)
-    expect(screen.getByRole('region', { name: 'Panel' })).toHaveAttribute('data-overlay', 'true')
-    expect(container.firstElementChild!.className).toContain('grid-cols-[272px_minmax(0,1fr)]')
-    expect(container.firstElementChild!.className).not.toContain('400px')
+    render(<Shell {...parts} side={side} />)
+    expect(panel()).toHaveAttribute('data-overlay', 'true')
+    expect(panel()).toHaveClass('absolute', 'w-[min(480px,calc(100%-16px))]', 'bg-shell', 'rounded-3xl')
+    expect(panel()).not.toHaveClass('flex-1')
+    // The conversation keeps the full width under the overlay.
+    expect(main()).toHaveClass('flex-1')
+    expect(main().className).not.toContain('clamp')
   })
 
-  it('keeps three columns from 1280 px', () => {
-    mockMedia(1280)
-    const { container } = render(<Shell {...parts} panelOpen />)
-    expect(screen.getByRole('region', { name: 'Panel' })).not.toHaveAttribute('data-overlay')
-    expect(container.firstElementChild!.className).toContain('grid-cols-[272px_minmax(0,1fr)_400px]')
+  it('lifts the narrow-window overlay with its own shadow', () => {
+    mockMedia(1100)
+    render(<Shell {...parts} side={side} />)
+    expect(panel()).toHaveClass('shadow-2xl')
+    expect(panel()).not.toHaveClass('shadow-panel')
   })
 
-  it('does not overlay on a wide window', () => {
-    mockMedia(1440)
-    render(<Shell {...parts} panelOpen />)
-    expect(screen.getByRole('region', { name: 'Panel' })).not.toHaveAttribute('data-overlay')
-  })
-
-  it('switches the canvas when the theme changes', async () => {
-    mockMedia(1440)
-    document.documentElement.dataset.theme = 'light'
-    const { container } = render(<Shell {...parts} panelOpen={false} />)
-    expect(container.querySelector('[data-canvas]')).toHaveAttribute('data-variant', 'sky')
-    act(() => { document.documentElement.dataset.theme = 'dark' })
-    await waitFor(() => expect(container.querySelector('[data-canvas]')).toHaveAttribute('data-variant', 'flat'))
-    act(() => { document.documentElement.dataset.theme = 'light' })
-    await waitFor(() => expect(container.querySelector('[data-canvas]')).toHaveAttribute('data-variant', 'sky'))
+  it('sits the side panel beside main from 1280 px', () => {
+    for (const width of [1280, 1440]) {
+      mockMedia(width)
+      const { unmount } = render(<Shell {...parts} side={side} />)
+      expect(panel()).not.toHaveAttribute('data-overlay')
+      expect(panel()).not.toHaveClass('absolute')
+      unmount()
+    }
   })
 })

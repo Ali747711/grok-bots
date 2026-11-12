@@ -28,8 +28,9 @@ function replaceWork(items: readonly ChatItem[], id: string, change: (w: WorkIte
 /**
  * Apply a tool frame to the generation's work block, upserting the step by tool_id.
  * A replayed `start`/`progress` never re-opens a step that already completed.
+ * `now` stamps a step at its first frame; later frames keep that time.
  */
-export function applyToolFrame(items: readonly ChatItem[], workId: string, type: string, payload: ToolPayload): ChatItem[] {
+export function applyToolFrame(items: readonly ChatItem[], workId: string, type: string, payload: ToolPayload, now = Date.now()): ChatItem[] {
   const id = payload.tool_id ?? payload.tool_call_id
   if (!id) return [...items]
   const name = payload.name ?? payload.tool_name ?? 'tool'
@@ -44,6 +45,7 @@ export function applyToolFrame(items: readonly ChatItem[], workId: string, type:
       name: existing?.name ?? name,
       summary: payload.context || existing?.summary || name,
       running: type !== 'tool.complete',
+      at: existing?.at ?? now,
       ...(type === 'tool.complete'
         ? { isError: payload.is_error === true, ...(detail ? { detail } : {}) }
         : existing?.detail ? { detail: existing.detail } : {})
@@ -60,4 +62,9 @@ export function finishWork(items: readonly ChatItem[]): ChatItem[] {
   return items
     .map(i => (i.kind === 'work' ? { ...i, steps: i.steps.map(s => (s.running ? { ...s, running: false } : s)) } : i))
     .filter(i => !(i.kind === 'work' && i.steps.length === 0))
+}
+
+/** Mark a generation's work block as stopped before it finished. */
+export function markInterrupted(items: readonly ChatItem[], workId: string): ChatItem[] {
+  return replaceWork(items, workId, work => ({ ...work, interrupted: true }))
 }

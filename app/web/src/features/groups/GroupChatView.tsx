@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { type ReactNode, useCallback, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
@@ -11,9 +11,10 @@ import type { BotView, CrewState, GroupView } from '@/state/types'
 import { GroupComposer } from './GroupComposer'
 import { GroupHeader } from './GroupHeader'
 import { GroupMessageList } from './GroupMessageList'
-import { TurnActions } from './GroupNotices'
+import { ErrorDot, TurnActions } from './GroupNotices'
 import { LiveRows } from './LiveRows'
-import { memberTitle } from './group-titles'
+import { joinAnd, memberTitle } from './group-titles'
+import { StackedAvatars } from './StackedAvatars'
 import { useGroupRoom } from './use-group-room'
 
 interface GroupChatViewProps {
@@ -27,9 +28,37 @@ interface GroupChatViewProps {
 
 function GroupNotFound() {
   return (
-    <div className="grid flex-1 content-center justify-items-center gap-3 text-sm text-muted-foreground">
-      <p className="text-base font-medium text-foreground">Group not found</p>
-      <Link to="/" className="text-sky-ink underline underline-offset-2">Back to your bots</Link>
+    <div className="grid flex-1 content-center justify-items-center gap-3 text-[13px] font-medium text-muted-foreground">
+      <p className="text-[15px] font-semibold tracking-tight text-foreground">Group not found</p>
+      <Link to="/" className="rounded-sm text-foreground underline underline-offset-2 outline-none focus-visible:ring-3 focus-visible:ring-ring">Back to your bots</Link>
+    </div>
+  )
+}
+
+const BANNER = 'mx-4 mb-2 flex flex-wrap items-center justify-center gap-2 rounded-2xl bg-raised px-3 py-2 text-xs font-medium text-foreground'
+
+/** A problem with the group's next turn: a neutral strip with an error dot, its text and one way out. */
+function StuckBanner({ text, children }: { text: string; children: ReactNode }) {
+  return (
+    <div role="alert" className={BANNER}>
+      <ErrorDot />
+      <p className="min-w-0 break-words">{text}</p>
+      {children}
+    </div>
+  )
+}
+
+/** What a group shows before its first message: who is in it and how to ask one of them. */
+function EmptyGroup({ group, bots, titleOf }: { group: GroupView; bots: readonly BotView[]; titleOf: (memberId: string) => string }) {
+  const members = group.members.map(m => {
+    const bot = bots.find(b => b.name === m.profile) ?? null
+    return bot ? { ...bot, status: 'idle' as const } : null
+  })
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 py-16 text-center">
+      <StackedAvatars bots={members} size={56} max={4} />
+      <p className="text-[15px] font-semibold tracking-tight">Start with {group.name}</p>
+      <p className="max-w-80 text-[13px] font-medium text-muted-foreground">{`${joinAnd(group.members.map(m => titleOf(m.memberId)))} are here. Type @ to ask one of them.`}</p>
     </div>
   )
 }
@@ -79,16 +108,21 @@ function GroupChat({ state, crewConnected, group, panelOpen, onPanel }: Omit<Gro
       {room.loading && room.items.length === 0 && !stale ? (
         <ChatSkeleton />
       ) : (
-        <GroupMessageList items={room.items} group={group} bots={bots} cut={room.cut} onRetry={id => void room.retrySend(id)} onKeepGoing={id => void room.keepGoing(id)} footer={footer} />
+        <GroupMessageList
+          items={room.items} group={group} bots={bots} cut={room.cut} footer={footer}
+          onRetry={id => void room.retrySend(id)} onKeepGoing={id => void room.keepGoing(id)}
+          // Only when the whole log is known: not while loading, after a failed fetch, or with older messages cut off.
+          empty={room.loading || room.error || room.cut ? undefined : <EmptyGroup group={group} bots={bots} titleOf={titleOf} />}
+        />
       )}
       {room.error && (
-        <div role="status" className="flex items-center justify-center gap-2 px-6 text-xs text-muted-foreground">
+        <div role="status" className="flex items-center justify-center gap-2 px-4 pb-2 text-xs font-medium text-muted-foreground">
           <p data-testid="room-error">{room.error}</p>
           <Button type="button" size="xs" variant="outline" onClick={() => void room.retry()}>Try again</Button>
         </div>
       )}
       {requests.length > 0 && (
-        <div className="max-h-[40vh] flex-none overflow-y-auto px-6 pt-2">
+        <div className="max-h-[40vh] flex-none scroll-thin overflow-y-auto px-4 pt-2 pb-3">
           <div className="mx-auto flex max-w-[720px] flex-col gap-2">
             {requests.map(entry => (
               <RequestCard key={entry.id} entry={entry} botTitle={titleOf(entry.group!.memberId)} onAnswer={(e, body) => submitAnswer(e.id, body)} />
@@ -97,16 +131,14 @@ function GroupChat({ state, crewConnected, group, panelOpen, onPanel }: Omit<Gro
         </div>
       )}
       {group.stuckReason === 'topic_limit' && (
-        <div role="alert" className="mx-6 mb-2 flex flex-wrap items-center justify-center gap-2 rounded-2xl bg-muted px-3 py-2 text-xs text-destructive">
-          <p>This group is stuck in Hermes: one topic grew past the 24 messages Hermes can track.</p>
+        <StuckBanner text="This group is stuck in Hermes: one topic grew past the 24 messages Hermes can track.">
           <Button type="button" size="xs" variant="outline" disabled={recovering} onClick={() => void recover()}>Stop and start a new topic</Button>
-        </div>
+        </StuckBanner>
       )}
       {group.stuckReason === 'prepare_failed' && group.prepareRetry && (
-        <div role="alert" className="mx-6 mb-2 flex flex-wrap items-center justify-center gap-2 rounded-2xl bg-muted px-3 py-2 text-xs text-destructive">
-          <p>{`Hermes can't start this group's next turn: ${group.lastError ?? 'unknown error'}`}</p>
+        <StuckBanner text={`Hermes can't start this group's next turn: ${group.lastError ?? 'unknown error'}`}>
           <Button type="button" size="xs" variant="outline" disabled={group.working} onClick={() => void room.retryTurn({ kind: 'retry', ...group.prepareRetry! })}>Try again</Button>
-        </div>
+        </StuckBanner>
       )}
       <GroupComposer
         topicFull={room.topicFull}
