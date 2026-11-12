@@ -10,6 +10,7 @@ import { TicketStore } from './auth/tickets.js'
 import { expirePending } from './connectors/account.js'
 import { clampIfNoApprovals, forgetBot, type ConnectorDeps } from './connectors/bot-apps.js'
 import { createComposio } from './connectors/composio.js'
+import { createIdentityBackfill, type IdentityBackfill } from './connectors/identity.js'
 import { KeyStore } from './connectors/key.js'
 import { createReconnector } from './connectors/reconnect.js'
 import { loadConnectorStore } from './connectors/store.js'
@@ -50,6 +51,7 @@ export async function start(): Promise<Server> {
   const rest = createHermesRest({ hermesUrl: config.hermesUrl, token })
   let connectors: ConnectorDeps | undefined
   let sweep: OrphanSweep | undefined
+  let identity: IdentityBackfill | undefined
   const roster = createSandboxRoster(name => readRawConfig({ rest }, name).then(raw => {
     // R9: this read repeats about once a minute, so a bot switched to approvals off is clamped soon after.
     if (connectors) clampIfNoApprovals(connectors, name, raw)
@@ -75,7 +77,10 @@ export async function start(): Promise<Server> {
     },
     settings,
     sandboxStates: roster.states,
-    onRoster: names => sweep?.onRoster(names),
+    onRoster: names => {
+      sweep?.onRoster(names)
+      identity?.onRoster(names)
+    },
     now: Date.now,
     reconnectDelayMs: attempt => Math.min(30_000, 1000 * 2 ** attempt)
   })
@@ -121,6 +126,7 @@ export async function start(): Promise<Server> {
     }
     const live = connectors
     sweep = createOrphanSweep({ bots: () => connectorStore.bots(), forget: bot => forgetBot(live, bot), now: Date.now })
+    identity = createIdentityBackfill(live)
     setInterval(() => void expirePending(live), 60_000).unref()
   }
   const app = createApp({ config, secrets, tickets: new TicketStore(), now: Date.now, token, fetchUpstream: fetch, watcher: crewState, groups: { rpc: groupRpc, groups: groupWatcher, roster: () => crewState.state().bots.map(b => ({ name: b.name, title: b.title, displayName: b.displayName })), newId: randomUUID, sleep: ms => new Promise(resolve => setTimeout(resolve, ms)) }, settings, bots: base, ...(connectors ? { connectors: { connectors, keys }, relay: { store: connectorStore!, keys, fetch } } : {}), routines, triggers, usage: createUsageSource({ envFile: config.hermesEnvFile, fetch, now: Date.now }) })

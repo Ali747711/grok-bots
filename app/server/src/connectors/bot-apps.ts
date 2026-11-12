@@ -126,7 +126,7 @@ async function syncServer(
   } else if (server === null) {
     // R7: a token exists only in this call, so a record whose server is gone gets a new one.
     const token = minted ?? deps.newToken()
-    if (minted === undefined) await deps.store.setRecord(bot, { ...record, tokenHash: hashToken(token) })
+    if (minted === undefined) await deps.store.setRecord(bot, { ...record, tokenHash: hashToken(token), identity: true })
     await addAppsServer(deps.bots, bot, deps.relayUrl(bot), token)
   } else if (!server.enabled) {
     await setAppsServerEnabled(deps.bots, bot, true)
@@ -152,7 +152,9 @@ export function setBotApps(deps: ConnectorDeps, bot: string, apps: Readonly<Reco
     const minted = old ? undefined : deps.newToken()
     const record: BotRecord = {
       apps, counts: built.counts, sessionId: built.sessionId, mcpUrl: built.mcpUrl, allowed: built.allowed,
-      tokenHash: old?.tokenHash ?? hashToken(minted as string)
+      tokenHash: old?.tokenHash ?? hashToken(minted as string),
+      // A new record's server is always (re)written by syncServer, with the identity header.
+      ...(old === undefined || old.identity === true ? { identity: true } : {})
     }
     await saveOrDrop(deps, bot, record)
     if (old) await deleteSessionQuietly(deps, bot, old.sessionId)
