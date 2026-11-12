@@ -30,5 +30,5 @@ New bots made through Crew are always prepared, whatever the scope.
 | The two computer "bugs" | `docs/voice/hermes-live-facts.md`: the primary was switched to the sandbox; no Crew code fix | primary computer check pending, with the owner |
 | Owner's read of a short chat with the primary | — | pending (final acceptance) |
 
-Suites at the Task 9 commit: server 1133/1133, web 1162/1162, builds clean; e2e `voice.spec.ts` 6/6 (5 + @restart),
+Final whole-branch review (Opus): no Critical; 5 Important + 3 re-graded findings fixed in one pass with failing tests first (ledger). Suites after the fix pass: server 1143/1143, web 1162/1162, builds clean; e2e `voice.spec.ts` 6/6 (5 + @restart),
 `phase2.spec.ts` Soul tests 3/3 and working-bot tests 2/2.
