@@ -80,8 +80,26 @@ test('@model a sandboxed bot browses with the Browser on its own screen, not a t
   const made = await crewApi(page, 'POST', '/crew/bots', { name: BOXED, title: 'Boxed', mission: 'Look things up on the web', avatar: { type: 'circle' }, model: MODEL, sandbox: true })
   expect(made.status).toBe(201)
   await openBot(page, BOXED)
+  // Answer each desktop-action approval the way the owner would: allow for this chat when offered.
+  const approved: string[] = []
+  let stop = false
+  const approver = (async () => {
+    while (!stop) {
+      const pending = (await crewApi(page, 'GET', '/crew/state')).body.pending as { id: string; kind: string; profile?: string; choices?: string[]; description?: string }[]
+      for (const p of pending.filter(x => x.profile === BOXED && x.kind === 'approval')) {
+        const choice = p.choices?.includes('session') ? 'session' : 'once'
+        const res = await crewApi(page, 'POST', `/crew/requests/${p.id}/answer`, { choice })
+        approved.push(`${choice}:${res.status}:${String(p.description ?? '').slice(0, 60)}`)
+      }
+      await new Promise(resolve => setTimeout(resolve, 2000))
+    }
+  })()
   const reply = await ask('Open example.com in the browser on your computer and tell me the main heading on the page.', BOXED, 600_000)
+  stop = true
+  await approver
+  test.info().annotations.push({ type: 'approvals answered', description: approved.join(' | ') })
   expect(reply).toMatch(/Example Domain/i)
+  expect(reply, 'it used its own browser').not.toMatch(/couldn't|could not|can't|no (web )?browser|no dock|read the page directly/i)
   plain(reply, 3)
   const rows = await chatRows(BOXED)
   const work = JSON.stringify(rows.filter(r => r.role !== 'user'))

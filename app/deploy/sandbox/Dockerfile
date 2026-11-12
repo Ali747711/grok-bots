@@ -10,3 +10,11 @@ FROM nousresearch/hermes-sandbox:desktop
 RUN set -e; for d in /opt/playwright/chromium-*; do \
       if [ -d "$d/chrome-linux-arm64" ] && [ ! -e "$d/chrome-linux" ]; then ln -s chrome-linux-arm64 "$d/chrome-linux"; fi; \
     done
+
+# The dock's Browser launcher uses the `internet-web-browser` icon, which the image's icon themes lack, so it
+# showed as a blank shape the bot did not recognise. Use Chromium's own logo for it.
+RUN set -e; logo=$(ls /opt/playwright/chromium-*/chrome-linux*/product_logo_48.png 2>/dev/null | head -1); \
+    if [ -n "$logo" ]; then \
+      install -D -m 0644 "$logo" /usr/share/icons/hicolor/48x48/apps/internet-web-browser.png; \
+      if command -v gtk-update-icon-cache >/dev/null; then gtk-update-icon-cache -q -f /usr/share/icons/hicolor || true; fi; \
+    fi
