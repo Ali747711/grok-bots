@@ -6,7 +6,7 @@ import { RIGHT_NOW_MAX, buildRightNow, oneLine, worklogPath, type RightNowInput 
 const INPUT: RightNowInput = {
   owner: { name: 'Ali', timeZone: 'Asia/Seoul' },
   self: { title: 'Scout', handle: 'scout', role: 'Researcher', job: 'Find papers' },
-  computer: { on: true, sandboxed: false },
+  computer: { on: true, sandboxed: false, browser: true },
   memory: { on: true, worklog: '/h/profiles/scout/worklog.md' },
   apps: [{ name: 'GitHub', level: 'change' }, { name: 'Gmail', level: 'read' }],
   routines: [{ title: 'Digest', when: 'Every day at 09:00', state: 'on' }],
@@ -44,13 +44,20 @@ describe('buildRightNow', () => {
     expect(lineOf(buildRightNow({ ...INPUT, owner: { name: 'Ali', timeZone: null } }), 'Owner:')).toBe('Owner: Ali.')
   })
 
+  it('tells a sandboxed bot without its browser tool to use the Browser on its own screen', () => {
+    const line = lineOf(buildRightNow({ ...INPUT, computer: { on: true, sandboxed: true, browser: false } }), 'Computer:')
+    expect(line).toContain('separate from your owner')
+    expect(line).toContain('open the Browser from the dock on your screen')
+    expect(lineOf(buildRightNow({ ...INPUT, computer: { on: true, sandboxed: true, browser: true } }), 'Computer:')).not.toContain('dock')
+  })
+
   it('says no computer when computer_use is off, whatever the screen switch', () => {
-    expect(lineOf(buildRightNow({ ...INPUT, computer: { on: false, sandboxed: true } }), 'Computer:')).toBe('Computer: you have no computer right now.')
+    expect(lineOf(buildRightNow({ ...INPUT, computer: { on: false, sandboxed: true, browser: false } }), 'Computer:')).toBe('Computer: you have no computer right now.')
   })
 
   it('adds the sandbox line and the /workspace log path for a sandboxed bot', () => {
-    const block = buildRightNow({ ...INPUT, computer: { on: true, sandboxed: true }, memory: { on: true, worklog: '/workspace/worklog.md' } })
-    expect(lineOf(block, 'Computer:')).toBe("Computer: you have your own computer with a screen; use it for anything a person would do on a desktop. It's a sandboxed computer, so keep anything you need later in /workspace.")
+    const block = buildRightNow({ ...INPUT, computer: { on: true, sandboxed: true, browser: true }, memory: { on: true, worklog: '/workspace/worklog.md' } })
+    expect(lineOf(block, 'Computer:')).toBe("Computer: you have your own computer with a screen; use it for anything a person would do on a desktop. It's a sandboxed computer, separate from your owner's machine, so keep anything you need later in /workspace.")
     expect(lineOf(block, 'Memory:')).toContain('/workspace/worklog.md')
   })
 

@@ -47,7 +47,7 @@ describe('gatherFacts', () => {
     const facts = await gatherFacts(deps().deps, 'scout')
     expect(facts.owner).toEqual({ name: 'Ali', timeZone: 'Asia/Seoul' })
     expect(facts.self).toEqual({ title: 'Scout', handle: 'scout', role: 'researcher', job: 'Find papers' })
-    expect(facts.computer).toEqual({ on: false, sandboxed: true })
+    expect(facts.computer).toEqual({ on: false, sandboxed: true, browser: false })
     expect(facts.memory).toEqual({ on: true, worklog: '/workspace/worklog.md' })
     expect(facts.teammates).toEqual([{ title: 'Bella', handle: 'bella', role: null, job: 'Inbox' }])
     expect(facts.groups).toEqual([{ name: 'Ops', purpose: 'Ship it' }])

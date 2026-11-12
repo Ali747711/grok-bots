@@ -9,7 +9,8 @@ const JOB_MAX = 200
 export interface RightNowInput {
   readonly owner: { readonly name: string | null; readonly timeZone: string | null }
   readonly self: { readonly title: string; readonly handle: string; readonly role: string | null; readonly job: string }
-  readonly computer: { readonly on: boolean; readonly sandboxed: boolean }
+  /** `browser`: the browser toolset is on (Crew turns it off in the sandbox: its Python runs on the host). */
+  readonly computer: { readonly on: boolean; readonly sandboxed: boolean; readonly browser: boolean }
   readonly memory: { readonly on: boolean; readonly worklog: string }
   readonly apps: readonly { readonly name: string; readonly level: AppLevel }[]
   readonly routines: readonly { readonly title: string; readonly when: string; readonly state: 'on' | 'paused' | 'triggered' }[]
@@ -48,10 +49,12 @@ function youLine({ title, handle, role, job }: RightNowInput['self']): string {
   return `You: ${item(title)} (@${item(handle)})${role ? `, ${item(role)}` : ''}.${jobText ? ` Job: ${jobText}` : ''}`
 }
 
-function computerLine({ on, sandboxed }: RightNowInput['computer']): string {
+function computerLine({ on, sandboxed, browser }: RightNowInput['computer']): string {
   if (!on) return 'Computer: you have no computer right now.'
   const base = 'Computer: you have your own computer with a screen; use it for anything a person would do on a desktop.'
-  return sandboxed ? `${base} It's a sandboxed computer, so keep anything you need later in /workspace.` : base
+  if (!sandboxed) return base
+  const own = `${base} It's a sandboxed computer, separate from your owner's machine, so keep anything you need later in /workspace.`
+  return browser ? own : `${own} To browse, open the Browser from the dock on your screen and use it the way a person would.`
 }
 
 function memoryLine({ on, worklog }: RightNowInput['memory']): string {

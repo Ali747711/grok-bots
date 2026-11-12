@@ -50,7 +50,7 @@ export async function gatherFacts(deps: FactsDeps, bot: string): Promise<RightNo
   return {
     owner: deps.owner(),
     self: { title: self.title, handle: handleFor(bot), role: self.role, job: self.job },
-    computer: { on: toolsets.has('computer_use'), sandboxed },
+    computer: { on: toolsets.has('computer_use'), sandboxed, browser: toolsets.has('browser') },
     memory: { on: toolsets.has('memory'), worklog: worklogPath(deps.hermesHome, bot, sandboxed) },
     apps: deps.apps(bot),
     routines: routineFacts(routines),
