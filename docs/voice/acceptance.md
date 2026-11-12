@@ -15,6 +15,16 @@ Branch `crew-voice` (stacked on `crew-connectors-identity`), local only. Spec:
 
 `voice-sandbox-model.spec.ts` (one sandboxed e2e bot, 1 turn): the reply was right ("Example Domain") but the bot said its computer has no web browser and read the page from a terminal. Root cause: on this ARM machine the sandbox image keeps Chromium at `chromium-1248/chrome-linux-arm64/chrome`, and Hermes's probe (`HA/tools/bot_desktop/sandbox_host.py:139-144`) looks only in `chrome-linux/` and `chrome-linux64/`, so the screen's dock gets no Browser launcher. A Hermes bug; the spec now asserts the screen was used, so it fails until that is worked around.
 
+## Sandboxed browsing, after the fixes (2026-11-12)
+
+Root cause found with a live probe (no model): the dock and typing into Chromium ignore background input on this
+screen; a real (XTEST) click opens Chromium and foreground typing loads a page. Fixes: Crew's sandbox image
+(`app/deploy/sandbox/`) adds the arm64 Chromium link, a browser icon, and opens the bot's browser when its screen
+starts; the "Right now" note tells a sandboxed bot its browser is already open and to retry input in the foreground
+when a step says so. `voice-sandbox-model.spec.ts` (1 turn, approvals answered "allow for this chat": click, type,
+type, key) **passed**: "The page is open in my browser. … The tab title reads "Example Domain" …". It opened and
+read the page on its own screen; it misjudged which text was the main heading.
+
 **Status: not accepted yet.** The owner's read of a chat with the primary is the final acceptance (spec §6).
 
 ## Scope flag
