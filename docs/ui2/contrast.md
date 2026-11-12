@@ -1,6 +1,6 @@
 # Crew UI 2: contrast check output
 
-Produced on 2026-11-11 at commit `02e9e79` by `cd app && npm test -w web -- test/contrast.test.ts --reporter=verbose`. Result: **62 passed (62)**, 1 file.
+Produced on 2026-11-11 at commit `a0e79c9` by `cd app && npm test -w web -- test/contrast.test.ts --reporter=verbose`. Result: **62 passed (62)**, 1 file.
 
 Every number below is the ratio the test itself computed and printed in its test name; nothing here was measured by hand. The pairs, the thresholds (4.5:1 for text, 3:1 for the focus ring, status dots and the accent) and the method are in `app/web/test/contrast.test.ts`; the token values and why each moved are in [tokens.md](tokens.md).
 

@@ -1,6 +1,6 @@
 # Crew UI 2: side by side with the source design
 
-Both columns are 1440×900, dark. Left is crew-bots (the design source, its own mock data: Atlas, Forge and the rest are fictional). The two crew-bots shots were found in the `side-by-side/` folder, made by the earlier implementer; its notes say they were served read-only from crew-bots' built `dist/` with `vite preview` on port 4174. Their provenance was not re-verified. Right is Crew at `02e9e79`, showing an `e2e<digits>` test bot, with the user's own rows masked grey.
+Both columns are 1440×900, dark. Left is crew-bots (the design source, its own mock data: Atlas, Forge and the rest are fictional). The two crew-bots shots were found in the `side-by-side/` folder, made by the earlier implementer; its notes say they were served read-only from crew-bots' built `dist/` with `vite preview` on port 4174. Their provenance was not re-verified. Right is Crew at `a0e79c9`, showing an `e2e<digits>` test bot, with the user's own rows masked grey.
 
 The Crew shots hold no chat, because the visual run sends no message (no model spend). The differences below are what the two pictures show, not a judgement.
 

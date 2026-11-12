@@ -53,7 +53,10 @@ export function isModKey(event: KeyboardEvent): boolean {
  */
 export function isLetterKey(event: KeyboardEvent, letter: string): boolean {
   if (event.key.toLowerCase() === letter) return true
-  return !event.isComposing && event.code === `Key${letter.toUpperCase()}`
+  // Fall back to the physical key only when the layout gave no Latin letter (Hangul, Cyrillic…),
+  // so Dvorak or Colemak users are not hit by a different letter's shortcut.
+  if (event.isComposing || /^[a-z]$/i.test(event.key)) return false
+  return event.code === `Key${letter.toUpperCase()}`
 }
 
 /** Display label for a command shortcut, e.g. "⌘K" or "Ctrl K". */

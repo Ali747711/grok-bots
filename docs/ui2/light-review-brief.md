@@ -8,7 +8,7 @@ Find flaws in the light theme: hierarchy, contrast, separation between surfaces,
 
 ## Inputs
 
-- Screenshots: `docs/ui2/screenshots/<screen>-<theme>-<size>.png`. 38 screens × dark and light × 1440×900 and 1100×800 = 152 files, shot at `02e9e79`. The grey blocks are privacy masks (the user's bots, groups, credit, app names), not part of the design.
+- Screenshots: `docs/ui2/screenshots/<screen>-<theme>-<size>.png`. 38 screens × dark and light × 1440×900 and 1100×800 = 152 files, shot at `a0e79c9`. The grey blocks are privacy masks (the user's bots, groups, credit, app names), not part of the design.
 - Contrast table for both themes: [contrast.md](contrast.md) (62 checks, all passing; the thinnest margins are listed at its end).
 - Token values and why each moved: [tokens.md](tokens.md).
 - Design rules: spec §5, `docs/superpowers/specs/2026-11-10-crew-ui2-reskin-design.md`.

@@ -1,8 +1,8 @@
 # Crew UI 2 (crew-bots reskin): acceptance
 
-Branch `crew-ui2` at `02e9e79` when checked, from main `53334bc`; the plan's code starts at `a20a008`. Checked 2026-11-11 on the VM. The live crew service was last restarted at 18:42:01 KST with the `486eb09` build; `git diff 486eb09..02e9e79 -- app/web app/server` is empty, so the deployed app code equals the branch head (later commits are e2e specs, screenshots and docs).
+Branch `crew-ui2` at `a0e79c9` when checked, from main `53334bc`; the plan's code starts at `a20a008`. Checked 2026-11-11 on the VM. The live crew service was last restarted at 18:42:01 KST with the `e79294b` build; `git diff e79294b..a0e79c9 -- app/web app/server` is empty, so the deployed app code equals the branch head (later commits are e2e specs, screenshots and docs).
 
-**Update 2026-11-12 (fix wave):** the final whole-branch review ran and one fix wave landed in `5c6768d`, `3e5ec7b`, `cecada8`, with the screenshots re-shot in `bc7992b`. See "Fix wave (2026-11-12)" at the end; the tables below still show the 2026-11-11 state except where a row says otherwise.
+**Update 2026-11-12 (fix wave):** the final whole-branch review ran and one fix wave landed in `c595afc`, `98deeb6`, `4f70fed`, with the screenshots re-shot in `010866f`. See "Fix wave (2026-11-12)" at the end; the tables below still show the 2026-11-11 state except where a row says otherwise.
 
 **Overall: not accepted yet.** Unit suites, builds and the visual set are in place. Two e2e failures, one known security defect in Phase 7 code, the light-theme review's findings (reviewed: not ready) and the final whole-branch review are open. See "Open items".
 
@@ -14,14 +14,14 @@ Result words: **pass** (evidence exists), **fail**, **not run**, **partial** (so
 
 | # | Item | Result | Evidence |
 |---|---|---|---|
-| 1 | Server unit tests | **pass** | `cd app && npm test -w server`, 2026-11-11 22:38 KST, `02e9e79`: **79 files, 993 tests passed, 0 failed**. Covers `avatar-meta.test.ts`, `create-bot.test.ts` (pinned, role, accessories), `toolsets.test.ts`, `toolset-routes.test.ts` (sandbox lock, sandbox off), `approvals.test.ts`, `approvals-routes.test.ts` (invalid modes), `screen-config.test.ts`, `screen-routes.test.ts` (`idleStopMinutes`, `ensureIdleStop`). The known flake (`trigger-store.test.ts` "moves a corrupt file aside…", about 1 in 3) did not fire in this run. |
-| 2 | Web unit tests | **pass** | `cd app && npm test -w web`, 2026-11-11 22:39 KST, `02e9e79`: **92 files, 1107 tests passed, 0 failed**. Includes `theme-tokens.test.ts`, `contrast.test.ts` (62 checks), `theme.test.ts`, `rail-sections.test.ts`, `rail.test.tsx`, `inline-action.test.tsx`, `run-card.test.tsx`, `profile-page.test.tsx`, `profile-shortcuts.test.tsx`. `grep -rE "sky-[0-9]" app/web/src app/web/test` finds nothing. The known 5-second timeout flakes under load did not fire in this run. |
-| 3 | Playwright against live Hermes: full existing suite green, plus the new specs | **fail** (two failures, some tests not run) | New specs **pass**: `ui2.spec.ts` 5/5 (pin, theme, role and accessories, approvals mode, skills switch) and `idle-stop.spec.ts` 2/2 (incl. the 1-hour sleep) at `adf736e`. Existing suite: see the e2e table below. **Failing:** `connectors.spec.ts` "a level change reaches Hermes as the new tool set" and `groups-model.spec.ts` #5 (handoff). **Not run:** 4 connectors tests behind the failure, `connectors-model.spec.ts`. |
-| 4 | Visual proof | **partial** | 152 files in `docs/ui2/screenshots/`: 38 screens × dark and light × 1440×900 and 1100×800, shot 22:04–22:08 KST and committed in `02e9e79`; `app/e2e/test-results/.last-run.json` (22:09:08) says `passed`, no failed tests. The 38 names equal the screen ids in `app/e2e/visual*.spec.ts` (no stale file). Side by side: [side-by-side.md](side-by-side.md). **Missing:** a live request card, the Needs-you page with a pending request (only its empty state is shot), a thread with messages and so a run card (all need a model turn; brief Step 2 was not done), and the primary bot's Advanced tab (ruled out for privacy, replaced by an asserted browser check in Task 13). The `conversation` shots show an empty thread with the side panel open. |
-| 5 | Light-theme review by a fresh agent | **reviewed — fixes in, not re-reviewed** | Reviewed at `02e9e79` on 2026-11-11: [light-review.md](light-review.md), 2 Critical, 8 Important, 9 Minor. Fix wave 2026-11-12: both Critical and 7 of 8 Important fixed in `3e5ec7b` (I7, the login font, is open); per-finding status and evidence at the top of the review file. No fresh agent has looked at the re-shot light screenshots yet. |
+| 1 | Server unit tests | **pass** | `cd app && npm test -w server`, 2026-11-11 22:38 KST, `a0e79c9`: **79 files, 993 tests passed, 0 failed**. Covers `avatar-meta.test.ts`, `create-bot.test.ts` (pinned, role, accessories), `toolsets.test.ts`, `toolset-routes.test.ts` (sandbox lock, sandbox off), `approvals.test.ts`, `approvals-routes.test.ts` (invalid modes), `screen-config.test.ts`, `screen-routes.test.ts` (`idleStopMinutes`, `ensureIdleStop`). The known flake (`trigger-store.test.ts` "moves a corrupt file aside…", about 1 in 3) did not fire in this run. |
+| 2 | Web unit tests | **pass** | `cd app && npm test -w web`, 2026-11-11 22:39 KST, `a0e79c9`: **92 files, 1107 tests passed, 0 failed**. Includes `theme-tokens.test.ts`, `contrast.test.ts` (62 checks), `theme.test.ts`, `rail-sections.test.ts`, `rail.test.tsx`, `inline-action.test.tsx`, `run-card.test.tsx`, `profile-page.test.tsx`, `profile-shortcuts.test.tsx`. `grep -rE "sky-[0-9]" app/web/src app/web/test` finds nothing. The known 5-second timeout flakes under load did not fire in this run. |
+| 3 | Playwright against live Hermes: full existing suite green, plus the new specs | **fail** (two failures, some tests not run) | New specs **pass**: `ui2.spec.ts` 5/5 (pin, theme, role and accessories, approvals mode, skills switch) and `idle-stop.spec.ts` 2/2 (incl. the 1-hour sleep) at `85ea48b`. Existing suite: see the e2e table below. **Failing:** `connectors.spec.ts` "a level change reaches Hermes as the new tool set" and `groups-model.spec.ts` #5 (handoff). **Not run:** 4 connectors tests behind the failure, `connectors-model.spec.ts`. |
+| 4 | Visual proof | **partial** | 152 files in `docs/ui2/screenshots/`: 38 screens × dark and light × 1440×900 and 1100×800, shot 22:04–22:08 KST and committed in `a0e79c9`; `app/e2e/test-results/.last-run.json` (22:09:08) says `passed`, no failed tests. The 38 names equal the screen ids in `app/e2e/visual*.spec.ts` (no stale file). Side by side: [side-by-side.md](side-by-side.md). **Missing:** a live request card, the Needs-you page with a pending request (only its empty state is shot), a thread with messages and so a run card (all need a model turn; brief Step 2 was not done), and the primary bot's Advanced tab (ruled out for privacy, replaced by an asserted browser check in Task 13). The `conversation` shots show an empty thread with the side panel open. |
+| 5 | Light-theme review by a fresh agent | **reviewed — fixes in, not re-reviewed** | Reviewed at `a0e79c9` on 2026-11-11: [light-review.md](light-review.md), 2 Critical, 8 Important, 9 Minor. Fix wave 2026-11-12: both Critical and 7 of 8 Important fixed in `98deeb6` (I7, the login font, is open); per-finding status and evidence at the top of the review file. No fresh agent has looked at the re-shot light screenshots yet. |
 | 6 | Browser: 0 console errors, 0 CSP violations on every screen | **pass** for the 38 shot screens | The visual harness (`app/e2e/visual.ts`, `watch()`) fails a test on any console error or CSP violation; the 22:04–22:09 run passed. Earlier single-size run in Task 17: 86/86 visual tests passed. Screens not shot (item 4) are not covered. |
-| 7 | Builds and typecheck | **pass** | `npm run build -w web` (`tsc -b && vite build`) exit 0 and `npm run build -w server` (`tsc`) exit 0, 2026-11-11 22:40 KST, `02e9e79`. One Vite warning: the main chunk is 1,228 kB (over the 500 kB hint). |
-| 8 | Final whole-branch review and one fix wave | **done; scoped re-review pending** | Review 2026-11-12 over `a20a008..c391099`: no Critical, no clear Important, 7 items; 1–6 fixed in `cecada8`, 7 accepted as is. Fix wave: `5c6768d`, `3e5ec7b`, `cecada8`, `bc7992b`. The wave itself has not been reviewed. |
+| 7 | Builds and typecheck | **pass** | `npm run build -w web` (`tsc -b && vite build`) exit 0 and `npm run build -w server` (`tsc`) exit 0, 2026-11-11 22:40 KST, `a0e79c9`. One Vite warning: the main chunk is 1,228 kB (over the 500 kB hint). |
+| 8 | Final whole-branch review and one fix wave | **done; scoped re-review pending** | Review 2026-11-12 over `a20a008..be47ae8`: no Critical, no clear Important, 7 items; 1–6 fixed in `4f70fed`, 7 accepted as is. Fix wave: `c595afc`, `98deeb6`, `4f70fed`, `010866f`. The wave itself has not been reviewed. |
 
 ### e2e results (item 3)
 
@@ -29,8 +29,8 @@ All runs on 2026-11-11 against the live service, one Playwright command at a tim
 
 | Spec | Result | Note |
 |---|---|---|
-| `ui2.spec.ts` (new) | 5/5 pass | at `adf736e`, after fix round 1 |
-| `idle-stop.spec.ts` | 2/2 pass | at `adf736e` |
+| `ui2.spec.ts` (new) | 5/5 pass | at `85ea48b`, after fix round 1 |
+| `idle-stop.spec.ts` | 2/2 pass | at `85ea48b` |
 | `crew.spec.ts` | 8/8 pass | model run: stream, Deny, Allow once, Webapp approvals, Needs-you, Stop |
 | `phase2.spec.ts` | 7/7 pass | incl. the routine model test |
 | `sandbox.spec.ts` | 6/6 pass | after crew-test was switched back to local at 19:05 |
@@ -80,7 +80,7 @@ What does remain visible, by design or as a caveat:
 3. **Light-theme review: reviewed, not ready.** 2 Critical, 8 Important, 9 Minor in [light-review.md](light-review.md); see "Light-theme review result" below. Nothing is fixed. The fixes belong to the final fix wave, which waits for the user's word.
 4. **Final whole-branch review and fix wave: pending**, on the user's word.
 5. **Deferred minors.** The ledger holds 46 `minor (deferred)` lines (several list more than one point). Marked for the final fix wave:
-   - `⌘\` must also match `event.code === 'Backslash'` (the user is on a Korean layout). The code has it since `2b8e9f5` (`use-app-shortcuts.ts:19`); no test on a Korean layout was run.
+   - `⌘\` must also match `event.code === 'Backslash'` (the user is on a Korean layout). The code has it since `3980a0d` (`use-app-shortcuts.ts:19`); no test on a Korean layout was run.
    - Bare-key shortcuts ignored inside menu, listbox, dialog and alertdialog (same Task 9 fix; confirm).
    - Hidden pin and hide buttons in a rail row are still clickable at opacity 0.
    - The New bot panel can be closed while a create is in flight.
@@ -96,18 +96,18 @@ What does remain visible, by design or as a caveat:
    - Server flake: `trigger-store.test.ts` "moves a corrupt file aside…" (about 1 in 3, older than this plan).
    - Web suite 5-second timeouts under load.
    - The `reload.mcp` nudge sends a `profile` param that Hermes logs as a contract violation; check the nudge works without it.
-   - Already done in `02e9e79`: app names masked on the Apps tab; the shot timezone fixed to UTC; the bot count masked.
-6. **Old unmasked screenshots in local history.** Commit `b40e42d` (local only, never pushed) holds 2 screenshots that show the user's real chats and credit balance. They are gone from the tree but remain in the branch history. The user decides whether to rewrite history before any push.
+   - Already done in `a0e79c9`: app names masked on the Apps tab; the shot timezone fixed to UTC; the bot count masked.
+6. **Old unmasked screenshots in local history.** Commit `014adbf` (local only, never pushed) holds 2 screenshots that show the user's real chats and credit balance. They are gone from the tree but remain in the branch history. The user decides whether to rewrite history before any push.
 7. **Who switched crew-test into the sandbox is unknown.** Its config changed at 17:36 on 2026-11-11 (docker backend, browser toolset off). No e2e spec writes it and the user says it was not them. It was switched back off through Crew at 19:05, and `sandbox.spec.ts` then passed 6/6.
 8. **Live checks still open from `hermes-facts.md`:** a skills change applying on the next turn of an open chat (the copy "Applies from …'s next message" rests on a source read), and room-member policy timing. The installed toolsets were read live on 2026-11-10 (`GET /api/tools/toolsets` for crew-test).
 9. **Missing visual states:** live request card, the Needs-you page with a pending request, a thread with messages, a run card (see §10 item 4). All need a model turn.
 10. **`crew-bots/` and `Agent-S/`** stay untracked; PR #9 (Phase 7) is not merged. Both are the user's call.
 11. **e2e tests that never ran.** The 4 `connectors.spec.ts` tests behind the failing one (the file is serial), and all of `connectors-model.spec.ts`. They stay not run until the connectors defect (item 1) is fixed.
-12. **Decide before any push.** (a) The two old unmasked screenshots in local commit `b40e42d` (item 6) show real chats and a credit balance; they are still in the branch history. (b) The ledger copy ([execution-ledger.md](execution-ledger.md)) is redacted for figures, app names, timezone, bot count and ids, but it still quotes the user's instructions. The user decides whether either may be pushed as is.
+12. **Decide before any push.** (a) The two old unmasked screenshots in local commit `014adbf` (item 6) show real chats and a credit balance; they are still in the branch history. (b) The ledger copy ([execution-ledger.md](execution-ledger.md)) is redacted for figures, app names, timezone, bot count and ids, but it still quotes the user's instructions. The user decides whether either may be pushed as is.
 
 ## Light-theme review result (§10 item 5)
 
-Status: **reviewed — not ready.** Reviewer: a fresh-context agent, 2026-11-11, screenshots at `02e9e79`, read-only. Full text with pixel values and proposed fixes: [light-review.md](light-review.md). Counts: **2 Critical, 8 Important, 9 Minor.** The reviewer's verdict: "Not ready to show the owner as finished." Its root cause: in light, `background` sits between `raised` and `control`, so anything drawn in `raised` or `control` on a `bg-background` well loses its shape; the scripted contrast check passes because it does not measure the pairs that fail.
+Status: **reviewed — not ready.** Reviewer: a fresh-context agent, 2026-11-11, screenshots at `a0e79c9`, read-only. Full text with pixel values and proposed fixes: [light-review.md](light-review.md). Counts: **2 Critical, 8 Important, 9 Minor.** The reviewer's verdict: "Not ready to show the owner as finished." Its root cause: in light, `background` sits between `raised` and `control`, so anything drawn in `raised` or `control` on a `bg-background` well loses its shape; the scripted contrast check passes because it does not measure the pairs that fail.
 
 Critical:
 
@@ -136,7 +136,7 @@ The 9 Minor findings (M1–M9) are in the file. Ruling (ledger): all light-theme
 
 ## Fix wave (2026-11-12)
 
-Commits (local, not pushed): `5c6768d` ledger items, `3e5ec7b` light review, `cecada8` final review 1–6, `bc7992b` screenshots.
+Commits (local, not pushed): `c595afc` ledger items, `98deeb6` light review, `4f70fed` final review 1–6, `010866f` screenshots.
 
 Checks at the end of the wave, on the VM, with the service restarted on the final build:
 
@@ -150,7 +150,7 @@ Checks at the end of the wave, on the VM, with the service restarted on the fina
 
 Light review: per-finding status is at the top of [light-review.md](light-review.md). Token changes: the last section of [tokens.md](tokens.md). [contrast.md](contrast.md) is the 2026-11-11 output and is out of date: the check now has 97 pairs.
 
-Final review items 1–6 (`cecada8`), with the test for each:
+Final review items 1–6 (`4f70fed`), with the test for each:
 
 1. No pin or hide on a half-made bot: `rail.test.tsx` "offers no pin or hide on a half-made bot…", `profile-hide.test.tsx` "holds the switch until setup is finished and writes nothing".
 2. No Hide for the primary, and a hidden primary still counts: `rail-sections.test.ts` "the primary and `hidden`", `profile-tabs.test.tsx` "protects the primary…".

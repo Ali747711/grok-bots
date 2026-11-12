@@ -1,6 +1,6 @@
 # Crew UI 2: light-theme review
 
-Reviewer: fresh-context agent, 2026-11-11. Screenshots at `02e9e79`. Read-only review; nothing was run or changed.
+Reviewer: fresh-context agent, 2026-11-11. Screenshots at `a0e79c9`. Read-only review; nothing was run or changed.
 
 ## Verdict
 
@@ -14,23 +14,23 @@ Reviewer: fresh-context agent, 2026-11-11. Screenshots at `02e9e79`. Read-only r
 
 ## Fix status (2026-11-12, fix wave)
 
-Added by the fix-wave implementer; the review text below is unchanged. Code in `3e5ec7b` (with `5c6768d` and `cecada8`), screenshots re-shot at both sizes in `bc7992b`. Evidence is a test name or a re-shot file in `docs/ui2/screenshots/`. Nobody has re-reviewed the light theme since; this is the implementer's own check.
+Added by the fix-wave implementer; the review text below is unchanged. Code in `98deeb6` (with `c595afc` and `4f70fed`), screenshots re-shot at both sizes in `010866f`. Evidence is a test name or a re-shot file in `docs/ui2/screenshots/`. Nobody has re-reviewed the light theme since; this is the implementer's own check.
 
 | Id | Status | Evidence |
 |---|---|---|
-| C1 | fixed in `3e5ec7b` | `console-fields.test.tsx` "draws the unchosen radio ring and the off switch…"; `radio-rows.test.tsx` "shows a hint under a label…"; `contrast.test.ts` "light: ring on background is 3.46:1"; `profile-advanced-light-1440x900.png`, `group-panel-light-1440x900.png` |
-| C2 | fixed in `3e5ec7b` | same console-fields test; `contrast.test.ts` "light: switch-off on background / shell"; `profile-advanced-light-1440x900.png`, `profile-avatar-light-1440x900.png` |
-| I1 | fixed in `3e5ec7b` (routine expand button in `5c6768d`) | `--lifted` + `shadow-lifted` on the active tab, role tile, key chips, expand button, avatar tiles; `contrast.test.ts` "lifted on background"; `profile-identity-light-1440x900.png`, `routines-open-light-1440x900.png`, `workspace-light-1440x900.png` |
-| I2 | fixed in `3e5ec7b` | `--raised` 0.945; `theme-tokens.test.ts` "orders the light ladder…"; `contrast.test.ts` "light: raised on shell is 1.15:1" (the floor is 1.15, so no margin) |
-| I3 | fixed in `3e5ec7b` | `--field-border` hairline on inputs, textareas and select triggers; shell fill for the profile's fields; `profile-identity-light-1440x900.png`, `new-bot-light-1100x800.png` |
-| I4 | fixed in `3e5ec7b` | `--muted-foreground` 0.42; `contrast.test.ts` "light: muted-foreground on faint is 1.41:1" |
-| I5 | fixed in `3e5ec7b` | 97 contrast checks (was 62): status, watermelon, `destructive` and its tint on all four surfaces, `--sidebar-ring`. `--status-waiting` 0.62, `--status-working` 0.58, `--destructive` 0.45 (the proposed 0.64 / 0.49 did not pass once `--control` and the darker `--raised` were measured). Pairs the frozen dark values cannot pass are measured in light only |
-| I6 | fixed in `3e5ec7b` (both themes) | `sandbox-section.test.tsx` "is drawn as a console section…"; `profile-advanced-light-1440x900.png`, `profile-advanced-dark-1440x900.png` |
+| C1 | fixed in `98deeb6` | `console-fields.test.tsx` "draws the unchosen radio ring and the off switch…"; `radio-rows.test.tsx` "shows a hint under a label…"; `contrast.test.ts` "light: ring on background is 3.46:1"; `profile-advanced-light-1440x900.png`, `group-panel-light-1440x900.png` |
+| C2 | fixed in `98deeb6` | same console-fields test; `contrast.test.ts` "light: switch-off on background / shell"; `profile-advanced-light-1440x900.png`, `profile-avatar-light-1440x900.png` |
+| I1 | fixed in `98deeb6` (routine expand button in `c595afc`) | `--lifted` + `shadow-lifted` on the active tab, role tile, key chips, expand button, avatar tiles; `contrast.test.ts` "lifted on background"; `profile-identity-light-1440x900.png`, `routines-open-light-1440x900.png`, `workspace-light-1440x900.png` |
+| I2 | fixed in `98deeb6` | `--raised` 0.945; `theme-tokens.test.ts` "orders the light ladder…"; `contrast.test.ts` "light: raised on shell is 1.15:1" (the floor is 1.15, so no margin) |
+| I3 | fixed in `98deeb6` | `--field-border` hairline on inputs, textareas and select triggers; shell fill for the profile's fields; `profile-identity-light-1440x900.png`, `new-bot-light-1100x800.png` |
+| I4 | fixed in `98deeb6` | `--muted-foreground` 0.42; `contrast.test.ts` "light: muted-foreground on faint is 1.41:1" |
+| I5 | fixed in `98deeb6` | 97 contrast checks (was 62): status, watermelon, `destructive` and its tint on all four surfaces, `--sidebar-ring`. `--status-waiting` 0.62, `--status-working` 0.58, `--destructive` 0.45 (the proposed 0.64 / 0.49 did not pass once `--control` and the darker `--raised` were measured). Pairs the frozen dark values cannot pass are measured in light only |
+| I6 | fixed in `98deeb6` (both themes) | `sandbox-section.test.tsx` "is drawn as a console section…"; `profile-advanced-light-1440x900.png`, `profile-advanced-dark-1440x900.png` |
 | I7 | **not fixed** | The login page's own policy is `default-src 'none'` and two server tests hold "loads nothing" and that exact policy. Loading Inter needs a `font-src` allowance and a new public route, which is a change to the sign-in surface that needs the owner's ruling. Done instead: the page names Inter first, so it is used where it is installed; the page's colour literals follow the new tokens |
-| I8 | fixed in `3e5ec7b` | `new-bot-disclosure.test.tsx` "opens a dialog from + New bot and traps focus inside it"; `new-bot-light-1100x800.png` (title, Close and Create all in view) |
-| M1 | fixed in `3e5ec7b` | `workspace-light-1440x900.png` |
-| M4 | partly fixed in `3e5ec7b` | toast radius and `--card` / `--popover` = `--shell`; the empty ghost cards were not looked at |
-| M9 | fixed in `3e5ec7b` | `--ring` 0.6 (3.16:1 on control); the muted margin went with I4 |
+| I8 | fixed in `98deeb6` | `new-bot-disclosure.test.tsx` "opens a dialog from + New bot and traps focus inside it"; `new-bot-light-1100x800.png` (title, Close and Create all in view) |
+| M1 | fixed in `98deeb6` | `workspace-light-1440x900.png` |
+| M4 | partly fixed in `98deeb6` | toast radius and `--card` / `--popover` = `--shell`; the empty ghost cards were not looked at |
+| M9 | fixed in `98deeb6` | `--ring` 0.6 (3.16:1 on control); the muted margin went with I4 |
 | M2, M3, M5, M6, M7, M8 | not fixed | left for a later pass |
 
 ## What I looked at
