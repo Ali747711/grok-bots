@@ -31,7 +31,7 @@ export async function appsServer(h: Hermes, bot: string): Promise<{ readonly ena
  * `identity_header` with `value_from: profile` is resolved by Hermes at connect time to the profile that
  * opens the connection, and is part of the digest that decides whether a profile may adopt another
  * profile's live connection. So a clone of this config neither shares this bot's connection nor passes
- * the relay's identity check.
+ * the relay's identity check. The header is not a secret: it stops config cloning, not a token holder.
  */
 export async function addAppsServer(h: Hermes, bot: string, url: string, token: string, enabled = true): Promise<void> {
   const config = { url, trust: 'untrusted', enabled, identity_header: { name: IDENTITY_HEADER, value_from: 'profile' } }
