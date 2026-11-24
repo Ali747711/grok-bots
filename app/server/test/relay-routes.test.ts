@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 
 import { createApp } from '../src/app.js'
+import { MISMATCH_LOG_MS } from '../src/http/relay-routes.js'
 import { RELAY_TEXT } from '../src/connectors/relay.js'
 import { hashToken, type BotRecord } from '../src/connectors/store.js'
 import { setLogSink } from '../src/log.js'
@@ -17,10 +18,16 @@ function setup(upstream: () => Response | Promise<Response> = () => new Response
   const calls: Call[] = []
   const fetchFake = (async (url: string, init: RequestInit) => { calls.push({ url, init }); return upstream() }) as unknown as typeof fetch
   const records: Record<string, BotRecord> = { alpha: rec(TOKEN), beta: rec(OTHER) }
-  const app = createApp({ ...makeDeps(), relay: { store: { record: b => records[b] }, keys: { get: () => key }, fetch: fetchFake } })
+  const clock = { now: 0 }
+  const app = createApp({ ...makeDeps(), relay: { store: { record: b => records[b] }, keys: { get: () => key }, fetch: fetchFake, now: () => clock.now } })
   const send = (method: string, body?: BodyInit | null, headers: Record<string, string> = {}, bot = 'alpha') =>
-    app.request(`/mcp/${bot}`, { method, body, duplex: 'half', headers: { Host: HOST, authorization: `Bearer ${TOKEN}`, ...headers } })
-  return { calls, send, app }
+    app.request(`/mcp/${bot}`, { method, body, duplex: 'half', headers: { Host: HOST, authorization: `Bearer ${TOKEN}`, 'x-crew-bot': bot, ...headers } })
+  return { calls, send, app, clock }
+}
+function captureLogs(): string[] {
+  const lines: string[] = []
+  setLogSink(line => { lines.push(typeof line === 'string' ? line : JSON.stringify(line)) })
+  return lines
 }
 const rpc = (m: object) => JSON.stringify({ jsonrpc: '2.0', ...m })
 const call = (name: string) => rpc({ id: 1, method: 'tools/call', params: { name } })
@@ -44,6 +51,72 @@ describe('relay routes', () => {
     const res = await send('POST', body, { authorization: `Bearer ${OTHER}`, 'content-type': 'application/json' }, 'alpha')
     expect(res.status).toBe(401)
     expect(calls).toHaveLength(0)
+  })
+
+  it('answers 401 bad_token when X-Crew-Bot is missing or names another bot, even with the right token, before reading the body', async () => {
+    const { send, calls } = setup()
+    const logs = captureLogs()
+    for (const method of ['POST', 'GET', 'DELETE']) {
+      for (const identity of ['', 'beta', 'ALPHA', 'alpha, beta', 'default']) {
+        const res = await send(method, method === 'POST' ? call('GITHUB_GET_REPO') : null, { 'x-crew-bot': identity })
+        expect(res.status, `${method} ${identity}`).toBe(401)
+        expect(await res.json()).toEqual({ error: 'bad_token' })
+      }
+    }
+    const body = new ReadableStream({ pull() { throw new Error('body was read') } })
+    expect((await send('POST', body, { 'x-crew-bot': 'beta', 'content-type': 'application/json' })).status).toBe(401)
+    expect(calls).toHaveLength(0)
+    expect(logs.some(l => l.includes('identity_mismatch'))).toBe(true)
+    expect(logs.join('\n')).not.toContain(TOKEN)
+    setLogSink(() => undefined)
+  })
+
+  it('answers 401 when the X-Crew-Bot header is absent altogether, with a valid token', async () => {
+    const { app, calls } = setup()
+    for (const method of ['POST', 'GET', 'DELETE']) {
+      const res = await app.request('/mcp/alpha', {
+        method, headers: { Host: HOST, authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
+        ...(method === 'POST' ? { body: call('GITHUB_GET_REPO') } : {})
+      })
+      expect(res.status, method).toBe(401)
+      expect(await res.json()).toEqual({ error: 'bad_token' })
+    }
+    expect(calls).toHaveLength(0)
+  })
+
+  it('logs an identity mismatch at most once a minute per bot, and never for a wrong token', async () => {
+    const { send, clock } = setup()
+    const logs = captureLogs()
+    const mismatches = (): number => logs.filter(l => l.includes('identity_mismatch')).length
+    for (let i = 0; i < 5; i += 1) await send('POST', '{}', { 'x-crew-bot': 'clone1' })
+    expect(mismatches()).toBe(1)
+    await send('POST', '{}', { authorization: `Bearer ${OTHER}`, 'x-crew-bot': 'clone1' }, 'beta')
+    expect(mismatches()).toBe(2)
+    await send('POST', '{}', { authorization: 'Bearer nope', 'x-crew-bot': 'clone1' })
+    clock.now = MISMATCH_LOG_MS - 1
+    await send('POST', '{}', { 'x-crew-bot': 'clone1' })
+    expect(mismatches()).toBe(2)
+    clock.now = MISMATCH_LOG_MS
+    await send('POST', '{}', { 'x-crew-bot': 'clone1' })
+    expect(mismatches()).toBe(3)
+    expect(logs.join('\n')).not.toContain('clone1')
+    setLogSink(() => undefined)
+  })
+
+  it("refuses a cloned config: the primary's URL and token with the clone's identity, and the clone's identity with another bot's token", async () => {
+    const { send, calls } = setup()
+    // a clone of alpha: alpha's path and token, but Hermes resolves the header to the clone's own name
+    const cloned = await send('POST', call('GITHUB_GET_REPO'), { 'x-crew-bot': 'clone1' }, 'alpha')
+    expect(cloned.status).toBe(401)
+    expect(await cloned.json()).toEqual({ error: 'bad_token' })
+    // beta's token and identity do not open alpha's path, and alpha's token does not open beta's
+    expect((await send('POST', call('GITHUB_GET_REPO'), { authorization: `Bearer ${OTHER}`, 'x-crew-bot': 'beta' }, 'alpha')).status).toBe(401)
+    expect((await send('POST', call('GITHUB_GET_REPO'), { 'x-crew-bot': 'beta' }, 'beta')).status).toBe(401)
+    expect(calls).toHaveLength(0)
+    // each bot with its own token and identity still works
+    expect((await send('POST', call('GITHUB_GET_REPO'))).status).toBe(200)
+    expect((await send('POST', call('GITHUB_GET_REPO'), { authorization: `Bearer ${OTHER}` }, 'beta')).status).toBe(200)
+    expect(calls).toHaveLength(2)
   })
 
   it('answers 405 to GET and 204 to DELETE only after the token check', async () => {

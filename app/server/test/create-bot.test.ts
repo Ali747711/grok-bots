@@ -46,6 +46,7 @@ const terminalOf = (): Obj => rest.configs.get('scout')?.terminal as Obj
 beforeEach(() => {
   rpc = new FakeRpc()
   rpc.meta('default', { title: 'Hermes' }, 1)
+  rpc.handlers.set('reload.mcp', () => ({ status: 'reloaded' }))
   rest = new ConfigRest()
   // Hermes's clone copies the primary's config; here the primary is plain.
   rest.configs.set('scout', {})
@@ -56,7 +57,7 @@ beforeEach(() => {
 describe('createBot', () => {
   it('calls hermes in the official order with the official params', async () => {
     const result = await createBot(deps, draft)
-    expect(rpc.methods()).toEqual(['profiles.create', 'profiles.list', 'profiles.list', 'profiles.configure', 'setup.runtime_check', 'session.create'])
+    expect(rpc.methods()).toEqual(['profiles.create', 'reload.mcp', 'profiles.list', 'profiles.list', 'profiles.configure', 'setup.runtime_check', 'session.create'])
     expect(rpc.params('profiles.create')).toEqual({ name: 'scout', description: 'Find papers', clone_from: 'default',
       share_auth: true, no_skills: false, soul: composeSoul({ name: 'scout', title: 'Researcher', mission: 'Find papers' }) })
     expect(rpc.of('profiles.create')[0]!.timeoutMs).toBe(120_000)
@@ -71,7 +72,7 @@ describe('createBot', () => {
     const image = 'data:image/png;base64,AAAA'
     const result = await createBot(deps, { ...draft, mission: '', image, model: { provider: 'openrouter', model: 'x/y' } })
     expect(rpc.params('profiles.create')).toMatchObject({ description: '', model: 'x/y', provider: 'openrouter' })
-    expect(rpc.methods()).toEqual(['profiles.create', 'profiles.list', 'profiles.list', 'profiles.configure', 'profiles.set_asset', 'setup.runtime_check', 'session.create'])
+    expect(rpc.methods()).toEqual(['profiles.create', 'reload.mcp', 'profiles.list', 'profiles.list', 'profiles.configure', 'profiles.set_asset', 'setup.runtime_check', 'session.create'])
     expect(rpc.params('profiles.set_asset')).toEqual({ name: 'scout', asset: 'avatar', data: image })
     expect(((rpc.configures[0]!.ui_meta as Record<string, unknown>)['hermes-bots'] as Record<string, unknown>).imageKind).toBe('photo')
     expect(result.steps.avatar).toBe('ok')
@@ -233,17 +234,116 @@ describe('createBot sandbox choice', () => {
     expect(rest.puts.some(p => 'command_allowlist' in p.config)).toBe(false)
   })
 
-  it('reports a failed apps step and still runs the later steps; Finish setup retries it', async () => {
+  it('replaces the cloned apps entry and tells Hermes to reload the bot before its chat exists', async () => {
+    const order: string[] = []
+    const request = rest.request
+    rest.request = (async (method: string, path: string, opts?: { query?: Record<string, string>; body?: unknown }) => {
+      if (method === 'DELETE') order.push(`DELETE ${path}`)
+      return request(method, path, opts)
+    }) as typeof rest.request
+    const call = rpc.call
+    deps = { ...deps, rpc: (async (method: string, params: Record<string, unknown>, timeoutMs?: number) => {
+      order.push(method)
+      return call(method, params, timeoutMs)
+    }) as BotDeps['rpc'] }
+    await createBot(deps, draft)
+    expect(order.slice(0, 4)).toEqual(['profiles.create', 'DELETE /api/mcp/servers/crew_apps', 'DELETE /api/env', 'reload.mcp'])
+    expect(order.indexOf('reload.mcp')).toBeLessThan(order.indexOf('session.create'))
+    expect(rpc.params('reload.mcp')).toEqual({ profile: 'scout', confirm: true })
+    expect(rpc.of('reload.mcp').some(c => c.params.profile === 'default')).toBe(false)
+  })
+
+  it('still finishes the bot when the reload nudge fails: the relay refuses the stale connection anyway', async () => {
+    rpc.fail('reload.mcp', new HermesRpcError(-1, 'busy'))
+    const result = await createBot(deps, draft)
+    expect(result.complete).toBe(true)
+    expect(result.steps).toMatchObject({ apps: 'ok', chat: 'ok' })
+  })
+
+  it('fails closed when the apps entry cannot be removed: no reload, no chat, and Finish setup retries it', async () => {
     rest.failDeletes = true
     const result = await createBot(deps, draft)
-    expect(result.steps).toMatchObject({ apps: 'failed', sandbox: 'ok', look: 'ok', chat: 'ok' })
+    expect(result.steps).toMatchObject({ apps: 'failed', sandbox: 'ok', look: 'ok', chat: 'skipped' })
     expect(result.error).toEqual({ step: 'apps', message: 'apps cleanup down' })
     expect(result.complete).toBe(false)
+    expect(rpc.methods()).not.toContain('session.create')
+    expect(rpc.methods()).not.toContain('reload.mcp')
+    const still = await finishBot(deps, 'scout', {})
+    expect(still.steps).toMatchObject({ apps: 'failed', chat: 'skipped' })
+    expect(still.complete).toBe(false)
+    expect(rpc.methods()).not.toContain('session.create')
     rest.failDeletes = false
     rest.deletes.length = 0
     const finished = await finishBot(deps, 'scout', {})
-    expect(finished.steps.apps).toBe('ok')
+    expect(finished.steps).toMatchObject({ apps: 'ok', chat: 'ok' })
+    expect(finished.complete).toBe(true)
     expect(rest.deletes).toHaveLength(2)
+    expect(rpc.methods()).toContain('session.create')
+  })
+
+  it("replaces the primary's relay token when a new bot's strip fails, in create and again in Finish setup, never the bot's own", async () => {
+    const rotated: string[] = []
+    deps = { ...deps, apps: { forget: async () => undefined, rotate: async bot => { rotated.push(bot); return true } } }
+    await createBot(deps, draft)
+    expect(rotated).toEqual([])
+    rest.failDeletes = true
+    const result = await createBot(deps, { ...draft, name: 'scout2' })
+    expect(result.steps).toMatchObject({ apps: 'failed', chat: 'skipped' })
+    expect(rotated).toEqual(['default'])
+    const still = await finishBot(deps, 'scout2', {})
+    expect(still.complete).toBe(false)
+    expect(rotated).toEqual(['default', 'default'])
+    rest.failDeletes = false
+    expect((await finishBot(deps, 'scout2', {})).complete).toBe(true)
+    expect(rotated).toEqual(['default', 'default'])
+  })
+
+  it('logs a failed or unconfirmed rotation without a token and keeps the bot incomplete so Finish setup retries both', async () => {
+    const warnings = async (run: () => Promise<unknown>): Promise<Record<string, unknown>[]> => {
+      const lines: string[] = []
+      const restore = setLogSink(l => lines.push(l))
+      try { await run() } finally { restore() }
+      return lines.map(l => JSON.parse(l) as Record<string, unknown>).filter(l => l.level === 'warn')
+    }
+    rest.failDeletes = true
+    const attempts: string[] = []
+    deps = { ...deps, apps: { forget: async () => undefined, rotate: async bot => { attempts.push(bot); throw new Error('hermes down tok_secret_value') } } }
+    const logged = await warnings(() => createBot(deps, draft))
+    expect(logged).toEqual([expect.objectContaining({ msg: 'primary apps token rotation failed', name: 'scout', error: 'Error' })])
+    expect(JSON.stringify(logged)).not.toContain('tok_secret_value')
+    deps = { ...deps, apps: { forget: async () => undefined, rotate: async bot => { attempts.push(bot); return false } } }
+    const again = await warnings(async () => {
+      const result = await finishBot(deps, 'scout', {})
+      expect(result.complete).toBe(false)
+      expect(result.steps).toMatchObject({ apps: 'failed', chat: 'skipped' })
+    })
+    expect(again).toEqual([expect.objectContaining({ msg: 'primary apps token rotation not confirmed', name: 'scout' })])
+    expect(attempts).toEqual(['default', 'default'])
+  })
+
+  it('Finish setup on a finished bot asks for its apps entry to be restored after the strip; create never does', async () => {
+    const restored: string[] = []
+    deps = { ...deps, apps: { forget: async () => undefined, restore: async bot => { restored.push(bot) } } }
+    await createBot(deps, draft)
+    expect(restored).toEqual([])
+    const finished = await finishBot(deps, 'scout', {})
+    expect(finished.steps).toMatchObject({ apps: 'ok', chat: 'ok' })
+    expect(restored).toEqual(['scout'])
+    rest.failDeletes = true
+    await finishBot(deps, 'scout', {})
+    expect(restored).toEqual(['scout'])
+  })
+
+  it('fails closed when the cloned app grants cannot be rewritten', async () => {
+    rest.configs.set('scout', { command_allowlist: ['mcp:crew_apps/GITHUB_DELETE_A_REPOSITORY', 'ls'] })
+    const request = rest.request
+    rest.request = (async (method: string, path: string, opts?: { query?: Record<string, string>; body?: unknown }) => {
+      if (method === 'PUT' && 'command_allowlist' in ((opts?.body as { config?: object } | undefined)?.config ?? {})) throw new Error('config write down')
+      return request(method, path, opts)
+    }) as typeof rest.request
+    const result = await createBot(deps, draft)
+    expect(result.steps).toMatchObject({ apps: 'failed', chat: 'skipped' })
+    expect(rpc.methods()).not.toContain('session.create')
   })
 
   it('reports a failed sandbox step and still runs the later steps', async () => {
@@ -294,7 +394,7 @@ describe('finishBot', () => {
   it('finishes a bot that never got a look, deriving its avatar type from the handle', async () => {
     rpc.rows.set('scout', {})
     const result = await finishBot(deps, 'scout', {})
-    expect(rpc.methods()).toEqual(['profiles.list', 'profiles.list', 'profiles.configure', 'session.create'])
+    expect(rpc.methods()).toEqual(['profiles.list', 'reload.mcp', 'profiles.list', 'profiles.configure', 'session.create'])
     expect((rpc.configures[0]!.ui_meta as Record<string, unknown>)['hermes-bots']).toEqual({ crewAvatar: { type: 'ghost' }, shape: 'blob', color: '#F4F2FA', custom: true, imageKind: 'shape', title: 'Scout', created: 1234 })
     expect(result).toMatchObject({ name: 'scout', complete: true, steps: { look: 'ok', avatar: 'skipped', chat: 'ok' } })
     expect(refreshes).toBe(1)

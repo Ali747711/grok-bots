@@ -5,6 +5,7 @@ import {
   RELAY_MAX_BYTES, RELAY_TEXT, canonicalMessage, RELAY_TIMEOUT_MS, UPSTREAM_MAX_BYTES,
   filterToolsList, judge, parseBearer, parseUpstream, rpcError
 } from '../connectors/relay.js'
+import { IDENTITY_HEADER } from '../connectors/hermes-mcp.js'
 import type { KeyStore } from '../connectors/key.js'
 import { type ConnectorStore, tokenMatches } from '../connectors/store.js'
 import { log } from '../log.js'
@@ -15,23 +16,45 @@ export interface RelayDeps {
   readonly store: Pick<ConnectorStore, 'record'>
   readonly keys: Pick<KeyStore, 'get'>
   readonly fetch: typeof fetch
+  /** Absent outside tests: the wall clock. */
+  readonly now?: () => number
 }
+
+/** A refused identity is logged at most this often per bot: a clone retrying must not flood the log. */
+export const MISMATCH_LOG_MS = 60_000
 
 type Message = Record<string, unknown>
 
 /**
  * `/mcp/:bot`: the only way a bot reaches Composio. Outside the session and CSRF guards; the per-bot
- * bearer token is the credential. After it, every failure is a 200 JSON-RPC error (R4): a 401 would
- * make Hermes tell the user to run `hermes mcp login`.
+ * bearer token is the credential. The `X-Crew-Bot` header (which Hermes resolves to the calling
+ * profile's own name) must also name the same bot, but it is NOT a credential: it only stops a cloned
+ * config (the source bot's URL and token under another profile's name) from working as it is. Anyone
+ * who holds a bot's token can send the matching header, so a token that may have been copied is
+ * rotated (`rotateToken`), never trusted because of this check. After both, every failure is a 200
+ * JSON-RPC error (R4): a 401 would make Hermes tell the user to run `hermes mcp login`.
  */
 export function relayRoutes(deps: RelayDeps | undefined): Hono<CrewEnv> {
   const routes = new Hono<CrewEnv>()
+  const mismatchLoggedAt = new Map<string, number>()
+  const warnMismatch = (bot: string): void => {
+    const at = (deps?.now ?? Date.now)()
+    const last = mismatchLoggedAt.get(bot)
+    if (last !== undefined && at - last < MISMATCH_LOG_MS) return
+    // Only bots with a record get here (the token matched), so the map stays small.
+    mismatchLoggedAt.set(bot, at)
+    log.warn('mcp relay', { bot, outcome: 'identity_mismatch' })
+  }
   routes.on(['POST', 'GET', 'DELETE'], '/mcp/:bot', async c => {
     if (!deps) return c.json({ error: 'apps_unavailable' }, 503)
     const bot = c.req.param('bot')
     const record = PROFILE_NAME_RE.test(bot) ? deps.store.record(bot) : undefined
     // The body is never read here; closing keeps the unread rest from being parsed as the next request.
-    if (!record || !tokenMatches(record, parseBearer(c.req.header('authorization')))) {
+    const tokenOk = tokenMatches(record, parseBearer(c.req.header('authorization')))
+    const identityOk = c.req.header(IDENTITY_HEADER) === bot
+    if (!record || !tokenOk || !identityOk) {
+      // One answer for every refusal. The claimed name is never logged: it is the caller's text.
+      if (tokenOk && !identityOk) warnMismatch(bot)
       return c.json({ error: 'bad_token' }, 401, { Connection: 'close' })
     }
     const method = c.req.method

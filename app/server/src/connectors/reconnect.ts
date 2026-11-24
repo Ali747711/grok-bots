@@ -8,6 +8,8 @@ export interface Reconnector {
   schedule(bot: string): void
   /** Resolves once no run is active or queued for the bot. */
   idle(bot: string): Promise<void>
+  /** Like `idle`, and tells whether the last run's disable and enable steps both went through (true when none ran). */
+  settled(bot: string): Promise<boolean>
 }
 
 interface Deps {
@@ -17,7 +19,7 @@ interface Deps {
   readonly recipe?: typeof RECONNECT
 }
 
-interface Run { enabled: boolean; again: boolean; done: Promise<void> }
+interface Run { enabled: boolean; again: boolean; done: Promise<boolean> }
 
 /**
  * R6: Hermes ignores an edited live server, so a changed tool list needs the server torn down and
@@ -28,52 +30,57 @@ export function createReconnector(deps: Deps): Reconnector {
   const recipe = deps.recipe ?? DEFAULT_RECIPE
   const runs = new Map<string, Run>()
 
-  const toggle = async (bot: string, enabled: boolean): Promise<void> => {
-    const step = enabled ? 'enable' : 'disable'
+  const disable = async (bot: string): Promise<boolean> => {
     try {
-      await withBotLock(bot, () => setAppsServerEnabled(deps.hermes, bot, enabled))
+      await withBotLock(bot, () => setAppsServerEnabled(deps.hermes, bot, false))
+      return true
     } catch (error) {
-      log.warn('apps reconnect step failed', { bot, step, error: error instanceof Error ? error.name : 'unknown' })
+      log.warn('apps reconnect step failed', { bot, step: 'disable', error: error instanceof Error ? error.name : 'unknown' })
+      return false
     }
   }
 
   // The check shares the lock with the PUT: a turn-off or key removal holding the lock cannot be
   // undone by an enable that was queued behind it.
-  const enableIfWanted = async (bot: string): Promise<boolean> => {
+  const enableIfWanted = async (bot: string): Promise<'enabled' | 'unwanted' | 'failed'> => {
     try {
       return await withBotLock(bot, async () => {
-        if (!deps.wanted(bot)) return false
+        if (!deps.wanted(bot)) return 'unwanted'
         await setAppsServerEnabled(deps.hermes, bot, true)
-        return true
+        return 'enabled'
       })
     } catch (error) {
       log.warn('apps reconnect step failed', { bot, step: 'enable', error: error instanceof Error ? error.name : 'unknown' })
-      return false
+      return 'failed'
     }
   }
 
-  const once = async (bot: string, run: Run): Promise<void> => {
+  /** True when the server was really torn down and, if still wanted, brought back. */
+  const once = async (bot: string, run: Run): Promise<boolean> => {
     run.enabled = false
-    await toggle(bot, false)
+    const disabled = await disable(bot)
     if (recipe.nudge) await reloadMcp(deps.hermes, bot, false)
     await deps.sleep(recipe.gapMs)
     run.enabled = true
-    if (await enableIfWanted(bot)) {
-      if (recipe.nudge) await reloadMcp(deps.hermes, bot, true)
-    }
+    const enabled = await enableIfWanted(bot)
+    if (enabled === 'enabled' && recipe.nudge) await reloadMcp(deps.hermes, bot, true)
+    return disabled && enabled !== 'failed'
   }
 
-  const loop = async (bot: string, run: Run): Promise<void> => {
+  const loop = async (bot: string, run: Run): Promise<boolean> => {
+    let ok = false
     do {
       run.again = false
       run.enabled = false
       try {
-        await once(bot, run)
+        ok = await once(bot, run)
       } catch (error) {
+        ok = false
         log.warn('apps reconnect step failed', { bot, step: 'run', error: error instanceof Error ? error.name : 'unknown' })
       }
     } while (run.again)
     runs.delete(bot)
+    return ok
   }
 
   return {
@@ -83,12 +90,17 @@ export function createReconnector(deps: Deps): Reconnector {
         if (active.enabled) active.again = true
         return
       }
-      const run: Run = { enabled: false, again: false, done: Promise.resolve() }
+      const run: Run = { enabled: false, again: false, done: Promise.resolve(true) }
       runs.set(bot, run)
       run.done = loop(bot, run)
     },
     async idle(bot) {
       while (runs.has(bot)) await runs.get(bot)?.done
+    },
+    async settled(bot) {
+      let ok = true
+      while (runs.has(bot)) ok = (await runs.get(bot)?.done) ?? ok
+      return ok
     }
   }
 }

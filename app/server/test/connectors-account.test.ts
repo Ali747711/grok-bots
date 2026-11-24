@@ -56,7 +56,7 @@ describe('connector accounts', () => {
     } as unknown as Composio
     deps = {
       bots: { rpc: rpc.call, rest: rest as never }, composio, keys: { get: () => key }, store,
-      reconnector: { schedule: () => undefined, idle: async () => undefined },
+      reconnector: { schedule: () => undefined, idle: async () => undefined, settled: async () => true },
       relayUrl: b => `http://127.0.0.1:7070/mcp/${b}`, newToken: () => 'tok', now: () => now
     }
   })

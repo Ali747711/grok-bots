@@ -56,7 +56,7 @@ describe('connector routes', () => {
     } as unknown as Composio
     const connectors: ConnectorDeps = {
       bots: { rpc: rpc.call, rest: rest as never }, composio, keys, store,
-      reconnector: { schedule: () => undefined, idle: async () => undefined },
+      reconnector: { schedule: () => undefined, idle: async () => undefined, settled: async () => true },
       relayUrl: b => `http://127.0.0.1:7070/mcp/${b}`, newToken: () => 'tok', now: () => 1
     }
     app = createApp({ ...base, connectors: { connectors, keys } })

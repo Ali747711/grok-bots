@@ -93,6 +93,30 @@ describe('reconnector', () => {
     expect(events).toEqual(['enabled:false', 'reload', 'sleep'])
   })
 
+  it('reports through settled whether the disable and enable steps went through', async () => {
+    const good = setup()
+    expect(await good.reconnector.settled('scout')).toBe(true)
+    good.reconnector.schedule('scout')
+    const settled = good.reconnector.settled('scout')
+    await tick()
+    good.gate.release()
+    expect(await settled).toBe(true)
+    const unwanted = setup(() => false)
+    unwanted.reconnector.schedule('scout')
+    const paused = unwanted.reconnector.settled('scout')
+    await tick()
+    unwanted.gate.release()
+    expect(await paused).toBe(true)
+    const restore = setLogSink(() => undefined)
+    const failing = createReconnector({
+      hermes: { rpc: async () => ({}), rest: { request: async () => { throw new Error('nope') } } as never },
+      wanted: () => true, sleep: async () => undefined, recipe: { gapMs: 1, nudge: false }
+    })
+    failing.schedule('scout')
+    expect(await failing.settled('scout')).toBe(false)
+    restore()
+  })
+
   it('logs a failed step and never rejects', async () => {
     const lines: string[] = []
     const restore = setLogSink(l => lines.push(l))

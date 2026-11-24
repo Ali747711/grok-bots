@@ -1,4 +1,4 @@
-import { removeAppsServer } from '../connectors/hermes-mcp.js'
+import { reloadMcp, removeAppsServer } from '../connectors/hermes-mcp.js'
 import { HermesRpcError, type Rpc } from '../hermes/errors.js'
 import type { HermesRest } from '../hermes/rest-client.js'
 import { log } from '../log.js'
@@ -47,7 +47,14 @@ export interface BotDeps {
   /** Absent only in tests: delete then skips the sandbox cleanup. */
   readonly sandbox?: SandboxDeps
   /** Absent only in tests: delete then skips forgetting the bot's apps. */
-  readonly apps?: { forget(bot: string): Promise<void>; clamp?(bot: string, raw: unknown): void }
+  readonly apps?: {
+    forget(bot: string): Promise<void>
+    clamp?(bot: string, raw: unknown): void
+    /** Replace the bot's relay token and entry; rejects, or resolves false, when that did not fully go through. */
+    rotate?(bot: string): Promise<boolean>
+    /** The bot's entry was just removed: if apps are on for it in Crew, have the backfill write the entry again. */
+    restore?(bot: string): Promise<void>
+  }
 }
 
 /** `profiles.create` refused the name: it exists, or Hermes rejected it (message from Hermes). */
@@ -70,7 +77,12 @@ interface FinishBody {
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 const titleCase = (name: string): string => name.replace(/[-_]+/g, ' ').trim().replace(/\b\w/g, ch => ch.toUpperCase())
 
-/** Run one best-effort step; a failure is recorded and never stops the steps after it. */
+/**
+ * Run one best-effort step; a failure is recorded and never stops the steps after it. The one exception
+ * is the chat, which is not made while the apps step is failed, so Finish setup has to pass first. That
+ * is a convenience, not the protection: Hermes serves the profile either way. What keeps a clone off the
+ * primary's apps is the relay's identity check plus the rotation of the primary's token (`securePrimary`).
+ */
 class Steps {
   private first: CreateResult['error']
   readonly outcome: Record<FailedStep, StepOutcome> = { apps: 'skipped', sandbox: 'skipped', look: 'skipped', avatar: 'skipped', chat: 'skipped' }
@@ -160,20 +172,51 @@ const APP_GRANT = 'mcp:crew_apps/'
 
 /**
  * The apps strip (§11.6): the cloned server goes, and so do "always" grants for app tools the primary
- * collected; a new bot must ask for each one. Never touches `default`.
+ * collected; a new bot must ask for each one. Never touches `default`. Hermes serves a clone at once,
+ * so the nudge makes it drop a connection opened from the cloned entry now, not on its next 60 s tick
+ * (the relay refuses that connection either way: its identity is the clone's, its URL the primary's).
  */
 async function stripApps(deps: BotDeps, name: string): Promise<void> {
   await removeAppsServer(deps, name)
+  await reloadMcp(deps, name, false)
   const list = rawList((await readRawConfig(deps, name)).command_allowlist)
   const kept = list.filter(e => !(typeof e === 'string' && e.startsWith(APP_GRANT)))
   if (kept.length === list.length) return
   await writeConfig(deps, name, { command_allowlist: kept })
 }
 
+/** Every bot is cloned from this profile (`createProfile`). */
+const PRIMARY = 'default'
+
+/**
+ * The strip failed, so the clone may still hold a copy of the primary's relay token in its `.env`. The
+ * relay's identity header only stops the cloned config as it is; it is not a credential, and a token
+ * holder can send any name. So the primary's token is replaced, which makes the copy worthless. Never
+ * rejects: a failure is logged (no token) and the bot stays incomplete, so Finish setup runs both again.
+ */
+async function securePrimary(deps: BotDeps, name: string): Promise<void> {
+  if (name === PRIMARY || !deps.apps?.rotate) return
+  try {
+    if (await deps.apps.rotate(PRIMARY)) return
+    log.warn('primary apps token rotation not confirmed', { name })
+  } catch (error) {
+    log.warn('primary apps token rotation failed', { name, error: error instanceof Error ? error.name : 'unknown' })
+  }
+}
+
+/** The apps step: the strip, then `after`; when either fails the primary's token is replaced. */
+async function appsStep(deps: BotDeps, steps: Steps, name: string, after?: () => Promise<void>): Promise<void> {
+  await steps.run('apps', async () => {
+    await stripApps(deps, name)
+    await after?.()
+  })
+  if (steps.outcome.apps === 'failed') await securePrimary(deps, name)
+}
+
 async function runCreate(deps: BotDeps, draft: BotDraft): Promise<CreateResult> {
   await createProfile(deps, draft)
   const steps = new Steps()
-  await steps.run('apps', () => stripApps(deps, draft.name))
+  await appsStep(deps, steps, draft.name)
   let marker: SandboxMarker | undefined
   await steps.run('sandbox', async () => {
     marker = await applyCreateSandbox(deps, draft.name, draft.sandbox ?? false)
@@ -181,7 +224,7 @@ async function runCreate(deps: BotDeps, draft: BotDraft): Promise<CreateResult> 
   await steps.run('look', writeLook(deps, draft, marker))
   if (draft.image) await steps.run('avatar', setAvatar(deps, draft.name, draft.image))
   const needsModel = await runtimeNeedsModel(deps, draft.name)
-  await steps.run('chat', ensureChat(deps, draft.name))
+  if (steps.outcome.apps === 'ok') await steps.run('chat', ensureChat(deps, draft.name))
   deps.sandbox?.onChanged?.(draft.name)
   await refreshQuietly(deps)
   return steps.result(draft.name, needsModel)
@@ -198,7 +241,9 @@ export function finishBot(deps: BotDeps, name: string, body: FinishBody): Promis
 async function runFinish(deps: BotDeps, name: string, body: FinishBody): Promise<CreateResult> {
   const { revision } = await readBotMeta(deps.rpc, name)
   const steps = new Steps()
-  await steps.run('apps', () => stripApps(deps, name))
+  // Finish always strips (it cannot tell a cloned entry from the bot's own), so a finished bot that has
+  // apps in Crew gets its entry back: restore unmarks the record and the backfill writes a fresh one.
+  await appsStep(deps, steps, name, async () => { await deps.apps?.restore?.(name) })
   if (revision === 0) {
     const patch = {
       ...avatarMetaPatch(body.avatar ?? { type: deriveAvatarType(name) }),
@@ -209,7 +254,7 @@ async function runFinish(deps: BotDeps, name: string, body: FinishBody): Promise
     })
   }
   if (body.image) await steps.run('avatar', setAvatar(deps, name, body.image))
-  await steps.run('chat', ensureChat(deps, name))
+  if (steps.outcome.apps === 'ok') await steps.run('chat', ensureChat(deps, name))
   await refreshQuietly(deps)
   return steps.result(name, false)
 }
